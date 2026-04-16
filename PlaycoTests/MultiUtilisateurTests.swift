@@ -5,10 +5,19 @@
 import Testing
 import Foundation
 import SwiftData
+import CryptoKit
 @testable import Playco
 
-@Suite("Multi-utilisateur — Coach / Athlète")
+/// Tests sérialisés : partage de Keychain global iOS.
+@Suite("Multi-utilisateur — Coach / Athlète", .serialized)
 struct MultiUtilisateurTests {
+
+    @MainActor
+    private func creerAuthIsole() -> AuthService {
+        KeychainService.supprimer(cle: "playco_session_utilisateurConnecteID")
+        let suite = UserDefaults(suiteName: "playco-test-\(UUID().uuidString)")!
+        return AuthService(userDefaults: suite)
+    }
 
     private func creerContexteEnMemoire() throws -> ModelContext {
         let schema = Schema([
@@ -31,7 +40,7 @@ struct MultiUtilisateurTests {
 
     @Test("Flux complet : Coach crée équipe, athlète rejoint, permissions correctes")
     func fluxCompletCoachAthlete() throws {
-        let auth = AuthService()
+        let auth = creerAuthIsole()
         let context = try creerContexteEnMemoire()
 
         // ── 1. Coach crée son compte ──
@@ -197,7 +206,7 @@ struct MultiUtilisateurTests {
 
     @Test("Coach avec plusieurs équipes — changement d'équipe")
     func coachMultiEquipes() throws {
-        let auth = AuthService()
+        let auth = creerAuthIsole()
         let context = try creerContexteEnMemoire()
 
         // Coach
@@ -244,7 +253,7 @@ struct MultiUtilisateurTests {
 
     @Test("Connexion verrouillée après 5 échecs — reset après succès")
     func verrouillageEtReset() throws {
-        let auth = AuthService()
+        let auth = creerAuthIsole()
         let context = try creerContexteEnMemoire()
 
         let sel = auth.genererSel()
@@ -274,27 +283,33 @@ struct MultiUtilisateurTests {
 
     @Test("Création de compte — validations")
     func creationCompteValidations() throws {
-        let auth = AuthService()
+        let auth = creerAuthIsole()
         let context = try creerContexteEnMemoire()
 
+        // Politique : identifiant ≥ 3 chars, mot de passe ≥ 8 chars + 1 chiffre
+
         // Identifiant trop court
-        let err1 = auth.creerCompte(identifiant: "ab", motDePasse: "123456", prenom: "A", nom: "B", role: .etudiant, context: context)
+        let err1 = auth.creerCompte(identifiant: "ab", motDePasse: "motdepasse1", prenom: "A", nom: "B", role: .etudiant, context: context)
         #expect(err1 != nil)
 
-        // Mot de passe trop court
-        let err2 = auth.creerCompte(identifiant: "abc.def", motDePasse: "123", prenom: "A", nom: "B", role: .etudiant, context: context)
+        // Mot de passe trop court (<8 chars)
+        let err2 = auth.creerCompte(identifiant: "abc.def", motDePasse: "pass1", prenom: "A", nom: "B", role: .etudiant, context: context)
         #expect(err2 != nil)
 
+        // Mot de passe sans chiffre (8+ chars mais pas de chiffre)
+        let errSansChiffre = auth.creerCompte(identifiant: "abc.def", motDePasse: "motdepasse", prenom: "A", nom: "B", role: .etudiant, context: context)
+        #expect(errSansChiffre != nil, "Un mot de passe sans chiffre doit être refusé")
+
         // Prénom vide
-        let err3 = auth.creerCompte(identifiant: "abc.def", motDePasse: "123456", prenom: "", nom: "B", role: .etudiant, context: context)
+        let err3 = auth.creerCompte(identifiant: "abc.def", motDePasse: "motdepasse1", prenom: "", nom: "B", role: .etudiant, context: context)
         #expect(err3 != nil)
 
         // Succès
-        let err4 = auth.creerCompte(identifiant: "abc.def", motDePasse: "123456", prenom: "Abc", nom: "Def", role: .etudiant, context: context)
-        #expect(err4 == nil, "La création doit réussir")
+        let err4 = auth.creerCompte(identifiant: "abc.def", motDePasse: "motdepasse1", prenom: "Abc", nom: "Def", role: .etudiant, context: context)
+        #expect(err4 == nil, "La création doit réussir avec un mot de passe valide")
 
         // Doublon
-        let err5 = auth.creerCompte(identifiant: "abc.def", motDePasse: "123456", prenom: "Abc", nom: "Def", role: .etudiant, context: context)
+        let err5 = auth.creerCompte(identifiant: "abc.def", motDePasse: "motdepasse1", prenom: "Abc", nom: "Def", role: .etudiant, context: context)
         #expect(err5 != nil, "L'identifiant en doublon doit échouer")
     }
 
@@ -352,11 +367,14 @@ struct MultiUtilisateurTests {
 
     @Test("Migration automatique hash sans sel vers hash avec sel")
     func migrationHashSansSel() throws {
-        let auth = AuthService()
+        let auth = creerAuthIsole()
         let context = try creerContexteEnMemoire()
 
-        // Ancien utilisateur sans sel
-        let hashAncien = auth.hashMotDePasse("ancien123")
+        // Ancien utilisateur sans sel — calculé directement en SHA256 brut
+        let motDePasseAncien = "ancien123"
+        let donnees = Data(motDePasseAncien.utf8)
+        let hashAncien = SHA256.hash(data: donnees)
+            .compactMap { String(format: "%02x", $0) }.joined()
         let user = Utilisateur(identifiant: "ancien.user", motDePasseHash: hashAncien, prenom: "A", nom: "U", role: .coach)
         // Pas de sel !
         context.insert(user)

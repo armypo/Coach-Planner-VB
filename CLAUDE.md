@@ -54,7 +54,7 @@ ContentView (routeur)
 ### Modèles (`Models/`) — 23 @Model
 | Fichier | Description |
 |---------|-------------|
-| `Seance.swift` | @Model : id, nom, date, exercices (cascade, **optionnel**), estArchivee, typeSeanceRaw (pratique/match), adversaire, lieu, scoreEquipe, scoreAdversaire, notesMatch, statsEntrees, codeEquipe, pagesMatch |
+| `Seance.swift` | @Model : id, nom, date, exercices (cascade, **optionnel**), estArchivee, typeSeanceRaw (pratique/match), adversaire, lieu, scoreEquipe, scoreAdversaire, notesMatch, statsEntrees, codeEquipe, pagesMatch, rotationsHistoriqueData, rotationsHistoriqueAdvData, nousServonsEnPremier |
 | `Exercice.swift` | @Model : id, nom, notes, dessinData, elementsData, ordre, duree, etapesData, typeTerrain, seance, estArchive |
 | `ExerciceBibliotheque.swift` | @Model : id, nom, categorie, descriptionExo, notes, dessinData, elementsData, estPredefini, estFavori, duree, etapesData, notesCoach, typeTerrain, dateCreation, codeCoach |
 | `ElementTerrain.swift` | Codable struct : types joueur/ballon/fleche/trajectoire/rotation, coordonnées normalisées 0-1, Bézier, couleur RGB. **+ TypeTerrain** enum. **+ EtapeExercice** struct |
@@ -76,7 +76,7 @@ ContentView (routeur)
 | `CreneauRecurrent.swift` | @Model : jourSemaine, heureDebut, dureeMinutes, lieu, equipe |
 | `MatchCalendrier.swift` | @Model : date, adversaire, lieu, estDomicile, equipe |
 | `MessageEquipe.swift` | @Model : contenu, dateEnvoi, expediteurID, expediteurNom, expediteurRoleRaw, codeEquipe, lecteurIDs, estConversationPrivee, destinataireID |
-| `PointMatch.swift` | @Model : id, seanceID, set, scoreEquipeAuMoment, scoreAdversaireAuMoment, joueurID, typeActionRaw, rotationAuMoment, codeEquipe, horodatage. **+ TypeActionPoint** enum (kill, ace, bloc, erreurAdv, erreurNous, etc.), computed estPointPourNous |
+| `PointMatch.swift` | @Model : id, seanceID, set, scoreEquipeAuMoment, scoreAdversaireAuMoment, joueurID, typeActionRaw, rotationAuMoment, rotationAdvAuMoment, codeEquipe, horodatage. **+ TypeActionPoint** enum (kill, ace, bloc, erreurAdv, erreurNous, killAdversaire, aceAdversaire, blocAdversaire, erreurAttaqueAdversaire, erreurServiceAdversaire, etc.), computed estPointPourNous, estStatAdversaire |
 | `ScoutingReport.swift` | @Model : adversaire, date, systemeDeJeu, styleDeJeu, joueurs adverses (JSON), forces, faiblesses, tendances, stratégies recommandées, notes, codeEquipe, estArchive |
 | `ObjectifJoueur.swift` | @Model : id, joueurID, codeEquipe, titre, categorieRaw, cible, unite, dateCreation, estAtteint, notes. **+ CategorieObjectif** enum (attaque/service/bloc/réception/jeu/physique) |
 | `EvenementSync.swift` | Struct Codable (PAS @Model) : id, date, type (import/export/setup/erreur/connexion/pause/reprise), message, estErreur. **+ JournalSyncStorage** (UserDefaults buffer circulaire 50 entrées) |
@@ -152,7 +152,7 @@ ContentView (routeur)
 | `SelecteurZoneView.swift` | Mini demi-terrain 6 zones tapables pour assigner une zone à un point (optionnel) |
 | `MatchLiveSplitView.swift` | Mode split-screen iPad : Dashboard live (gauche) + Stats live saisie (droite), TabView iPhone, mode match auto (pause/reprise sync), capsule SYNC PAUSÉE |
 | `PaveNumeriqueRapideView.swift` | Pavé numérique courtside : grille joueurs (#numéro) → 4 actions rapides (Kill/Ace/Bloc/Erreur), overlay flottant, toggle "#" |
-| `RotationLiveView.swift` | Terrain visuel positions 1-6 avec joueurs, boutons rotation R1-R6, historique rotations par set |
+| `RotationLiveView.swift` | Terrain visuel positions 1-6 avec joueurs, boutons rotation R1-R6, historique rotations par set, onglet Nous/Adversaire (Picker segmenté), mini-terrain adversaire rouge, boutons R1-R6 adversaire, historique rotations adversaire |
 
 ### Séances (`Views/Seances/`)
 | Fichier | Description |
@@ -312,7 +312,7 @@ ContentView (routeur)
 cd "/Users/armypo/Documents/Coach Planner VB" && xcodebuild -scheme "Playco" -destination 'platform=iOS Simulator,name=iPad Air 13-inch (M3)' build
 ```
 
-## État actuel — v1.8.0
+## État actuel — v1.9.0
 - ✅ Build réussi — **0 erreur, 0 warning**
 - ✅ **TestFlight fonctionnel** — app validée et prête à être distribuée
 - ✅ CloudKit activé (sync inter-appareil) + indicateur hors-ligne (NWPathMonitor)
@@ -356,6 +356,8 @@ cd "/Users/armypo/Documents/Coach Planner VB" && xcodebuild -scheme "Playco" -de
 - ✅ **Stats FIVB/NCAA complètes** : TypeActionRallye étendu (dig, tentativeAttaque, serviceEnJeu), hitting % amélioré, rotations historique par set, modification rotation manuelle (RotationLiveView)
 - ✅ **Transitions portrait/landscape** : SwiftUI Environment sizeClass (plus de UIKit), spring animations sur changement d'orientation
 - ✅ **Permissions granulaires** : StaffPermissions @Model (7 booleans), GestionStaffView, lecture seule en match live
+- ✅ **Stats adversaire symétriques** : 5 nouveaux TypeActionPoint (killAdversaire, aceAdversaire, blocAdversaire, erreurAttaqueAdversaire, erreurServiceAdversaire), DefinitionStat adversaire standard (scoring + erreurs), StatsLiveView sections adversaire dédiées, DashboardMatchLiveView comparaison détaillée (vraies valeurs adversaire)
+- ✅ **Rotation adversaire** : rotationAdversaire dans MatchLiveViewModel, rotation auto sur sideout adversaire, modification manuelle R1-R6, RotationLiveView onglet Nous/Adversaire (Picker segmenté, mini-terrain adversaire rouge), historique rotations adversaire par set, rotationAdvAuMoment sur PointMatch, affichage rotation adversaire dans score area + info chips dashboard
 
 ## Langue
 L'interface est entièrement en **français**. Noms de variables, commentaires et UI en français.
@@ -388,3 +390,43 @@ L'interface est entièrement en **français**. Noms de variables, commentaires e
 | 1.6.0 | **Stats rotation, Palmarès, Phases saison & Mode présentation** — StatsParRotationView (analyse efficacité par rotation 1-6, graphiques barres efficacité + points pour/contre, meilleure/pire rotation, tableau détaillé, filtre par match, accessible depuis MatchsView bottomBar). PalmaresRecordsView (records individuels : plus de kills/aces/blocs/points/passes par match + meilleur hitting %; records d'équipe : plus de points/aces/blocs collectifs + meilleur hitting % équipe + plus grand écart, accessible depuis EquipeView sidebar). AnalyticsSaisonView : filtrage par PhaseSaison (toute la saison ou phase spécifique, appliqué à tous les graphiques et calculs). Mode présentation terrain : bouton "Présenter" ajouté dans MatchDetailView toolbar + StrategieDetailView toolbar, fullScreenCover PresentationTerrainView accessible en un tap. TutorielView : tutoriel paginé 12 pages couvrant toutes les fonctionnalités, TabView(.page), affiché automatiquement au premier lancement (@AppStorage "tutorielVu"), accessible depuis Paramètres → Aide → Voir le tutoriel, fond RadialGradient animé, indicateur dots colorés. |
 | 1.7.0 | **Chantiers v1.7** — 8 chantiers : recherche globale (RechercheGlobaleView Spotlight-like), catégories exercices (CategorieExercice @Model), gestion suppression équipe (cascade manuelle 14 entités + confirmation nom), stats rallye (ActionRallye @Model, manchettes/passes/réceptions), permissions staff (StaffPermissions @Model 7 booleans, GestionStaffView), config match (ConfigMatch struct : subs max, TM, TTO, service), transitions portrait/landscape (SwiftUI sizeClass), stats FIVB complètes (dig/tentativeAttaque/serviceEnJeu, RotationLiveView, historique rotations) |
 | 1.8.0 | **Mode hors-ligne robuste & Mode bord de terrain** — Journal sync (EvenementSync struct Codable buffer 50 UserDefaults, JournalSyncView liste colorée par type). Mode match (pause sync auto pendant match live, toggle wifi.slash dans toolbar MatchLiveSplitView, capsule SYNC PAUSÉE, confirmation reprise). Compteur modifications en attente (enregistrerStat/substitution/TM/set → syncService.enregistrerModificationLocale()). Mode bord de terrain courtside (EnvironmentKey modeBordDeTerrain + themeHautContraste, constantes LiquidGlassKit courtside). StatsLiveView courtside (score 72pt, 6 stats essentielles, panneau rallye masqué, bouton annuler simplifié). DashboardMatchLiveView courtside (4 cartes stats, tableau joueurs masqué avec toggle). Haptics match (sensoryFeedback impact/warning/success sur score/subs). PaveNumeriqueRapideView (overlay flottant #→joueur→action 4 boutons). Mode lecture seule (StaffPermissions.peutGererStats, badge LECTURE SEULE, boutons disabled). Réglages ProfilView (2 toggles @AppStorage). |
+| 1.9.0 | **Stats adversaire symétriques & Rotation adversaire** — 5 nouveaux TypeActionPoint (killAdversaire/aceAdversaire/blocAdversaire/erreurAttaqueAdversaire/erreurServiceAdversaire) + estStatAdversaire computed + mise à jour tous les switch (Seance.swift, MatchDetailView, DashboardMatchLiveView). DefinitionStat adversaire standard : statsAdversaireScoring (3 items point contre nous) + statsAdversaireErreurs (3 items point pour nous), remplace l'ancien statsAdversaire à 2 items. StatsLiveView : sections adversaire dédiées (Scoring rouge + Erreurs vert) avec boutons directs sans sélection joueur, mode courtside inclus. DashboardMatchLiveView : comparaison détaillée avec vraies valeurs adversaire (advKills/advAces/advBlocs/advErreurs), chip rotation adversaire. Rotation adversaire : rotationAdversaire + rotationAdvAuMoment (PointMatch), tournerAdversaire() auto sur sideout adverse, modifierRotationAdversaire() manuel, rotationsHistoriqueAdvData (Seance @Model), annuler point inverse rotation adv, reset rotation adv à 1 par set. RotationLiveView : Picker segmenté Nous/Adversaire, mini-terrain adversaire rouge simplifié (positions numérotées sans noms), boutons R1-R6 adversaire, historique rotations adversaire par set. Score area : rotation affichée "R1 · R1" (bleu nous + rouge adv). |
+
+<!-- code-review-graph MCP tools -->
+## MCP Tools: code-review-graph
+
+**IMPORTANT: This project has a knowledge graph. ALWAYS use the
+code-review-graph MCP tools BEFORE using Grep/Glob/Read to explore
+the codebase.** The graph is faster, cheaper (fewer tokens), and gives
+you structural context (callers, dependents, test coverage) that file
+scanning cannot.
+
+### When to use graph tools FIRST
+
+- **Exploring code**: `semantic_search_nodes` or `query_graph` instead of Grep
+- **Understanding impact**: `get_impact_radius` instead of manually tracing imports
+- **Code review**: `detect_changes` + `get_review_context` instead of reading entire files
+- **Finding relationships**: `query_graph` with callers_of/callees_of/imports_of/tests_for
+- **Architecture questions**: `get_architecture_overview` + `list_communities`
+
+Fall back to Grep/Glob/Read **only** when the graph doesn't cover what you need.
+
+### Key Tools
+
+| Tool | Use when |
+|------|----------|
+| `detect_changes` | Reviewing code changes — gives risk-scored analysis |
+| `get_review_context` | Need source snippets for review — token-efficient |
+| `get_impact_radius` | Understanding blast radius of a change |
+| `get_affected_flows` | Finding which execution paths are impacted |
+| `query_graph` | Tracing callers, callees, imports, tests, dependencies |
+| `semantic_search_nodes` | Finding functions/classes by name or keyword |
+| `get_architecture_overview` | Understanding high-level codebase structure |
+| `refactor_tool` | Planning renames, finding dead code |
+
+### Workflow
+
+1. The graph auto-updates on file changes (via hooks).
+2. Use `detect_changes` for code review.
+3. Use `get_affected_flows` to understand impact.
+4. Use `query_graph` pattern="tests_for" to check coverage.

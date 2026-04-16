@@ -41,7 +41,7 @@ struct FormationMatchLiveView: View {
     private var estPortrait: Bool {
         guard !compact else { return false } // compact = toujours horizontal
         guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene else { return false }
-        return scene.interfaceOrientation.isPortrait
+        return scene.effectiveGeometry.interfaceOrientation.isPortrait
     }
 
     var body: some View {

@@ -199,7 +199,7 @@ struct CalendrierView: View {
                             let phaseJour = phasePourDate(date)
 
                             Button {
-                                withAnimation(.easeInOut(duration: 0.2)) {
+                                withAnimation(LiquidGlassKit.springDefaut) {
                                     if estSelectionne {
                                         jourSelectionne = nil
                                     } else {

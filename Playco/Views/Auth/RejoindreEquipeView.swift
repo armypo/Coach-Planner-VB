@@ -190,9 +190,17 @@ struct RejoindreEquipeView: View {
     }
 
     private func seConnecter() async {
-        let codeNormalise = codeEquipe.trimmingCharacters(in: .whitespaces)
+        // Fix edge case : le code équipe doit être normalisé en majuscules ET sans espaces
+        let codeNormalise = codeEquipe.trimmingCharacters(in: .whitespaces).uppercased()
+        let idNormalise = identifiant.lowercased().trimmingCharacters(in: .whitespaces)
         erreurLocale = nil
         authService.erreur = nil
+
+        // Validation locale avant toute requête réseau
+        guard !codeNormalise.isEmpty, !idNormalise.isEmpty, !motDePasse.isEmpty else {
+            erreurLocale = "Veuillez remplir tous les champs."
+            return
+        }
 
         // 1. Récupérer les données depuis le CloudKit public DB
         chargementCloud = true

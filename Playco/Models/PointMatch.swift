@@ -16,6 +16,7 @@ final class PointMatch {
     var joueurID: UUID? = nil
     var typeActionRaw: String = TypeActionPoint.kill.rawValue
     var rotationAuMoment: Int = 1
+    var rotationAdvAuMoment: Int = 1
     var codeEquipe: String = ""
     var horodatage: Date = Date()
     /// Zone du terrain (1-6) où l'action a eu lieu. 0 = non assignée.

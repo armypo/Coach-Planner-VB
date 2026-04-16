@@ -26,7 +26,7 @@ struct PresentationTerrainView: View {
     /// Détecte l'orientation portrait
     private var estPortrait: Bool {
         guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene else { return false }
-        return scene.interfaceOrientation.isPortrait
+        return scene.effectiveGeometry.interfaceOrientation.isPortrait
     }
 
     var body: some View {

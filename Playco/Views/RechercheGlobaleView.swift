@@ -64,6 +64,7 @@ struct RechercheGlobaleView: View {
     @Query private var tousJoueurs: [JoueurEquipe]
     @Query(filter: #Predicate<StrategieCollective> { $0.estArchivee == false })
     private var toutesStrategies: [StrategieCollective]
+    // ExerciceBibliotheque n'a pas de soft-delete — suppression directe uniquement
     @Query private var tousExercices: [ExerciceBibliotheque]
 
     @State private var recherche = ""

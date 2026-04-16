@@ -68,7 +68,11 @@ struct MatchDetailView: View {
         modelContext.insert(exo)
         if seance.exercices == nil { seance.exercices = [] }
         seance.exercices?.append(exo)
-        try? modelContext.save()
+        do {
+            try modelContext.save()
+        } catch {
+            logger.error("Erreur sauvegarde exercice terrain: \(error.localizedDescription)")
+        }
         exerciceTerrain = exo
     }
 
@@ -173,7 +177,7 @@ struct MatchDetailView: View {
                             HStack(spacing: 3) {
                                 Image(systemName: "rectangle.split.2x1.fill")
                                     .font(.caption)
-                                Text("Mode Live")
+                                Text("Mode en direct")
                                     .font(.caption.weight(.medium))
                             }
                             .foregroundStyle(.orange)
@@ -246,7 +250,7 @@ struct MatchDetailView: View {
         .fullScreenCover(isPresented: $afficherModeLive) {
             NavigationStack {
                 MatchLiveSplitView(seance: seance)
-                    .navigationTitle("Mode Live — \(seance.nom)")
+                    .navigationTitle("Mode en direct — \(seance.nom)")
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar {
                         ToolbarItem(placement: .confirmationAction) {
@@ -379,7 +383,9 @@ struct MatchDetailView: View {
                 case .erreurReception:
                     stat.erreursReception += 1
                     stat.receptionsTotales += 1
-                case .erreurAdversaire, .fauteJeu, .erreurEquipe:
+                case .erreurAdversaire, .fauteJeu, .erreurEquipe,
+                     .killAdversaire, .aceAdversaire, .blocAdversaire,
+                     .erreurAttaqueAdversaire, .erreurServiceAdversaire:
                     break
                 }
             }

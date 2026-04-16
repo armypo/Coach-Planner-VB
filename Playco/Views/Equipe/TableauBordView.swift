@@ -232,11 +232,11 @@ struct TableauBordView: View {
                 }
             }
 
-            // Bouton Box Score
+            // Bouton Feuille de match
             VStack(spacing: 2) {
                 Image(systemName: "tablecells")
                     .font(.caption)
-                Text("Box Score")
+                Text("Feuille de match")
                     .font(.system(size: 8, weight: .medium))
             }
             .foregroundStyle(.red)
@@ -522,7 +522,7 @@ struct BoxScoreView: View {
             }
             .padding()
         }
-        .navigationTitle("Box Score")
+        .navigationTitle("Feuille de match")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -612,7 +612,7 @@ struct BoxScoreView: View {
 
     private var sectionBoxScore: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("Box Score", systemImage: "tablecells")
+            Label("Feuille de match", systemImage: "tablecells")
                 .font(.subheadline.weight(.bold))
 
             ScrollView(.horizontal, showsIndicators: false) {

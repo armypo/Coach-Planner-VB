@@ -13,6 +13,7 @@ import os
 private let logger = Logger(subsystem: "com.origotech.playco", category: "CloudKitSharing")
 
 /// Service de partage inter-utilisateurs via CloudKit Public Database
+@MainActor
 @Observable
 final class CloudKitSharingService {
 
@@ -280,8 +281,6 @@ final class CloudKitSharingService {
 
         record["utilisateurID"] = utilisateur.id.uuidString as CKRecordValue
         record["identifiant"] = utilisateur.identifiant as CKRecordValue
-        record["motDePasseHash"] = utilisateur.motDePasseHash as CKRecordValue
-        record["sel"] = (utilisateur.sel ?? "") as CKRecordValue
         record["prenom"] = utilisateur.prenom as CKRecordValue
         record["nom"] = utilisateur.nom as CKRecordValue
         record["roleRaw"] = utilisateur.roleRaw as CKRecordValue
@@ -313,8 +312,6 @@ final class CloudKitSharingService {
         record["posteRaw"] = joueur.posteRaw as CKRecordValue
         record["codeEquipe"] = joueur.codeEquipe as CKRecordValue
         record["identifiant"] = joueur.identifiant as CKRecordValue
-        record["motDePasseHash"] = joueur.motDePasseHash as CKRecordValue
-        record["sel"] = joueur.sel as CKRecordValue
 
         if let utilisateurID = joueur.utilisateurID {
             record["utilisateurID"] = utilisateurID.uuidString as CKRecordValue
@@ -362,10 +359,27 @@ final class CloudKitSharingService {
             let remoteDateMod = record["dateModification"] as? Date ?? .distantPast
             guard remoteDateMod > existant.dateModification else { return }
 
-            existant.motDePasseHash = record["motDePasseHash"] as? String ?? existant.motDePasseHash
-            existant.sel = record["sel"] as? String
+            // Mettre à jour les champs mutables
             existant.estActif = (record["estActif"] as? Int ?? 1) == 1
             existant.dateModification = remoteDateMod
+            if let motDePasseHash = record["motDePasseHash"] as? String {
+                existant.motDePasseHash = motDePasseHash
+            }
+            if let sel = record["sel"] as? String {
+                existant.sel = sel
+            }
+            if let prenom = record["prenom"] as? String {
+                existant.prenom = prenom
+            }
+            if let nom = record["nom"] as? String {
+                existant.nom = nom
+            }
+            if let numero = record["numero"] as? Int {
+                existant.numero = numero
+            }
+            if let posteRaw = record["posteRaw"] as? String {
+                existant.posteRaw = posteRaw
+            }
             return
         }
 
@@ -380,8 +394,8 @@ final class CloudKitSharingService {
         )
         // Forcer le même UUID que la source
         utilisateur.id = uuid
-        utilisateur.sel = record["sel"] as? String
         utilisateur.estActif = (record["estActif"] as? Int ?? 1) == 1
+        utilisateur.sel = record["sel"] as? String
 
         if let joueurIDStr = record["joueurEquipeID"] as? String {
             utilisateur.joueurEquipeID = UUID(uuidString: joueurIDStr)
@@ -425,8 +439,6 @@ final class CloudKitSharingService {
         joueur.id = uuid
         joueur.codeEquipe = record["codeEquipe"] as? String ?? ""
         joueur.identifiant = record["identifiant"] as? String ?? ""
-        joueur.motDePasseHash = record["motDePasseHash"] as? String ?? ""
-        joueur.sel = record["sel"] as? String ?? ""
 
         if let utilisateurIDStr = record["utilisateurID"] as? String {
             joueur.utilisateurID = UUID(uuidString: utilisateurIDStr)

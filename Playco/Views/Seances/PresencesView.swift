@@ -4,6 +4,9 @@
 
 import SwiftUI
 import SwiftData
+import os
+
+private let logger = Logger(subsystem: "com.origotech.playco", category: "Presences")
 
 /// Vue pour cocher les présences des joueurs à une séance (coach seulement)
 struct PresencesView: View {
@@ -162,7 +165,11 @@ struct PresencesView: View {
             )
             modelContext.insert(presence)
         }
-        try? modelContext.save()
+        do {
+            try modelContext.save()
+        } catch {
+            logger.error("Erreur sauvegarde présence: \(error.localizedDescription)")
+        }
     }
 
     private func marquerTous(present: Bool) {
@@ -180,6 +187,10 @@ struct PresencesView: View {
                 modelContext.insert(p)
             }
         }
-        try? modelContext.save()
+        do {
+            try modelContext.save()
+        } catch {
+            logger.error("Erreur sauvegarde présences (lot): \(error.localizedDescription)")
+        }
     }
 }

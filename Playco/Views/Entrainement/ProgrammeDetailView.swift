@@ -322,7 +322,7 @@ struct AjouterExerciceSheet: View {
 
     private func boutonCategorie(_ cat: CategorieMuscu?, label: String) -> some View {
         Button {
-            withAnimation(.easeInOut(duration: 0.2)) { categorieFiltree = cat }
+            withAnimation(LiquidGlassKit.springDefaut) { categorieFiltree = cat }
         } label: {
             Text(label)
                 .font(.caption.weight(categorieFiltree == cat ? .bold : .regular))

@@ -79,12 +79,21 @@ enum TypeActionPoint: String, Codable, CaseIterable {
     case blocAssiste = "Bloc assisté"
     case erreurAdversaire = "Erreur adv."
 
-    // MARK: Points contre nous
+    // MARK: Points contre nous (nos erreurs)
     case erreurAttaque = "Err. attaque"
     case erreurService = "Err. service"
     case erreurBloc = "Err. bloc"
     case erreurReception = "Err. réception"
     case fauteJeu = "Faute de jeu"
+
+    // MARK: Points marqués par l'adversaire (point contre nous)
+    case killAdversaire = "Kill adv."
+    case aceAdversaire = "Ace adv."
+    case blocAdversaire = "Bloc adv."
+
+    // MARK: Erreurs adversaire détaillées (point pour nous)
+    case erreurAttaqueAdversaire = "Err. att. adv."
+    case erreurServiceAdversaire = "Err. serv. adv."
 
     // MARK: Legacy (rétrocompatibilité anciennes données)
     case bloc = "Bloc"
@@ -92,11 +101,11 @@ enum TypeActionPoint: String, Codable, CaseIterable {
 
     /// Actions affichées dans l'interface (exclut les types legacy)
     static var actionsPointPourNous: [TypeActionPoint] {
-        [.kill, .ace, .blocSeul, .blocAssiste, .erreurAdversaire]
+        [.kill, .ace, .blocSeul, .blocAssiste, .erreurAdversaire, .erreurAttaqueAdversaire, .erreurServiceAdversaire]
     }
 
     static var actionsPointContre: [TypeActionPoint] {
-        [.erreurAttaque, .erreurService, .erreurBloc, .erreurReception, .fauteJeu]
+        [.erreurAttaque, .erreurService, .erreurBloc, .erreurReception, .fauteJeu, .killAdversaire, .aceAdversaire, .blocAdversaire]
     }
 
     var icone: String {
@@ -111,6 +120,11 @@ enum TypeActionPoint: String, Codable, CaseIterable {
         case .erreurBloc: return "shield.slash"
         case .erreurReception: return "arrow.down.left"
         case .fauteJeu: return "hand.raised"
+        case .killAdversaire: return "flame.fill"
+        case .aceAdversaire: return "arrow.up.forward"
+        case .blocAdversaire: return "shield.fill"
+        case .erreurAttaqueAdversaire: return "flame"
+        case .erreurServiceAdversaire: return "arrow.up.forward.circle"
         case .bloc: return "shield.fill"
         case .erreurEquipe: return "exclamationmark.triangle"
         }
@@ -118,10 +132,11 @@ enum TypeActionPoint: String, Codable, CaseIterable {
 
     var estPointPourNous: Bool {
         switch self {
-        case .kill, .ace, .blocSeul, .blocAssiste, .bloc, .erreurAdversaire:
+        case .kill, .ace, .blocSeul, .blocAssiste, .bloc, .erreurAdversaire,
+             .erreurAttaqueAdversaire, .erreurServiceAdversaire:
             return true
         case .erreurAttaque, .erreurService, .erreurBloc, .erreurReception,
-             .fauteJeu, .erreurEquipe:
+             .fauteJeu, .erreurEquipe, .killAdversaire, .aceAdversaire, .blocAdversaire:
             return false
         }
     }
@@ -133,7 +148,9 @@ enum TypeActionPoint: String, Codable, CaseIterable {
         case .ace, .erreurService: return .service
         case .blocSeul, .blocAssiste, .bloc, .erreurBloc: return .bloc
         case .erreurReception: return .reception
-        case .erreurAdversaire, .fauteJeu, .erreurEquipe: return nil
+        case .erreurAdversaire, .fauteJeu, .erreurEquipe,
+             .killAdversaire, .aceAdversaire, .blocAdversaire,
+             .erreurAttaqueAdversaire, .erreurServiceAdversaire: return nil
         }
     }
 
@@ -153,6 +170,17 @@ enum TypeActionPoint: String, Codable, CaseIterable {
         switch self {
         case .erreurAttaque, .erreurService, .erreurBloc, .erreurReception,
              .fauteJeu, .erreurEquipe:
+            return true
+        default: return false
+        }
+    }
+
+    /// Indique si c'est une stat de l'adversaire (pas associée à un joueur de notre équipe)
+    var estStatAdversaire: Bool {
+        switch self {
+        case .killAdversaire, .aceAdversaire, .blocAdversaire,
+             .erreurAttaqueAdversaire, .erreurServiceAdversaire,
+             .erreurAdversaire:
             return true
         default: return false
         }
@@ -242,6 +270,9 @@ final class Seance {
     /// Historique des rotations par set (JSON [[Int: Int]] — set → rotation)
     var rotationsHistoriqueData: Data? = nil
 
+    /// Historique des rotations adversaire par set (JSON [Int: [Int]])
+    var rotationsHistoriqueAdvData: Data? = nil
+
     /// Qui sert au début du match : true = nous, false = adversaire
     var nousServonsEnPremier: Bool = true
 
@@ -326,6 +357,17 @@ final class Seance {
         }
         set {
             rotationsHistoriqueData = try? JSONCoderCache.encoder.encode(newValue)
+        }
+    }
+
+    /// Historique des rotations adversaire par set
+    var rotationsHistoriqueAdv: [Int: [Int]] {
+        get {
+            guard let d = rotationsHistoriqueAdvData else { return [:] }
+            return (try? JSONCoderCache.decoder.decode([Int: [Int]].self, from: d)) ?? [:]
+        }
+        set {
+            rotationsHistoriqueAdvData = try? JSONCoderCache.encoder.encode(newValue)
         }
     }
 

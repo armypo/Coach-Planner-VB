@@ -164,7 +164,7 @@ struct FormationTerrainEditeur: View {
     /// Portrait iPad = regular/regular mais height > width détectable par la scene
     private var estPortrait: Bool {
         guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene else { return false }
-        return scene.interfaceOrientation.isPortrait
+        return scene.effectiveGeometry.interfaceOrientation.isPortrait
     }
 
     var body: some View {

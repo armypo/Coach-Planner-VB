@@ -53,74 +53,82 @@ struct DashboardMatchLiveView: View {
     @State private var timerTempsMort: Int = 30
     @State private var timerActif = false
     @State private var afficherTTO = false
+    @State private var timerRef: Timer?
 
-    private var lectureSeule: Bool {
-        guard let user = authService.utilisateurConnecte else { return true }
-        if user.role == .admin || user.role == .coach { return false }
-        if let perms = toutesPermissions.first(where: { $0.assistantID == user.id && $0.codeEquipe == codeEquipeActif }) {
-            return !perms.peutGererStats
+    // Cache pré-calculé — recalculé uniquement sur changement de tousPoints.count
+    @State private var cache = StatsMatchLiveCache()
+
+    /// Cache des stats agrégées du match live — évite de filtrer points/actions à chaque render
+    private struct StatsMatchLiveCache {
+        var totalKills = 0
+        var totalAces = 0
+        var totalBlocs = 0
+        var totalErreurs = 0
+        var totalErrAttaque = 0
+        var totalErrService = 0
+        var totalErrReception = 0
+        var totalManchettes = 0
+        var totalPasses = 0
+        var totalReceptions = 0
+        var totalDigs = 0
+        var totalServicesEnJeu = 0
+        var totalTentativesAttaque = 0
+        var efficaciteAttaque: Double = 0
+        var pointsNous = 0
+        var pointsAdversaire = 0
+        var advKills = 0
+        var advAces = 0
+        var advBlocs = 0
+        var advErreurs = 0
+        var statsParJoueur: [StatsJoueur] = []
+    }
+
+    private func recalculerCache() {
+        let seanceID = viewModel.seance.id
+        let points = tousPoints.filter { $0.seanceID == seanceID }
+        let actionsRallye = toutesActionsRallye.filter { $0.seanceID == seanceID }
+        let joueurs = tousJoueurs.filtreEquipe(codeEquipeActif)
+
+        var s = StatsMatchLiveCache()
+
+        // Stats points
+        for point in points {
+            switch point.typeAction {
+            case .kill: s.totalKills += 1
+            case .ace: s.totalAces += 1
+            case .erreurAttaque: s.totalErrAttaque += 1
+            case .erreurService: s.totalErrService += 1
+            case .erreurReception: s.totalErrReception += 1
+            case .killAdversaire: s.advKills += 1
+            case .aceAdversaire: s.advAces += 1
+            case .blocAdversaire: s.advBlocs += 1
+            case .erreurAdversaire, .erreurAttaqueAdversaire, .erreurServiceAdversaire:
+                s.advErreurs += 1
+            default: break
+            }
+            if point.typeAction.estBloc { s.totalBlocs += 1 }
+            if point.typeAction.estErreurEquipe { s.totalErreurs += 1 }
+            if point.estPointPourNous { s.pointsNous += 1 } else { s.pointsAdversaire += 1 }
         }
-        return true
-    }
 
-    /// Points filtrés pour ce match
-    private var points: [PointMatch] {
-        tousPoints.filter { $0.seanceID == viewModel.seance.id }
-    }
+        // Stats actions rallye
+        for action in actionsRallye {
+            switch action.typeAction {
+            case .manchette: s.totalManchettes += 1
+            case .passeDecisive: s.totalPasses += 1
+            case .reception: s.totalReceptions += 1
+            case .tentativeAttaque: s.totalTentativesAttaque += 1
+            case .serviceEnJeu: s.totalServicesEnJeu += 1
+            case .dig: s.totalDigs += 1
+            }
+        }
+        s.totalTentativesAttaque += s.totalKills + s.totalErrAttaque
 
-    private var actionsRallye: [ActionRallye] {
-        toutesActionsRallye.filter { $0.seanceID == viewModel.seance.id }
-    }
+        s.efficaciteAttaque = s.totalTentativesAttaque > 0
+            ? Double(s.totalKills - s.totalErrAttaque) / Double(s.totalTentativesAttaque) * 100
+            : 0
 
-    private var joueurs: [JoueurEquipe] {
-        tousJoueurs.filtreEquipe(codeEquipeActif)
-    }
-
-    // Stats globales
-    private var totalKills: Int { points.filter { $0.typeAction == .kill }.count }
-    private var totalAces: Int { points.filter { $0.typeAction == .ace }.count }
-    private var totalBlocs: Int { points.filter { $0.typeAction.estBloc }.count }
-    private var totalErreurs: Int { points.filter { $0.typeAction.estErreurEquipe }.count }
-    private var totalErrAttaque: Int { points.filter { $0.typeAction == .erreurAttaque }.count }
-
-    private var efficaciteAttaque: Double {
-        guard totalTentativesAttaque > 0 else { return 0 }
-        return Double(totalKills - totalErrAttaque) / Double(totalTentativesAttaque) * 100
-    }
-
-    private var totalManchettes: Int {
-        actionsRallye.filter { $0.typeAction == .manchette }.count
-    }
-
-    private var totalPasses: Int {
-        actionsRallye.filter { $0.typeAction == .passeDecisive }.count
-    }
-
-    private var totalReceptions: Int {
-        actionsRallye.filter { $0.typeAction == .reception }.count
-    }
-
-    private var totalDigs: Int {
-        actionsRallye.filter { $0.typeAction == .dig }.count
-    }
-
-    private var totalTentativesAttaque: Int {
-        actionsRallye.filter { $0.typeAction == .tentativeAttaque }.count + totalKills + totalErrAttaque
-    }
-
-    private var totalServicesEnJeu: Int {
-        actionsRallye.filter { $0.typeAction == .serviceEnJeu }.count
-    }
-
-    private var totalErrService: Int { points.filter { $0.typeAction == .erreurService }.count }
-    private var totalErrReception: Int { points.filter { $0.typeAction == .erreurReception }.count }
-
-    // Stats adversaire
-    private var pointsAdversaire: Int { points.filter { !$0.estPointPourNous }.count }
-    private var pointsNous: Int { points.filter { $0.estPointPourNous }.count }
-
-    /// Stats agrégées par joueur
-    private var statsParJoueur: [StatsJoueur] {
+        // Stats par joueur
         var dict: [UUID: StatsJoueur] = [:]
         for joueur in joueurs {
             dict[joueur.id] = StatsJoueur(id: joueur.id, nom: "\(joueur.prenom) \(joueur.nom)", numero: joueur.numero)
@@ -136,7 +144,8 @@ struct DashboardMatchLiveView: View {
             case .erreurBloc: dict[jid]?.errBloc += 1
             case .erreurReception: dict[jid]?.errReception += 1
             case .fauteJeu, .erreurEquipe: dict[jid]?.fautes += 1
-            case .erreurAdversaire: break
+            case .erreurAdversaire, .killAdversaire, .aceAdversaire, .blocAdversaire,
+                 .erreurAttaqueAdversaire, .erreurServiceAdversaire: break
             }
         }
         for action in actionsRallye {
@@ -150,7 +159,18 @@ struct DashboardMatchLiveView: View {
             case .dig: dict[action.joueurID]?.digs += 1
             }
         }
-        return dict.values.sorted { $0.points > $1.points }
+        s.statsParJoueur = dict.values.sorted { $0.points > $1.points }
+
+        cache = s
+    }
+
+    private var lectureSeule: Bool {
+        guard let user = authService.utilisateurConnecte else { return true }
+        if user.role == .admin || user.role == .coach { return false }
+        if let perms = toutesPermissions.first(where: { $0.assistantID == user.id && $0.codeEquipe == codeEquipeActif }) {
+            return !perms.peutGererStats
+        }
+        return true
     }
 
     var body: some View {
@@ -197,9 +217,12 @@ struct DashboardMatchLiveView: View {
                             infoChip(icone: "arrow.triangle.2.circlepath", texte: "Rotation \(viewModel.rotationActuelle)", couleur: PaletteMat.bleu)
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel("Modifier la rotation. Actuellement rotation \(viewModel.rotationActuelle)")
+                        .accessibilityHint("Double-tapez pour ouvrir le sélecteur de rotation")
 
+                        infoChip(icone: "arrow.triangle.2.circlepath.camera", texte: "Rot. adv. R\(viewModel.rotationAdversaire)", couleur: .red)
                         infoChip(icone: "number.circle", texte: "Set \(viewModel.setActuel)", couleur: PaletteMat.violet)
-                        infoChip(icone: "chart.line.uptrend.xyaxis", texte: "Eff. \(String(format: "%.0f", efficaciteAttaque))%", couleur: efficaciteAttaque >= 25 ? PaletteMat.vert : .red)
+                        infoChip(icone: "chart.line.uptrend.xyaxis", texte: "Eff. \(String(format: "%.0f", cache.efficaciteAttaque))%", couleur: cache.efficaciteAttaque >= 25 ? PaletteMat.vert : .red)
 
                         // Bouton substitutions
                         Button {
@@ -216,6 +239,8 @@ struct DashboardMatchLiveView: View {
                             .padding(.vertical, 6)
                             .background(.red.opacity(0.1), in: Capsule())
                         }
+                        .accessibilityLabel("Substitutions : \(viewModel.subsUtiliseesDansSet) sur \(viewModel.subsMaxParSet) utilisées dans ce set")
+                        .accessibilityHint("Double-tapez pour gérer les substitutions")
                     }
                 }
 
@@ -243,6 +268,13 @@ struct DashboardMatchLiveView: View {
                 }
             }
             .padding(LiquidGlassKit.espaceMD)
+        }
+        .onAppear { recalculerCache() }
+        .onChange(of: tousPoints.count) { recalculerCache() }
+        .onChange(of: toutesActionsRallye.count) { recalculerCache() }
+        .onDisappear {
+            timerRef?.invalidate()
+            timerRef = nil
         }
         .sensoryFeedback(.success, trigger: viewModel.subsUtiliseesDansSet)
         .sensoryFeedback(.impact(weight: .light), trigger: viewModel.scoreNous)
@@ -319,6 +351,9 @@ struct DashboardMatchLiveView: View {
         .padding(.vertical, LiquidGlassKit.espaceLG)
         .frame(maxWidth: .infinity)
         .glassCard(cornerRadius: LiquidGlassKit.rayonXL)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Score du set \(viewModel.setActuel)")
+        .accessibilityValue("Nous \(viewModel.scoreNous), adversaire \(viewModel.scoreAdv). \(viewModel.nousServons ? "Nous servons." : "L'adversaire sert.")")
     }
 
     // MARK: - Temps morts
@@ -408,10 +443,10 @@ struct DashboardMatchLiveView: View {
 
     private var statsRapidesCourtside: some View {
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: LiquidGlassKit.espaceSM), count: 4), spacing: LiquidGlassKit.espaceSM) {
-            statCard(titre: "Kills", valeur: totalKills, icone: "flame.fill", couleur: PaletteMat.vert)
-            statCard(titre: "Aces", valeur: totalAces, icone: "arrow.up.forward", couleur: PaletteMat.bleu)
-            statCard(titre: "Blocs", valeur: totalBlocs, icone: "shield.fill", couleur: PaletteMat.violet)
-            statCard(titre: "Erreurs", valeur: totalErreurs, icone: "exclamationmark.triangle", couleur: .red)
+            statCard(titre: "Kills", valeur: cache.totalKills, icone: "flame.fill", couleur: PaletteMat.vert)
+            statCard(titre: "Aces", valeur: cache.totalAces, icone: "arrow.up.forward", couleur: PaletteMat.bleu)
+            statCard(titre: "Blocs", valeur: cache.totalBlocs, icone: "shield.fill", couleur: PaletteMat.violet)
+            statCard(titre: "Erreurs", valeur: cache.totalErreurs, icone: "exclamationmark.triangle", couleur: .red)
         }
     }
 
@@ -420,21 +455,21 @@ struct DashboardMatchLiveView: View {
     private var statsRapides: some View {
         VStack(spacing: LiquidGlassKit.espaceSM) {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: LiquidGlassKit.espaceSM), count: 4), spacing: LiquidGlassKit.espaceSM) {
-                statCard(titre: "Kills", valeur: totalKills, icone: "flame.fill", couleur: PaletteMat.vert)
-                statCard(titre: "Aces", valeur: totalAces, icone: "arrow.up.forward", couleur: PaletteMat.bleu)
-                statCard(titre: "Blocs", valeur: totalBlocs, icone: "shield.fill", couleur: PaletteMat.violet)
-                statCard(titre: "Erreurs", valeur: totalErreurs, icone: "exclamationmark.triangle", couleur: .red)
+                statCard(titre: "Kills", valeur: cache.totalKills, icone: "flame.fill", couleur: PaletteMat.vert)
+                statCard(titre: "Aces", valeur: cache.totalAces, icone: "arrow.up.forward", couleur: PaletteMat.bleu)
+                statCard(titre: "Blocs", valeur: cache.totalBlocs, icone: "shield.fill", couleur: PaletteMat.violet)
+                statCard(titre: "Erreurs", valeur: cache.totalErreurs, icone: "exclamationmark.triangle", couleur: .red)
             }
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: LiquidGlassKit.espaceSM), count: 4), spacing: LiquidGlassKit.espaceSM) {
-                statCard(titre: "Digs", valeur: totalDigs + totalManchettes, icone: "hand.point.down.fill", couleur: .teal)
-                statCard(titre: "Assists", valeur: totalPasses, icone: "arrow.turn.up.right", couleur: .yellow)
-                statCard(titre: "Réceptions", valeur: totalReceptions, icone: "arrow.down.to.line", couleur: .purple)
-                statCardPct(titre: "Eff. Att.", valeur: efficaciteAttaque, icone: "chart.line.uptrend.xyaxis", couleur: efficaciteAttaque >= 25 ? PaletteMat.vert : .red)
+                statCard(titre: "Digs", valeur: cache.totalDigs + cache.totalManchettes, icone: "hand.point.down.fill", couleur: .teal)
+                statCard(titre: "Assists", valeur: cache.totalPasses, icone: "arrow.turn.up.right", couleur: .yellow)
+                statCard(titre: "Réceptions", valeur: cache.totalReceptions, icone: "arrow.down.to.line", couleur: .purple)
+                statCardPct(titre: "Eff. Att.", valeur: cache.efficaciteAttaque, icone: "chart.line.uptrend.xyaxis", couleur: cache.efficaciteAttaque >= 25 ? PaletteMat.vert : .red)
             }
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: LiquidGlassKit.espaceSM), count: 3), spacing: LiquidGlassKit.espaceSM) {
-                statCard(titre: "Err. Service", valeur: totalErrService, icone: "arrow.up.forward.circle", couleur: .orange)
-                statCard(titre: "Err. Attaque", valeur: totalErrAttaque, icone: "flame", couleur: .orange)
-                statCard(titre: "Err. Récep.", valeur: totalErrReception, icone: "arrow.down.left", couleur: .orange)
+                statCard(titre: "Err. Service", valeur: cache.totalErrService, icone: "arrow.up.forward.circle", couleur: .orange)
+                statCard(titre: "Err. Attaque", valeur: cache.totalErrAttaque, icone: "flame", couleur: .orange)
+                statCard(titre: "Err. Récep.", valeur: cache.totalErrReception, icone: "arrow.down.left", couleur: .orange)
             }
         }
     }
@@ -448,15 +483,15 @@ struct DashboardMatchLiveView: View {
                 .foregroundStyle(.secondary)
                 .tracking(0.5)
 
-            let totalPoints = pointsNous + pointsAdversaire
-            let pctNous = totalPoints > 0 ? Double(pointsNous) / Double(totalPoints) : 0.5
+            let totalPoints = cache.pointsNous + cache.pointsAdversaire
+            let pctNous = totalPoints > 0 ? Double(cache.pointsNous) / Double(totalPoints) : 0.5
 
             HStack(spacing: LiquidGlassKit.espaceMD) {
                 VStack(spacing: 4) {
                     Text("NOUS")
                         .font(.caption2.weight(.bold))
                         .foregroundStyle(.secondary)
-                    Text("\(pointsNous)")
+                    Text("\(cache.pointsNous)")
                         .font(.title3.weight(.bold).monospacedDigit())
                         .foregroundStyle(PaletteMat.vert)
                         .contentTransition(.numericText())
@@ -479,7 +514,7 @@ struct DashboardMatchLiveView: View {
                     Text("ADV")
                         .font(.caption2.weight(.bold))
                         .foregroundStyle(.secondary)
-                    Text("\(pointsAdversaire)")
+                    Text("\(cache.pointsAdversaire)")
                         .font(.title3.weight(.bold).monospacedDigit())
                         .foregroundStyle(.red)
                         .contentTransition(.numericText())
@@ -489,10 +524,10 @@ struct DashboardMatchLiveView: View {
 
             // Détails comparatifs
             HStack(spacing: 0) {
-                barreComparaison(label: "Kills", nousVal: totalKills, advVal: points.filter { !$0.estPointPourNous }.count - totalErreurs, couleurNous: PaletteMat.vert)
-                barreComparaison(label: "Aces", nousVal: totalAces, advVal: 0, couleurNous: PaletteMat.bleu)
-                barreComparaison(label: "Blocs", nousVal: totalBlocs, advVal: 0, couleurNous: PaletteMat.violet)
-                barreComparaison(label: "Erreurs", nousVal: totalErreurs, advVal: 0, couleurNous: .red)
+                barreComparaison(label: "Kills", nousVal: cache.totalKills, advVal: cache.advKills, couleurNous: PaletteMat.vert)
+                barreComparaison(label: "Aces", nousVal: cache.totalAces, advVal: cache.advAces, couleurNous: PaletteMat.bleu)
+                barreComparaison(label: "Blocs", nousVal: cache.totalBlocs, advVal: cache.advBlocs, couleurNous: PaletteMat.violet)
+                barreComparaison(label: "Erreurs", nousVal: cache.totalErreurs, advVal: cache.advErreurs, couleurNous: .red)
             }
         }
         .padding(LiquidGlassKit.espaceMD)
@@ -596,7 +631,7 @@ struct DashboardMatchLiveView: View {
 
                     Divider()
 
-                    ForEach(statsParJoueur) { stat in
+                    ForEach(cache.statsParJoueur) { stat in
                         HStack(spacing: 0) {
                             Text("\(stat.numero)")
                                 .font(.caption.weight(.bold).monospacedDigit())
@@ -667,7 +702,7 @@ struct DashboardMatchLiveView: View {
                 }
             }
 
-            if statsParJoueur.isEmpty {
+            if cache.statsParJoueur.isEmpty {
                 Text("Aucune statistique enregistrée")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
@@ -726,14 +761,16 @@ struct DashboardMatchLiveView: View {
     }
 
     private func demarrerTimerTempsMort() {
+        timerRef?.invalidate()
         timerTempsMort = 30
-        Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { timer in
+        timerRef = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { timer in
             if timerTempsMort > 0 && timerActif {
                 withAnimation(LiquidGlassKit.springDefaut) {
                     timerTempsMort -= 1
                 }
             } else {
                 timer.invalidate()
+                timerRef = nil
                 if timerTempsMort <= 0 {
                     timerActif = false
                     timerTempsMort = 30

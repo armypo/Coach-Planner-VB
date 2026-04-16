@@ -4,6 +4,9 @@
 
 import SwiftUI
 import SwiftData
+import os
+
+private let logger = Logger(subsystem: "com.origotech.playco", category: "Evaluation")
 
 /// Vue pour évaluer les joueurs après une séance (coach seulement)
 struct EvaluationView: View {
@@ -191,6 +194,10 @@ struct EvaluationView: View {
         case .attitude: eval.noteAttitude = note
         }
 
-        try? modelContext.save()
+        do {
+            try modelContext.save()
+        } catch {
+            logger.error("Erreur sauvegarde évaluation joueur: \(error.localizedDescription)")
+        }
     }
 }

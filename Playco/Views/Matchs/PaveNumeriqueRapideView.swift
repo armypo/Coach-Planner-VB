@@ -94,6 +94,8 @@ struct PaveNumeriqueRapideView: View {
                         .foregroundStyle(joueur.estLibero ? PaletteMat.violet : PaletteMat.bleu)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Joueur numéro \(joueur.numero), \(joueur.prenom) \(joueur.nom)")
+                    .accessibilityHint("Double-tapez pour choisir une action")
                 }
             }
         }
@@ -154,5 +156,7 @@ struct PaveNumeriqueRapideView: View {
             .foregroundStyle(couleur)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Enregistrer \(label)")
+        .accessibilityHint("Double-tapez pour enregistrer le point")
     }
 }

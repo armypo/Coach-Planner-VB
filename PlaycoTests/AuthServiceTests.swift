@@ -5,9 +5,13 @@
 import Testing
 import Foundation
 import SwiftData
+import CryptoKit
 @testable import Playco
 
-@Suite("AuthService")
+/// Tests sérialisés : KeychainService est un store global iOS que nous ne pouvons
+/// pas isoler par test. L'exécution séquentielle évite les collisions entre tests
+/// qui écrivent/lisent la clé de session dans le Keychain.
+@Suite("AuthService", .serialized)
 struct AuthServiceTests {
 
     private func creerContexteEnMemoire() throws -> ModelContext {
@@ -18,11 +22,31 @@ struct AuthServiceTests {
         return ModelContext(container)
     }
 
+    /// AuthService avec un UserDefaults isolé par test — évite les collisions
+    /// entre tests qui partagent l'état (tentativesEchouees, verrouillage).
+    /// Nettoie également le Keychain pour la clé de session avant chaque test.
+    @MainActor
+    private func creerAuthIsole() -> AuthService {
+        // Nettoyer l'état global Keychain entre les tests
+        KeychainService.supprimer(cle: "playco_session_utilisateurConnecteID")
+        let suite = UserDefaults(suiteName: "playco-test-\(UUID().uuidString)")!
+        return AuthService(userDefaults: suite)
+    }
+
+    /// Crée un AuthService isolé ET retourne aussi la suite UserDefaults
+    /// pour les tests qui doivent écrire dans le même store (ex: restaurerSession).
+    @MainActor
+    private func creerAuthAvecSuite() -> (AuthService, UserDefaults) {
+        KeychainService.supprimer(cle: "playco_session_utilisateurConnecteID")
+        let suite = UserDefaults(suiteName: "playco-test-\(UUID().uuidString)")!
+        return (AuthService(userDefaults: suite), suite)
+    }
+
     // MARK: - Hash
 
     @Test("Hash déterministe avec sel")
     func hashDeterministe() {
-        let auth = AuthService()
+        let auth = creerAuthIsole()
         let sel = "abc123"
         let h1 = auth.hashMotDePasse("monMotDePasse", sel: sel)
         let h2 = auth.hashMotDePasse("monMotDePasse", sel: sel)
@@ -32,24 +56,41 @@ struct AuthServiceTests {
 
     @Test("Hash différent avec sel différent")
     func hashDifferentAvecSelDifferent() {
-        let auth = AuthService()
+        let auth = creerAuthIsole()
         let h1 = auth.hashMotDePasse("test", sel: "sel1")
         let h2 = auth.hashMotDePasse("test", sel: "sel2")
         #expect(h1 != h2, "Sels différents doivent produire des hash différents")
     }
 
-    @Test("Hash sans sel — rétrocompatibilité")
-    func hashSansSel() {
-        let auth = AuthService()
-        let h1 = auth.hashMotDePasse("motdepasse")
-        let h2 = auth.hashMotDePasse("motdepasse")
-        #expect(h1 == h2)
-        #expect(h1.count == 64)
+    @Test("Connexion rétrocompatible — ancien hash sans sel")
+    func connexionRetrocompatibleSansSel() throws {
+        let auth = creerAuthIsole()
+        let context = try creerContexteEnMemoire()
+
+        // Simuler un ancien hash SHA256 sans sel (comme le faisait la version initiale)
+        let motDePasse = "motdepasse"
+        let donnees = Data(motDePasse.utf8)
+        let hashAncien = SHA256.hash(data: donnees)
+            .compactMap { String(format: "%02x", $0) }.joined()
+
+        let user = Utilisateur(
+            identifiant: "ancien.compte",
+            motDePasseHash: hashAncien,
+            prenom: "Ancien",
+            nom: "Compte",
+            role: .etudiant
+        )
+        // Pas de sel — simule un compte pré-migration
+        context.insert(user)
+        try context.save()
+
+        auth.connexion(identifiant: "ancien.compte", motDePasse: motDePasse, context: context)
+        #expect(auth.estConnecte, "Doit accepter un ancien hash sans sel (rétrocompatibilité)")
     }
 
     @Test("Génération de sel unique")
     func genererSelUnique() {
-        let auth = AuthService()
+        let auth = creerAuthIsole()
         let sel1 = auth.genererSel()
         let sel2 = auth.genererSel()
         #expect(sel1 != sel2, "Deux sels générés doivent être différents")
@@ -60,7 +101,7 @@ struct AuthServiceTests {
 
     @Test("Verrouillage après 5 tentatives")
     func lockoutApres5Tentatives() {
-        let auth = AuthService()
+        let auth = creerAuthIsole()
         #expect(!auth.estVerrouille)
         for _ in 0..<5 {
             auth.enregistrerEchec()
@@ -72,7 +113,7 @@ struct AuthServiceTests {
 
     @Test("Pas de verrouillage avant 5 tentatives")
     func pasLockoutAvant5() {
-        let auth = AuthService()
+        let auth = creerAuthIsole()
         for _ in 0..<4 {
             auth.enregistrerEchec()
         }
@@ -84,7 +125,7 @@ struct AuthServiceTests {
 
     @Test("Connexion réussie")
     func connexionReussie() throws {
-        let auth = AuthService()
+        let auth = creerAuthIsole()
         let context = try creerContexteEnMemoire()
 
         let sel = auth.genererSel()
@@ -102,7 +143,7 @@ struct AuthServiceTests {
 
     @Test("Connexion échouée — mauvais mot de passe")
     func connexionEchouee() throws {
-        let auth = AuthService()
+        let auth = creerAuthIsole()
         let context = try creerContexteEnMemoire()
 
         let sel = auth.genererSel()
@@ -120,7 +161,7 @@ struct AuthServiceTests {
 
     @Test("Connexion bloquée quand verrouillé")
     func connexionBloquee() throws {
-        let auth = AuthService()
+        let auth = creerAuthIsole()
         let context = try creerContexteEnMemoire()
 
         // Forcer le verrouillage
@@ -135,7 +176,7 @@ struct AuthServiceTests {
 
     @Test("Restauration de session")
     func restaurerSession() throws {
-        let auth = AuthService()
+        let (auth, suite) = creerAuthAvecSuite()
         let context = try creerContexteEnMemoire()
 
         let sel = auth.genererSel()
@@ -145,23 +186,24 @@ struct AuthServiceTests {
         context.insert(user)
         try context.save()
 
-        // Simuler sauvegarde de session
-        UserDefaults.standard.set(user.id.uuidString, forKey: "utilisateurConnecteID")
+        // Simuler une session legacy dans la suite injectée (non .standard !)
+        suite.set(user.id.uuidString, forKey: "utilisateurConnecteID")
 
-        let auth2 = AuthService()
+        let auth2 = AuthService(userDefaults: suite)
         auth2.restaurerSession(context: context)
         #expect(auth2.estConnecte)
         #expect(auth2.utilisateurConnecte?.id == user.id)
 
         // Cleanup
-        UserDefaults.standard.removeObject(forKey: "utilisateurConnecteID")
+        suite.removeObject(forKey: "utilisateurConnecteID")
+        KeychainService.supprimer(cle: "playco_session_utilisateurConnecteID")
     }
 
     // MARK: - Déconnexion
 
     @Test("Déconnexion")
     func deconnexion() throws {
-        let auth = AuthService()
+        let auth = creerAuthIsole()
         let context = try creerContexteEnMemoire()
 
         let sel = auth.genererSel()

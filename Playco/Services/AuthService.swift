@@ -5,18 +5,43 @@
 import Foundation
 import SwiftData
 import CryptoKit
+import os
 
+// MARK: - Correction 6 : @MainActor
+@MainActor
 @Observable
 final class AuthService {
+
+    private static let logger = Logger(subsystem: "com.origotech.playco", category: "AuthService")
 
     var utilisateurConnecte: Utilisateur?
     var estConnecte: Bool { utilisateurConnecte != nil }
     var erreur: String?
     var chargement: Bool = false
 
-    // S2 : Verrouillage après 5 tentatives
-    private(set) var tentativesEchouees: Int = 0
-    private(set) var verrouillageJusqua: Date?
+    // MARK: - Correction 3 : Verrouillage persisté dans UserDefaults
+
+    private static let cleTentatives = "playco_auth_tentatives"
+    private static let cleVerrouillage = "playco_auth_verrouillage"
+
+    /// Store persistant injecté — permet l'isolation des tests via des suites dédiées
+    private let userDefaults: UserDefaults
+
+    private(set) var tentativesEchouees: Int {
+        didSet {
+            userDefaults.set(tentativesEchouees, forKey: Self.cleTentatives)
+        }
+    }
+
+    private(set) var verrouillageJusqua: Date? {
+        didSet {
+            if let date = verrouillageJusqua {
+                userDefaults.set(date.timeIntervalSince1970, forKey: Self.cleVerrouillage)
+            } else {
+                userDefaults.removeObject(forKey: Self.cleVerrouillage)
+            }
+        }
+    }
 
     var estVerrouille: Bool {
         guard let jusqua = verrouillageJusqua else { return false }
@@ -28,12 +53,38 @@ final class AuthService {
         return max(0, Int(jusqua.timeIntervalSince(Date())))
     }
 
-    // MARK: - Persistance de session
+    // MARK: - Correction 5 : Session dans le Keychain
 
-    private let cleSession = "utilisateurConnecteID"
+    private let cleSession = "playco_session_utilisateurConnecteID"
+    private let cleSessionLegacy = "utilisateurConnecteID"
 
     var idSessionSauvegardee: String? {
-        UserDefaults.standard.string(forKey: cleSession)
+        // Lecture depuis le Keychain ; migration depuis UserDefaults si nécessaire
+        if let idKeychain = KeychainService.lire(cle: cleSession) {
+            return idKeychain
+        }
+        // Migration : ancienne valeur UserDefaults → Keychain
+        if let idLegacy = userDefaults.string(forKey: cleSessionLegacy) {
+            KeychainService.sauvegarder(cle: cleSession, valeur: idLegacy)
+            userDefaults.removeObject(forKey: cleSessionLegacy)
+            return idLegacy
+        }
+        return nil
+    }
+
+    // MARK: - init : chargement de l'état persisté
+
+    /// - Parameter userDefaults: magasin persistant à utiliser pour tentatives/verrouillage.
+    ///   Les tests peuvent injecter `UserDefaults(suiteName: UUID().uuidString)` pour l'isolation.
+    init(userDefaults: UserDefaults = .standard) {
+        self.userDefaults = userDefaults
+        tentativesEchouees = userDefaults.integer(forKey: Self.cleTentatives)
+        let intervalSauvegarde = userDefaults.double(forKey: Self.cleVerrouillage)
+        if intervalSauvegarde > 0 {
+            verrouillageJusqua = Date(timeIntervalSince1970: intervalSauvegarde)
+        } else {
+            verrouillageJusqua = nil
+        }
     }
 
     // MARK: - S1 : Hash du mot de passe avec sel (salt)
@@ -51,24 +102,29 @@ final class AuthService {
         return hash.compactMap { String(format: "%02x", $0) }.joined()
     }
 
-    /// Hash sans sel (rétrocompatibilité pour anciens comptes)
-    func hashMotDePasse(_ motDePasse: String) -> String {
+    /// Hash sans sel (rétrocompatibilité pour anciens comptes) — privée
+    private func hashMotDePasse(_ motDePasse: String) -> String {
         let donnees = Data(motDePasse.utf8)
         let hash = SHA256.hash(data: donnees)
         return hash.compactMap { String(format: "%02x", $0) }.joined()
     }
 
     /// Vérifie le mot de passe (avec ou sans sel)
+    /// Utilise `sel?.isEmpty ?? true` pour traiter nil et "" comme "pas de sel"
     private func verifierMotDePasse(_ motDePasse: String, hash: String, sel: String?) -> Bool {
-        if let sel, !sel.isEmpty {
-            return hashMotDePasse(motDePasse, sel: sel) == hash
-        } else {
+        let selAbsent = sel?.isEmpty ?? true
+        if selAbsent {
             // Rétrocompatibilité : hash sans sel
             return hashMotDePasse(motDePasse) == hash
+        } else {
+            return hashMotDePasse(motDePasse, sel: sel!) == hash
         }
     }
 
     // MARK: - Restauration de session
+
+    /// Durée maximum d'une session avant réauthentification obligatoire (30 jours)
+    private static let dureeMaxSessionSecondes: TimeInterval = 30 * 24 * 3600
 
     func restaurerSession(context: ModelContext) {
         guard let idString = idSessionSauvegardee,
@@ -78,11 +134,32 @@ final class AuthService {
             predicate: #Predicate { $0.id == id && $0.estActif == true }
         )
 
-        if let utilisateur = try? context.fetch(descripteur).first {
-            utilisateurConnecte = utilisateur
-        } else {
-            UserDefaults.standard.removeObject(forKey: cleSession)
+        guard let utilisateur = try? context.fetch(descripteur).first else {
+            KeychainService.supprimer(cle: cleSession)
+            return
         }
+
+        // Vérifier l'expiration de session (30 jours max)
+        if let sessionCreee = utilisateur.sessionCreeeLe,
+           Date().timeIntervalSince(sessionCreee) > Self.dureeMaxSessionSecondes {
+            Self.logger.info("Session expirée après 30 jours — déconnexion automatique")
+            KeychainService.supprimer(cle: cleSession)
+            erreur = "Session expirée, veuillez vous reconnecter."
+            return
+        }
+
+        // Amorcer le compteur pour les comptes migrés (sessionCreeeLe == nil avant cette version)
+        // Sans ça, les anciens comptes bypasseraient indéfiniment la règle 30 jours
+        if utilisateur.sessionCreeeLe == nil {
+            utilisateur.sessionCreeeLe = Date()
+            do {
+                try context.save()
+            } catch {
+                Self.logger.warning("Impossible d'amorcer sessionCreeeLe: \(error.localizedDescription)")
+            }
+        }
+
+        utilisateurConnecte = utilisateur
     }
 
     // MARK: - Connexion par Identifiant + Mot de passe
@@ -91,48 +168,15 @@ final class AuthService {
         erreur = nil
         chargement = true
 
-        // S2 : Vérifier le verrouillage
+        // Vérifier le verrouillage
         if estVerrouille {
             erreur = "Compte verrouillé. Réessayez dans \(tempsRestantVerrouillage) secondes."
             chargement = false
             return
         }
 
-        #if DEBUG
-        // TODO: Retirer avant production — Compte admin passe-partout pour tests
-        if identifiant.lowercased().trimmingCharacters(in: .whitespaces) == "admin@playco.dev" && motDePasse == "PlaycoAdmin2026!" {
-            let adminID = "admin@playco.dev"
-            let descripteurAdmin = FetchDescriptor<Utilisateur>(
-                predicate: #Predicate { $0.identifiant == adminID }
-            )
-            if let adminExistant = try? context.fetch(descripteurAdmin).first {
-                utilisateurConnecte = adminExistant
-                UserDefaults.standard.set(adminExistant.id.uuidString, forKey: cleSession)
-            } else {
-                let sel = genererSel()
-                let hash = hashMotDePasse(motDePasse, sel: sel)
-                let admin = Utilisateur(
-                    identifiant: adminID,
-                    motDePasseHash: hash,
-                    prenom: "Admin",
-                    nom: "Playco",
-                    role: .admin,
-                    codeEcole: ""
-                )
-                admin.sel = sel
-                context.insert(admin)
-                try? context.save()
-                utilisateurConnecte = admin
-                UserDefaults.standard.set(admin.id.uuidString, forKey: cleSession)
-            }
-            chargement = false
-            return
-        }
-        #endif
-
         let idNormalise = identifiant.lowercased().trimmingCharacters(in: .whitespaces)
 
-        // Cherche par identifiant uniquement
         let descripteur = FetchDescriptor<Utilisateur>(
             predicate: #Predicate {
                 $0.identifiant == idNormalise &&
@@ -150,7 +194,6 @@ final class AuthService {
                 return
             }
 
-            // Vérifier le mot de passe (avec ou sans sel)
             guard verifierMotDePasse(motDePasse, hash: utilisateur.motDePasseHash, sel: utilisateur.sel) else {
                 enregistrerEchec()
                 erreur = "Identifiant ou mot de passe incorrect."
@@ -163,29 +206,56 @@ final class AuthService {
             verrouillageJusqua = nil
 
             // S1 : Migrer vers hash avec sel si l'ancien compte n'en avait pas
-            if utilisateur.sel == nil || utilisateur.sel?.isEmpty == true {
+            if utilisateur.sel?.isEmpty ?? true {
                 let nouveauSel = genererSel()
                 utilisateur.sel = nouveauSel
                 utilisateur.motDePasseHash = hashMotDePasse(motDePasse, sel: nouveauSel)
-                try? context.save()
+            }
+
+            // Marquer la date de début de session pour expiration 30 jours
+            utilisateur.sessionCreeeLe = Date()
+
+            do {
+                try context.save()
+            } catch {
+                Self.logger.error("Erreur sauvegarde session utilisateur: \(error.localizedDescription)")
+                erreur = "Impossible d'enregistrer votre session. Réessayez."
+                chargement = false
+                return
             }
 
             utilisateurConnecte = utilisateur
-            UserDefaults.standard.set(utilisateur.id.uuidString, forKey: cleSession)
+            // Correction 5 : session dans le Keychain
+            KeychainService.sauvegarder(cle: cleSession, valeur: utilisateur.id.uuidString)
+
         } catch {
-            erreur = "Erreur lors de la connexion : \(error.localizedDescription)"
+            // Correction 4 : message générique + log détaillé
+            Self.logger.error("Erreur connexion: \(error.localizedDescription)")
+            erreur = "Une erreur est survenue lors de la connexion."
         }
 
         chargement = false
     }
 
-    // S2 : Enregistrer un échec de connexion
+    // MARK: - Correction 3 : Verrouillage progressif
+    // 5 tentatives → 5 min, 10 tentatives → 15 min, 15+ tentatives → 1h
+
     func enregistrerEchec() {
         tentativesEchouees += 1
-        if tentativesEchouees >= 5 {
-            verrouillageJusqua = Date().addingTimeInterval(300) // 5 minutes
-            erreur = "Trop de tentatives. Compte verrouillé pendant 5 minutes."
-        }
+
+        let cycleActuel = tentativesEchouees / 5
+        let reste = tentativesEchouees % 5
+
+        guard reste == 0 && cycleActuel >= 1 else { return }
+
+        let dureesVerrouillage: [TimeInterval] = [300, 900, 3600]
+        let indexDuree = min(cycleActuel - 1, dureesVerrouillage.count - 1)
+        let duree = dureesVerrouillage[indexDuree]
+
+        verrouillageJusqua = Date().addingTimeInterval(duree)
+
+        let minutes = Int(duree / 60)
+        erreur = "Trop de tentatives. Compte verrouillé pendant \(minutes) minute(s)."
     }
 
     // MARK: - Création de compte (par le coach/admin)
@@ -197,8 +267,12 @@ final class AuthService {
             return "L'identifiant doit contenir au moins 3 caractères."
         }
 
-        guard motDePasse.count >= 6 else {
-            return "Le mot de passe doit contenir au moins 6 caractères."
+        // Politique renforcée : min 8 caractères + au moins 1 chiffre
+        guard motDePasse.count >= 8 else {
+            return "Le mot de passe doit contenir au moins 8 caractères."
+        }
+        guard motDePasse.contains(where: { $0.isNumber }) else {
+            return "Le mot de passe doit contenir au moins 1 chiffre."
         }
 
         guard !prenom.trimmingCharacters(in: .whitespaces).isEmpty,
@@ -206,7 +280,6 @@ final class AuthService {
             return "Veuillez remplir le prénom et le nom."
         }
 
-        // Vérifier si l'identifiant existe déjà
         let descripteur = FetchDescriptor<Utilisateur>(
             predicate: #Predicate { $0.identifiant == idNormalise }
         )
@@ -247,7 +320,7 @@ final class AuthService {
 
     func deconnexion() {
         utilisateurConnecte = nil
-        UserDefaults.standard.removeObject(forKey: cleSession)
+        KeychainService.supprimer(cle: cleSession)
     }
 
 }

@@ -358,8 +358,8 @@ struct TerrainVolleyView: View {
         if afficherZones {
             let fs = min(cw * 0.20, 30.0)
             // Adversaire (haut) : zones vues depuis l'autre côté
-            let aT1 = ct + (alT - ct) / 6, aT2 = ct + (alT - ct) / 2, aT3 = ct + (alT - ct) * 5 / 6
-            let fT1 = alT + ad / 6, fT2 = alT + ad / 2, fT3 = alT + ad * 5 / 6
+            let aT2 = ct + (alT - ct) / 2
+            let fT2 = alT + ad / 2
             let c1 = cl + cw / 6, c2 = cl + cw / 2, c3 = cl + cw * 5 / 6
 
             // Adversaire arrière (haut)
@@ -372,8 +372,8 @@ struct TerrainVolleyView: View {
             ]
 
             // Notre équipe (bas)
-            let fB1 = ny + ad / 6, fB2 = ny + ad / 2, fB3 = ny + ad * 5 / 6
-            let bB1 = alB + (cb - alB) / 6, bB2 = alB + (cb - alB) / 2, bB3 = alB + (cb - alB) * 5 / 6
+            let fB2 = ny + ad / 2
+            let bB2 = alB + (cb - alB) / 2
 
             // Nous avant (milieu bas)
             let zonesNousAvt: [(String, CGFloat, CGFloat)] = [

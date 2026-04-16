@@ -72,7 +72,7 @@ final class JoueurEquipe {
     /// Identifiants pour connexion athlète (onboarding)
     var identifiant: String = ""
     var motDePasseHash: String = ""
-    var sel: String = ""
+    var sel: String? = nil
 
     // MARK: - Statistiques générales
     var matchsJoues: Int = 0

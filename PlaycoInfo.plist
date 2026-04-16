@@ -17,6 +17,8 @@
 	<string>Playco utilise votre calendrier pour synchroniser les séances et matchs.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Playco accède à votre photothèque pour ajouter une photo de profil.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Playco utilise la photothèque pour enregistrer les photos de profil et les exports visuels.</string>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
 	<key>UIBackgroundModes</key>

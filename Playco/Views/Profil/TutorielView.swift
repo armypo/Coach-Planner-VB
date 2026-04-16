@@ -71,7 +71,7 @@ struct TutorielView: View {
             titre: "Matchs & Stats live",
             description: "Créez des matchs, saisissez le score par set et utilisez le mode live pour enregistrer chaque point en temps réel avec le joueur et le type d'action.",
             astuces: [
-                "Mode Live split-screen : dashboard + saisie côte à côte",
+                "Mode en direct split-screen : dashboard + saisie côte à côte",
                 "Composition du 6 de départ par poste et rotation",
                 "Score set par set (1 à 5 sets)",
                 "Rapport d'analyse pour étudier l'adversaire",

@@ -1,0 +1,76 @@
+# ----------------------------------------------------------------------
+# Playco — .gitignore
+# ----------------------------------------------------------------------
+
+# macOS system files
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+
+# Xcode build artefacts
+build/
+DerivedData/
+*.xcuserstate
+*.xcuserdatad/
+xcuserdata/
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Xcode project user data
+**/xcuserdata/
+*.xcworkspace/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Packages/
+Package.pins
+Package.resolved
+
+# CocoaPods
+Pods/
+
+# Carthage
+Carthage/Build/
+Carthage/Checkouts/
+
+# fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output/
+
+# Playgrounds
+timeline.xctimeline
+playground.xcworkspace
+
+# Objective-C
+*.o
+*.DSYM
+
+# Secrets / config locale (ne jamais committer de credentials)
+*.env
+*.env.local
+secrets.plist
+Secrets.swift
+
+# Logs
+*.log
+
+# Caches d'outils
+.code-review-graph/
+.sourcekit-lsp/
+.cursorrules
+.windsurfrules
+.opencode.json
+
+# Documentation d'outils tiers (AI)
+GEMINI.md
+AGENTS.md

@@ -38,7 +38,7 @@ struct ExportStatsView: View {
         var description: String {
             switch self {
             case .joueurs:   return "Statistiques cumulatives de chaque joueur sur la saison"
-            case .matchs:    return "Box score détaillé match par match, joueur par joueur"
+            case .matchs:    return "Feuille de match détaillée match par match, joueur par joueur"
             case .resultats: return "Liste des matchs avec scores et résultats"
             }
         }

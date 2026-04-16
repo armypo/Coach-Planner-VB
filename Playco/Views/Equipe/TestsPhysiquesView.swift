@@ -5,6 +5,9 @@
 import SwiftUI
 import SwiftData
 import Charts
+import os
+
+private let logger = Logger(subsystem: "com.origotech.playco", category: "TestsPhysiques")
 
 /// Tests physiques d'un joueur — ajout, résultats, graphique évolution
 struct TestsPhysiquesView: View {
@@ -314,7 +317,11 @@ struct AjouterTestSheet: View {
         guard let val = Double(valeur), val > 0 else { return }
         let test = TestPhysique(joueurID: joueurID, typeTest: typeTest, valeur: val, date: date, notes: notes)
         modelContext.insert(test)
-        try? modelContext.save()
+        do {
+            try modelContext.save()
+        } catch {
+            logger.error("Erreur sauvegarde test physique: \(error.localizedDescription)")
+        }
         dismiss()
     }
 }

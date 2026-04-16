@@ -284,7 +284,7 @@ struct AnalyticsSaisonView: View {
                         y: .value("Hit%", point.valeur)
                     )
                     .foregroundStyle(point.valeur >= 0.250 ? PaletteMat.vert : PaletteMat.orange)
-                    .cornerRadius(4)
+                    .cornerRadius(LiquidGlassKit.rayonMini)
 
                     if donnees.count >= 3 {
                         RuleMark(y: .value("Objectif", 0.250))

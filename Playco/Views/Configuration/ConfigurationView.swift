@@ -14,6 +14,11 @@ struct ConfigurationView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(AuthService.self) private var authService
     @Environment(CloudKitSharingService.self) private var sharingService
+    @Environment(AnalyticsService.self) private var analyticsService
+
+    /// Flag persistant : un wizard est en cours et n'a pas été finalisé.
+    /// Permet à PlaycoApp de détecter un wizard interrompu et de proposer un choix à l'utilisateur.
+    @AppStorage("playco_wizard_en_cours") private var wizardEnCours = false
 
     @State private var etapeCourante: Int = 1
     private let totalEtapes = 6
@@ -107,7 +112,11 @@ struct ConfigurationView: View {
                 .padding(.vertical, 16)
         }
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
-        .animation(.easeInOut(duration: 0.3), value: etapeCourante)
+        .animation(LiquidGlassKit.springDefaut, value: etapeCourante)
+        .onAppear {
+            // Marque le wizard comme en cours dès l'entrée — sera effacé par finaliser() ou onRetour
+            wizardEnCours = true
+        }
     }
 
     // MARK: - Barre de progression
@@ -292,11 +301,21 @@ struct ConfigurationView: View {
         equipe.codeEquipe = codeEquipe
         modelContext.insert(equipe)
 
+        // Set des identifiants réservés dans la session (évite collisions en mémoire
+        // car SwiftData ne voit pas les insertions non-committées)
+        var idsCreesEnMemoire = Set<String>()
+
         // 4. Assistants → Utilisateur
         for a in assistants {
             let sel = authService.genererSel()
             let hash = authService.hashMotDePasse(a.motDePasse, sel: sel)
-            let idUnique = Utilisateur.genererIdentifiantUnique(prenom: a.prenom, nom: a.nom, context: modelContext)
+            let idUnique = Utilisateur.genererIdentifiantUnique(
+                prenom: a.prenom,
+                nom: a.nom,
+                context: modelContext,
+                exclusions: idsCreesEnMemoire
+            )
+            idsCreesEnMemoire.insert(idUnique)
             let utilisateur = Utilisateur(
                 identifiant: idUnique,
                 motDePasseHash: hash,
@@ -332,7 +351,13 @@ struct ConfigurationView: View {
             joueur.sel = sel
             modelContext.insert(joueur)
 
-            let idJoueur = Utilisateur.genererIdentifiantUnique(prenom: j.prenom, nom: j.nom, context: modelContext)
+            let idJoueur = Utilisateur.genererIdentifiantUnique(
+                prenom: j.prenom,
+                nom: j.nom,
+                context: modelContext,
+                exclusions: idsCreesEnMemoire
+            )
+            idsCreesEnMemoire.insert(idJoueur)
             let utilisateur = Utilisateur(
                 identifiant: idJoueur,
                 motDePasseHash: hash,
@@ -439,6 +464,20 @@ struct ConfigurationView: View {
                 context: modelContext
             )
         }
+
+        analyticsService.suivre(
+            evenement: EvenementAnalytics.equipeCreee,
+            metadonnees: [
+                "nb_joueurs": "\(joueursTemp.count)",
+                "nb_assistants": "\(assistants.count)",
+                "nb_creneaux": "\(creneaux.count)",
+                "sport": sportChoisi.rawValue
+            ]
+        )
+        analyticsService.suivre(evenement: EvenementAnalytics.configurationCompletee)
+
+        // Wizard finalisé : lever le flag "en cours"
+        wizardEnCours = false
 
         onTermine()
     }

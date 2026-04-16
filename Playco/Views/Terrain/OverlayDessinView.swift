@@ -405,7 +405,7 @@ struct OverlayDessinView: View {
             }
         }
         .scaleEffect(enDeplacement ? 1.2 : 1.0)
-        .animation(.easeInOut(duration: 0.15), value: enDeplacement)
+        .animation(LiquidGlassKit.springDefaut, value: enDeplacement)
     }
 
     // MARK: - Haptics

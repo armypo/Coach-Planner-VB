@@ -11,8 +11,18 @@ import os
 
 private let logger = Logger(subsystem: "com.origotech.playco", category: "CloudKitSync")
 
+/// Boîte de stockage thread-safe pour le token d'observer NotificationCenter.
+/// Marquée nonisolated pour permettre l'accès depuis le deinit nonisolé de CloudKitSyncService.
+/// Déclarée hors de la classe car `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` appliquerait
+/// sinon l'isolation main-actor à ce type de helper thread-safe.
+final class BoiteObserveur: @unchecked Sendable {
+    nonisolated(unsafe) var token: NSObjectProtocol?
+    nonisolated init() {}
+}
+
 /// Service de suivi de la synchronisation CloudKit
 /// Surveille le compte iCloud, la connectivité réseau et les événements de sync SwiftData/CloudKit
+@MainActor
 @Observable
 final class CloudKitSyncService {
 
@@ -72,9 +82,9 @@ final class CloudKitSyncService {
 
     // MARK: - Privé
 
-    private let moniteurReseau = NWPathMonitor()
-    private let fileReseau = DispatchQueue(label: "com.origotech.playco.reseau")
-    private var observeurSync: Any?
+    nonisolated private let moniteurReseau = NWPathMonitor()
+    nonisolated private let fileReseau = DispatchQueue(label: "com.origotech.playco.reseau")
+    nonisolated private let boiteObserveur = BoiteObserveur()
 
     // MARK: - Démarrage
 
@@ -167,12 +177,16 @@ final class CloudKitSyncService {
     /// Observe les notifications de sync de NSPersistentCloudKitContainer
     /// SwiftData utilise CoreData en interne — ces notifications reflètent l'état réel de la sync
     private func observerEvenementsSyncCoreData() {
-        observeurSync = NotificationCenter.default.addObserver(
+        boiteObserveur.token = NotificationCenter.default.addObserver(
             forName: NSNotification.Name("NSPersistentCloudKitContainer.eventChangedNotification"),
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            self?.traiterEvenementSync(notification)
+            // `queue: .main` garantit qu'on est sur le main thread,
+            // on peut donc affirmer l'isolation main-actor sans data race.
+            MainActor.assumeIsolated {
+                self?.traiterEvenementSync(notification)
+            }
         }
     }
 
@@ -258,6 +272,31 @@ final class CloudKitSyncService {
         }
     }
 
+    /// Attend la fin de la sync CloudKit initiale (max 10 secondes)
+    /// Retourne immédiatement si déjà synced, hors ligne ou iCloud indisponible
+    /// Permet d'éviter les logouts fantômes au boot avant que CloudKit ait rapatrié l'Utilisateur
+    func attendreSyncInitiale() async {
+        if dernierSync != nil { return }
+        if estHorsLigne || !compteICloudDisponible { return }
+
+        let debut = Date()
+        let timeoutSecondes: TimeInterval = 10
+
+        while Date().timeIntervalSince(debut) < timeoutSecondes {
+            if dernierSync != nil {
+                let duree = Date().timeIntervalSince(debut)
+                logger.info("Sync initiale terminée après \(String(format: "%.2f", duree))s")
+                return
+            }
+            if estHorsLigne {
+                logger.info("Passage hors ligne pendant l'attente de la sync initiale")
+                return
+            }
+            try? await Task.sleep(nanoseconds: 200_000_000) // 200ms
+        }
+        logger.warning("Timeout attente sync initiale après 10s — restauration session malgré tout")
+    }
+
     /// Force une re-vérification du statut iCloud
     func rafraichirStatut() {
         if modeMatchActif {
@@ -328,11 +367,13 @@ final class CloudKitSyncService {
     // MARK: - Nettoyage
 
     deinit {
+        // moniteurReseau et boiteObserveur sont nonisolated,
+        // donc accessibles depuis ce deinit nonisolé.
         moniteurReseau.cancel()
-        if let observeur = observeurSync {
+        if let observeur = boiteObserveur.token {
             NotificationCenter.default.removeObserver(observeur)
         }
-        logger.info("CloudKit sync service arrêté")
+        // Note : pas de logger.info ici — logger est main-actor isolé et deinit est nonisolated.
     }
 }
 

@@ -50,10 +50,10 @@ enum PDFExportService {
                 y += 12
             }
 
-            // Box Score
+            // Feuille de match
             let statsSeance = statsMatch.filter { $0.seanceID == seance.id }
             if !statsSeance.isEmpty {
-                y = dessinerTexte("Box Score", x: 40, y: y, font: .boldSystemFont(ofSize: 16), context: context)
+                y = dessinerTexte("Feuille de match", x: 40, y: y, font: .boldSystemFont(ofSize: 16), context: context)
                 y += 8
 
                 // En-tête tableau

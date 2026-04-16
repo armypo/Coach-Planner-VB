@@ -251,7 +251,7 @@ struct TerrainEditeurView: View {
                     Text("Notes").font(.caption.weight(.semibold))
                     Spacer()
                     Button {
-                        withAnimation(.easeInOut(duration: 0.25)) {
+                        withAnimation(LiquidGlassKit.springDefaut) {
                             notesFocused = false
                             vm.notesDeployees = false
                         }
@@ -292,7 +292,7 @@ struct TerrainEditeurView: View {
                 .combined(with: .opacity))
         } else {
             Button {
-                withAnimation(.easeInOut(duration: 0.25)) { vm.notesDeployees = true }
+                withAnimation(LiquidGlassKit.springDefaut) { vm.notesDeployees = true }
             } label: {
                 ZStack(alignment: .topTrailing) {
                     ZStack {
@@ -331,7 +331,7 @@ struct TerrainEditeurView: View {
         .padding(.vertical, 4)
         .background(.ultraThinMaterial, in: Capsule())
         .opacity(Date().timeIntervalSince(date) < 3 ? 1 : 0)
-        .animation(.easeInOut(duration: 0.5), value: vm.derniereSauvegarde)
+        .animation(LiquidGlassKit.springDefaut, value: vm.derniereSauvegarde)
     }
 
     /// Accès externe aux éléments pour PDF, etc.

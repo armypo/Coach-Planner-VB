@@ -10,6 +10,8 @@ enum LiquidGlassKit {
 
     // MARK: - Coins arrondis
 
+    /// Pour éléments de graphique (Swift Charts BarMark, indicateurs compacts)
+    static let rayonMini: CGFloat = 4
     static let rayonPetit: CGFloat = 12
     static let rayonMoyen: CGFloat = 16
     static let rayonGrand: CGFloat = 22

@@ -442,9 +442,9 @@ struct AjoutUtilisateurView: View {
         return String((0..<6).compactMap { _ in caracteres.randomElement() })
     }
 
-    /// Génère un mot de passe aléatoire de 8 caractères
+    /// Génère un mot de passe aléatoire de 12 caractères (sans ambigus : 0/O, 1/l/I)
     private func genererMotDePasse() -> String {
-        let caracteres = Array("abcdefghjkmnpqrstuvwxyz23456789")
-        return String((0..<8).compactMap { _ in caracteres.randomElement() })
+        let caracteres = Array("abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789")
+        return String((0..<12).compactMap { _ in caracteres.randomElement() })
     }
 }

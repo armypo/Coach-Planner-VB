@@ -14,8 +14,11 @@ struct PlaycoApp: App {
     @State private var authService = AuthService()
     @State private var syncService = CloudKitSyncService()
     @State private var sharingService = CloudKitSharingService()
+    @State private var analyticsService = AnalyticsService()
     @AppStorage("tutorielVu") private var tutorielVu = false
+    @AppStorage("playco_wizard_en_cours") private var wizardEnCours = false
     @State private var afficherTutorielInitial = false
+    @State private var afficherReprendreWizard = false
 
     /// Liste des types @Model pour éviter la répétition
     private static let modeles: [any PersistentModel.Type] = [
@@ -55,7 +58,20 @@ struct PlaycoApp: App {
                 logger.critical("Impossible de créer le ModelContainer local: \(error.localizedDescription). Passage en mémoire.")
                 let schema = Schema(PlaycoApp.modeles)
                 let memConfig = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
-                container = (try? ModelContainer(for: schema, configurations: [memConfig]))!
+                do {
+                    container = try ModelContainer(for: schema, configurations: [memConfig])
+                } catch {
+                    logger.critical("ModelContainer mémoire échoué: \(error.localizedDescription)")
+                    // Tentative 4 — Schéma vide en mémoire (ultime fallback)
+                    do {
+                        let schemaVide = Schema([])
+                        let configVide = ModelConfiguration(isStoredInMemoryOnly: true)
+                        container = try ModelContainer(for: schemaVide, configurations: [configVide])
+                    } catch {
+                        logger.critical("Échec init ModelContainer en mémoire: \(error.localizedDescription)")
+                        fatalError("Impossible d'initialiser la base de données. Merci de redémarrer l'app. Si le problème persiste, contactez le support.")
+                    }
+                }
             }
         }
         // Peupler les exercices de musculation par défaut
@@ -102,6 +118,18 @@ struct PlaycoApp: App {
                         .environment(sharingService)
                         .modelContainer(container)
                         .transition(.opacity)
+                        .alert("Configuration interrompue", isPresented: $afficherReprendreWizard) {
+                            Button("Reprendre", role: .none) {
+                                afficherReprendreWizard = false
+                                withAnimation { ecranActif = .configuration }
+                            }
+                            Button("Recommencer", role: .destructive) {
+                                wizardEnCours = false
+                                afficherReprendreWizard = false
+                            }
+                        } message: {
+                            Text("Un wizard de configuration a été commencé mais non terminé. Voulez-vous reprendre ou recommencer ? Les saisies précédentes ne sont pas conservées.")
+                        }
 
                     case .configuration:
                         ConfigurationView(
@@ -109,7 +137,7 @@ struct PlaycoApp: App {
                                 withAnimation { ecranActif = .choixInitial }
                             },
                             onTermine: {
-                                withAnimation(.easeInOut(duration: 0.5)) {
+                                withAnimation(LiquidGlassKit.springDefaut) {
                                     ecranActif = .app
                                 }
                             }
@@ -125,7 +153,7 @@ struct PlaycoApp: App {
                                 withAnimation { ecranActif = .choixInitial }
                             },
                             onConnecte: {
-                                withAnimation(.easeInOut(duration: 0.5)) {
+                                withAnimation(LiquidGlassKit.springDefaut) {
                                     ecranActif = .app
                                 }
                             }
@@ -141,11 +169,23 @@ struct PlaycoApp: App {
                             .environment(authService)
                             .environment(syncService)
                             .environment(sharingService)
+                            .environment(analyticsService)
                             .modelContainer(container)
                             .onAppear {
-                                authService.restaurerSession(context: container.mainContext)
+                                analyticsService.initialiser()
+                                analyticsService.suivre(evenement: EvenementAnalytics.appLancee)
                                 syncService.demarrerSuivi()
                                 syncService.demarrerSurveillanceReseau()
+                                Task {
+                                    await syncService.attendreSyncInitiale()
+                                    authService.restaurerSession(context: container.mainContext)
+                                    if authService.utilisateurConnecte != nil {
+                                        analyticsService.suivre(
+                                            evenement: EvenementAnalytics.utilisateurConnecte,
+                                            metadonnees: ["role": authService.utilisateurConnecte?.role.rawValue ?? "inconnu"]
+                                        )
+                                    }
+                                }
                                 if !tutorielVu {
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
                                         afficherTutorielInitial = true
@@ -163,8 +203,8 @@ struct PlaycoApp: App {
                     }
                 }
             }
-            .animation(.easeInOut, value: splashTermine)
-            .animation(.easeInOut, value: ecranActif)
+            .animation(LiquidGlassKit.springDefaut, value: splashTermine)
+            .animation(LiquidGlassKit.springDefaut, value: ecranActif)
         }
     }
 
@@ -176,10 +216,15 @@ struct PlaycoApp: App {
         let profils = (try? container.mainContext.fetch(descriptor)) ?? []
 
         if profils.isEmpty {
-            // Premier lancement → choix initial
+            // Premier lancement → choix initial.
+            // Si un wizard avait été entamé puis interrompu, demander à l'utilisateur quoi faire.
+            if wizardEnCours {
+                afficherReprendreWizard = true
+            }
             ecranActif = .choixInitial
         } else {
-            // Config déjà faite → app (login + sections)
+            // Config déjà faite → nettoyer un éventuel flag orphelin
+            wizardEnCours = false
             ecranActif = .app
         }
     }

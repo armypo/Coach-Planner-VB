@@ -64,6 +64,9 @@ final class Utilisateur {
     // S1 : Sel pour hashage sécurisé
     var sel: String? = nil
 
+    /// Date du dernier début de session — utilisée pour l'expiration 30 jours
+    var sessionCreeeLe: Date? = nil
+
     /// Code unique d'invitation (6 caractères alphanumériques)
     var codeInvitation: String = ""
 
@@ -198,15 +201,22 @@ final class Utilisateur {
 
     /// Génère un identifiant unique : prenom.nom (sans accents, minuscules)
     /// Si un doublon existe, ajoute un suffixe numérique (prenom.nom2, prenom.nom3, etc.)
-    static func genererIdentifiantUnique(prenom: String, nom: String, context: ModelContext) -> String {
+    /// - Parameter exclusions: identifiants déjà réservés en mémoire mais pas encore persistés
+    ///   (ex: pendant le wizard de création, évite les collisions entre joueurs du même lot)
+    static func genererIdentifiantUnique(
+        prenom: String,
+        nom: String,
+        context: ModelContext,
+        exclusions: Set<String> = []
+    ) -> String {
         let base = "\(prenom).\(nom)"
             .lowercased()
             .folding(options: .diacriticInsensitive, locale: Locale(identifier: "fr_FR"))
             .replacingOccurrences(of: " ", with: "-")
             .filter { $0.isLetter || $0 == "." || $0 == "-" }
 
-        // Vérifier si l'identifiant de base est disponible
-        if identifiantDisponible(base, context: context) {
+        // Vérifier si l'identifiant de base est disponible (BD + exclusions)
+        if !exclusions.contains(base) && identifiantDisponible(base, context: context) {
             return base
         }
 
@@ -214,7 +224,7 @@ final class Utilisateur {
         var suffixe = 2
         while suffixe < 1000 {
             let candidat = "\(base)\(suffixe)"
-            if identifiantDisponible(candidat, context: context) {
+            if !exclusions.contains(candidat) && identifiantDisponible(candidat, context: context) {
                 return candidat
             }
             suffixe += 1

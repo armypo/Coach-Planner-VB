@@ -354,13 +354,17 @@ struct AccueilView: View {
             .glassCard(teinte: couleur, cornerRadius: estCompact ? 16 : 20)
         }
         .buttonStyle(GlassButtonStyle())
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Section \(titre)")
+        .accessibilityHint("\(sousTitre). Double-tapez pour ouvrir.")
+        .accessibilityValue(badge)
     }
 
     // MARK: - Bouton Dark Mode
 
     private var boutonDarkMode: some View {
         Button {
-            withAnimation(.easeInOut(duration: 0.3)) {
+            withAnimation(LiquidGlassKit.springDefaut) {
                 modeSombre.toggle()
             }
         } label: {

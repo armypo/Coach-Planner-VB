@@ -491,7 +491,7 @@ struct NouveauJoueurView: View {
         joueur.utilisateurID = athlete.id
         joueur.identifiant = athlete.identifiant
         joueur.motDePasseHash = athlete.motDePasseHash
-        joueur.sel = athlete.sel ?? ""
+        joueur.sel = athlete.sel
         if athlete.tailleCm > 0 { joueur.taille = athlete.tailleCm }
         if let dn = athlete.dateNaissance { joueur.dateNaissance = dn }
 

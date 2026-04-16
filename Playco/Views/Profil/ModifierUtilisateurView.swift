@@ -419,7 +419,9 @@ struct ModifierUtilisateurView: View {
         utilisateur.identifiant = identifiant.uppercased().trimmingCharacters(in: .whitespaces)
 
         if !nouveauMotDePasse.isEmpty {
-            utilisateur.motDePasseHash = authService.hashMotDePasse(nouveauMotDePasse)
+            let nouveauSel = authService.genererSel()
+            utilisateur.sel = nouveauSel
+            utilisateur.motDePasseHash = authService.hashMotDePasse(nouveauMotDePasse, sel: nouveauSel)
         }
 
         // Données physiques — convertir pieds/pouces → cm pour stockage

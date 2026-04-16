@@ -108,7 +108,7 @@ struct LoginView: View {
                 couleurActive.opacity(0.04)
                     .ignoresSafeArea()
             )
-            .animation(.easeInOut(duration: 0.5), value: categorieSelectionnee)
+            .animation(LiquidGlassKit.springDefaut, value: categorieSelectionnee)
     }
 
     // MARK: - En-tête
@@ -291,9 +291,7 @@ struct LoginView: View {
                 let estAthleteCompte = utilisateur.role == .etudiant
                 if estAthleteSelection != estAthleteCompte {
                     authService.deconnexion()
-                    authService.erreur = estAthleteSelection
-                        ? "Ce compte est un compte coach. Sélectionnez « Coach »."
-                        : "Ce compte est un compte athlète. Sélectionnez « Athlète »."
+                    authService.erreur = "Identifiant ou mot de passe incorrect."
                 }
             }
         } label: {
@@ -316,6 +314,6 @@ struct LoginView: View {
             .foregroundStyle(.white)
         }
         .disabled(!formulaireValide || authService.chargement || authService.estVerrouille)
-        .animation(.easeInOut, value: formulaireValide)
+        .animation(LiquidGlassKit.springDefaut, value: formulaireValide)
     }
 }

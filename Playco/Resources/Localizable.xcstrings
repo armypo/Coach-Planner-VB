@@ -1,0 +1,57 @@
+{
+  "sourceLanguage" : "fr",
+  "strings" : {
+    "box_score" : {
+      "comment" : "Match box score / feuille de statistiques du match",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Box Score"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Feuille de match"
+          }
+        }
+      }
+    },
+    "mode_live" : {
+      "comment" : "Live match mode with stats recording",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live Mode"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mode en direct"
+          }
+        }
+      }
+    },
+    "feuille_de_match" : {
+      "comment" : "Alias FR for box_score",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Box Score"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Feuille de match"
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

@@ -4,6 +4,9 @@
 
 import SwiftUI
 import SwiftData
+import os
+
+private let logger = Logger(subsystem: "com.origotech.playco", category: "SeanceLive")
 
 /// Mode live d'entraînement — log séries/reps/poids, chrono repos, progression
 struct SeanceLiveView: View {
@@ -99,8 +102,10 @@ struct SeanceLiveView: View {
             demarrerChronoSeance()
         }
         .onDisappear {
-            timerSeance?.invalidate()
             timerRepos?.invalidate()
+            timerSeance?.invalidate()
+            timerRepos = nil
+            timerSeance = nil
         }
         .alert("Terminer l'entraînement ?", isPresented: $afficherConfirmation) {
             Button("Annuler", role: .cancel) {}
@@ -108,6 +113,11 @@ struct SeanceLiveView: View {
         } message: {
             let completees = exercicesLog.reduce(0) { $0 + $1.series.filter(\.estComplete).count }
             Text("\(completees) séries complétées — \(formatTemps(tempsSeance))")
+        }
+        .alert("Erreur", isPresented: $afficherErreur) {
+            Button("OK") { afficherErreur = false }
+        } message: {
+            Text(messageErreur)
         }
     }
 
@@ -529,6 +539,9 @@ struct SeanceLiveView: View {
         }
     }
 
+    @State private var messageErreur: String = ""
+    @State private var afficherErreur: Bool = false
+
     // MARK: - Sauvegarder
 
     private func sauvegarderEtTerminer() {
@@ -539,7 +552,14 @@ struct SeanceLiveView: View {
         seance.encoderExercices(exercicesLog)
 
         modelContext.insert(seance)
-        try? modelContext.save()
+        do {
+            try modelContext.save()
+        } catch {
+            logger.error("Erreur sauvegarde séance muscu: \(error.localizedDescription)")
+            messageErreur = "Impossible d'enregistrer votre séance. Vérifiez votre connexion iCloud et réessayez."
+            afficherErreur = true
+            return
+        }
 
         timerSeance?.invalidate()
         timerRepos?.invalidate()

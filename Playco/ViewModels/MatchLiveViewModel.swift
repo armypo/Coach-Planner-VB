@@ -11,6 +11,7 @@ private let logger = Logger(subsystem: "com.origotech.playco", category: "MatchL
 
 /// ViewModel central pour la gestion du match live.
 /// Gère : score, rotation, sideout, joueurs sur le terrain, substitutions, temps morts.
+@MainActor
 @Observable
 final class MatchLiveViewModel {
     let seance: Seance
@@ -23,6 +24,7 @@ final class MatchLiveViewModel {
     var scoreNous: Int = 0
     var scoreAdv: Int = 0
     var rotationActuelle: Int = 1
+    var rotationAdversaire: Int = 1
     /// true = notre équipe sert, false = adversaire sert
     var nousServons: Bool = true
 
@@ -168,6 +170,7 @@ final class MatchLiveViewModel {
         point.scoreEquipeAuMoment = scoreNous
         point.scoreAdversaireAuMoment = scoreAdv
         point.rotationAuMoment = rotationActuelle
+        point.rotationAdvAuMoment = rotationAdversaire
         point.codeEquipe = codeEquipeActif
         modelContext.insert(point)
 
@@ -202,9 +205,9 @@ final class MatchLiveViewModel {
             nousServons = true
             tourner()
         } else if !estPointPourNous && nousServons {
-            // Sideout adverse : on servait et l'adversaire a marqué → pas de rotation pour nous
-            // L'adversaire tourne (pas géré côté adversaire)
+            // Sideout adverse : on servait et l'adversaire a marqué → l'adversaire tourne et prend le service
             nousServons = false
+            tournerAdversaire()
         }
         // Si l'équipe qui sert marque → pas de rotation (elle continue de servir)
     }
@@ -214,6 +217,21 @@ final class MatchLiveViewModel {
         rotationActuelle = (rotationActuelle % 6) + 1
         enregistrerRotationHistorique()
         logger.info("Rotation → R\(self.rotationActuelle)")
+    }
+
+    /// Effectue une rotation adversaire
+    private func tournerAdversaire() {
+        rotationAdversaire = (rotationAdversaire % 6) + 1
+        enregistrerRotationHistoriqueAdv()
+        logger.info("Rotation adversaire → R\(self.rotationAdversaire)")
+    }
+
+    /// Modification manuelle de la rotation adversaire
+    func modifierRotationAdversaire(nouvelleRotation: Int) {
+        guard nouvelleRotation >= 1 && nouvelleRotation <= 6 else { return }
+        rotationAdversaire = nouvelleRotation
+        enregistrerRotationHistoriqueAdv()
+        logger.info("Rotation adversaire modifiée manuellement → R\(nouvelleRotation)")
     }
 
     // MARK: - Annuler dernier point
@@ -227,15 +245,41 @@ final class MatchLiveViewModel {
             modelContext.delete(action)
         }
 
-        // Inverser le sideout si nécessaire
         let estPointPourNous = point.estPointPourNous
-        if estPointPourNous && nousServons && rotationActuelle > 1 {
-            // On avait tourné → annuler la rotation
-            rotationActuelle = rotationActuelle == 1 ? 6 : rotationActuelle - 1
+
+        // Détecter si un sideout avait eu lieu lors de ce point en analysant l'état actuel.
+        // Après sideout nous → nousServons == true, rotation a changé
+        // Après sideout adv  → nousServons == false, rotationAdv a changé
+        let avaitSideoutNous = estPointPourNous && nousServons
+        let avaitSideoutAdv = !estPointPourNous && !nousServons
+
+        // Restaurer la rotation depuis les données du point enregistré
+        if avaitSideoutNous {
+            // Annuler la rotation de notre équipe et rendre le service à l'adversaire
+            rotationActuelle = point.rotationAuMoment
             nousServons = false
-        } else if !estPointPourNous && !nousServons {
+            // Nettoyer l'historique de rotation (retirer l'entrée fantôme)
+            var hist = seance.rotationsHistorique
+            if var setHist = hist[setActuel], !setHist.isEmpty {
+                setHist.removeLast()
+                hist[setActuel] = setHist
+            }
+            seance.rotationsHistorique = hist
+            logger.info("Undo sideout nous — retour R\(point.rotationAuMoment)")
+        } else if avaitSideoutAdv {
+            // Annuler la rotation adverse et rendre le service à notre équipe
+            rotationAdversaire = point.rotationAdvAuMoment
             nousServons = true
+            // Nettoyer l'historique de rotation adversaire
+            var histAdv = seance.rotationsHistoriqueAdv
+            if var setHistAdv = histAdv[setActuel], !setHistAdv.isEmpty {
+                setHistAdv.removeLast()
+                histAdv[setActuel] = setHistAdv
+            }
+            seance.rotationsHistoriqueAdv = histAdv
+            logger.info("Undo sideout adv — retour R\(point.rotationAdvAuMoment)")
         }
+        // Sinon (pas de sideout) : les rotations et le service ne changent pas
 
         if estPointPourNous {
             scoreNous = Swift.max(0, scoreNous - 1)
@@ -316,16 +360,47 @@ final class MatchLiveViewModel {
             scoreNous = 0
             scoreAdv = 0
         }
-        // Déterminer qui sert au début du set
-        // Set impair → même que le début du match, set pair → inversé
-        if setActuel == 1 {
-            nousServons = seance.nousServonsEnPremier
+
+        // Tenter de restaurer l'état (rotation, service) depuis le dernier point du set
+        // pour gérer correctement la navigation vers un set avec des points existants.
+        let seanceIDCapture = seance.id
+        let setCapture = setActuel
+        let pointsDuSet = (try? modelContext.fetch(
+            FetchDescriptor<PointMatch>(
+                predicate: #Predicate { $0.seanceID == seanceIDCapture && $0.set == setCapture },
+                sortBy: [SortDescriptor(\.horodatage)]
+            )
+        )) ?? []
+        if let dernierPointSauvegarde = pointsDuSet.last {
+            // Restaurer depuis le dernier point enregistré
+            rotationActuelle = dernierPointSauvegarde.rotationAuMoment
+            rotationAdversaire = dernierPointSauvegarde.rotationAdvAuMoment
+            // Reconstituer qui sert : si le dernier point était un sideout, le service a changé
+            let estPointPourNous = dernierPointSauvegarde.estPointPourNous
+            // Après le dernier point, le service est déterminé par l'état résultant :
+            // - point pour nous sans sideout (on servait) → on sert toujours
+            // - point pour nous avec sideout (on recevait) → on sert maintenant
+            // - point pour eux sans sideout (ils servaient) → ils servent toujours
+            // - point pour eux avec sideout (on servait) → ils servent maintenant
+            // La règle volleyball : après chaque point, l'équipe qui a marqué sert.
+            nousServons = estPointPourNous
+            dernierPoint = dernierPointSauvegarde
+            logger.info("chargerSet \(self.setActuel) — restauré depuis dernier point : R\(self.rotationActuelle), service=\(self.nousServons)")
         } else {
-            // Alterner chaque set
-            nousServons = (setActuel % 2 == 1) == seance.nousServonsEnPremier
+            // Set vide → état initial
+            rotationActuelle = 1
+            rotationAdversaire = 1
+            // Déterminer qui sert au début du set
+            // Set impair → même que le début du match, set pair → inversé
+            if setActuel == 1 {
+                nousServons = seance.nousServonsEnPremier
+            } else {
+                nousServons = (setActuel % 2 == 1) == seance.nousServonsEnPremier
+            }
+            dernierPoint = nil
+            logger.info("chargerSet \(self.setActuel) — set vide, rotation=1, service=\(self.nousServons)")
         }
-        rotationActuelle = 1
-        dernierPoint = nil
+
         afficherPanneauRallye = false
     }
 
@@ -345,6 +420,15 @@ final class MatchLiveViewModel {
         rotationsSet.append(rotationActuelle)
         historique[setActuel] = rotationsSet
         seance.rotationsHistorique = historique
+    }
+
+    /// Enregistre la rotation adversaire dans l'historique du set
+    private func enregistrerRotationHistoriqueAdv() {
+        var historique = seance.rotationsHistoriqueAdv
+        var rotationsSet = historique[setActuel] ?? []
+        rotationsSet.append(rotationAdversaire)
+        historique[setActuel] = rotationsSet
+        seance.rotationsHistoriqueAdv = historique
     }
 
     // MARK: - Mise à jour des joueurs

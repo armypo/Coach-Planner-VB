@@ -66,7 +66,7 @@ struct ExportMatchPDFView: View {
                     // Contenu inclus
                     VStack(alignment: .leading, spacing: 4) {
                         contenuInclus("Score par set", present: !seance.sets.isEmpty)
-                        contenuInclus("Box score (\(statsMatch.count) joueurs)", present: !statsMatch.isEmpty)
+                        contenuInclus("Feuille de match (\(statsMatch.count) joueurs)", present: !statsMatch.isEmpty)
                         contenuInclus("Notes de match", present: !seance.notesMatch.isEmpty)
                     }
                     .padding()

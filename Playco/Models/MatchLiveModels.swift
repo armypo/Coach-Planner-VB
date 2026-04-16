@@ -74,7 +74,9 @@ struct TempsMortRecord: Codable, Identifiable, Equatable {
 
 // MARK: - Configuration match
 
-struct ConfigMatch: Codable, Equatable {
+/// Configuration non-isolée pour permettre l'encodage/décodage depuis n'importe quel contexte
+/// (notamment lors de la désérialisation depuis SwiftData / JSONCoderCache nonisolated).
+nonisolated struct ConfigMatch: Codable, Equatable, Sendable {
     /// Nombre max de substitutions par set (FIVB: 6)
     var subsMaxParSet: Int = 6
     /// Temps morts techniques activés (8 et 16 pts, sets 1-4)
@@ -101,37 +103,39 @@ struct DefinitionStat: Identifiable, Equatable {
     let categorie: CategorieStatistique
     let couleur: Color
 
-    static var toutesStats: [DefinitionStat] {
-        [
-            // Points pour nous
-            DefinitionStat(action: .kill, label: "Kill", icone: "flame.fill", categorie: .pointPourNous, couleur: .green),
-            DefinitionStat(action: .ace, label: "Ace", icone: "arrow.up.forward", categorie: .pointPourNous, couleur: .green),
-            DefinitionStat(action: .blocSeul, label: "Bloc seul", icone: "shield.fill", categorie: .pointPourNous, couleur: .green),
-            DefinitionStat(action: .blocAssiste, label: "Bloc assisté", icone: "shield.lefthalf.filled", categorie: .pointPourNous, couleur: .green),
-            DefinitionStat(action: .erreurAdversaire, label: "Erreur adv.", icone: "xmark.circle", categorie: .pointPourNous, couleur: .green),
+    static let toutesStats: [DefinitionStat] = [
+        // Points pour nous (actions de NOS joueurs)
+        DefinitionStat(action: .kill, label: "Kill", icone: "flame.fill", categorie: .pointPourNous, couleur: .green),
+        DefinitionStat(action: .ace, label: "Ace", icone: "arrow.up.forward", categorie: .pointPourNous, couleur: .green),
+        DefinitionStat(action: .blocSeul, label: "Bloc seul", icone: "shield.fill", categorie: .pointPourNous, couleur: .green),
+        DefinitionStat(action: .blocAssiste, label: "Bloc assisté", icone: "shield.lefthalf.filled", categorie: .pointPourNous, couleur: .green),
 
-            // Points contre nous
-            DefinitionStat(action: .erreurAttaque, label: "Err. attaque", icone: "flame", categorie: .pointContre, couleur: .red),
-            DefinitionStat(action: .erreurService, label: "Err. service", icone: "arrow.up.forward.circle", categorie: .pointContre, couleur: .red),
-            DefinitionStat(action: .erreurBloc, label: "Err. bloc", icone: "shield.slash", categorie: .pointContre, couleur: .red),
-            DefinitionStat(action: .erreurReception, label: "Err. réception", icone: "arrow.down.left", categorie: .pointContre, couleur: .red),
-            DefinitionStat(action: .fauteJeu, label: "Faute de jeu", icone: "hand.raised", categorie: .pointContre, couleur: .red),
-        ]
-    }
+        // Points contre nous
+        DefinitionStat(action: .erreurAttaque, label: "Err. attaque", icone: "flame", categorie: .pointContre, couleur: .red),
+        DefinitionStat(action: .erreurService, label: "Err. service", icone: "arrow.up.forward.circle", categorie: .pointContre, couleur: .red),
+        DefinitionStat(action: .erreurBloc, label: "Err. bloc", icone: "shield.slash", categorie: .pointContre, couleur: .red),
+        DefinitionStat(action: .erreurReception, label: "Err. réception", icone: "arrow.down.left", categorie: .pointContre, couleur: .red),
+        DefinitionStat(action: .fauteJeu, label: "Faute de jeu", icone: "hand.raised", categorie: .pointContre, couleur: .red),
+    ]
 
-    static var statsPourNous: [DefinitionStat] {
-        toutesStats.filter { $0.categorie == .pointPourNous }
-    }
+    static let statsPourNous: [DefinitionStat] = toutesStats.filter { $0.categorie == .pointPourNous }
 
-    static var statsContre: [DefinitionStat] {
-        toutesStats.filter { $0.categorie == .pointContre }
-    }
+    static let statsContre: [DefinitionStat] = toutesStats.filter { $0.categorie == .pointContre }
 
-    /// Stats adversaires (inversées : leurs kills = point contre nous, leurs erreurs = point pour nous)
-    static var statsAdversaire: [DefinitionStat] {
-        [
-            DefinitionStat(action: .erreurAdversaire, label: "Erreur adv.", icone: "xmark.circle", categorie: .pointPourNous, couleur: .green),
-            DefinitionStat(action: .fauteJeu, label: "Faute adv.", icone: "hand.raised", categorie: .pointContre, couleur: .red),
-        ]
-    }
+    /// Stats adversaire : leurs actions marquantes (point contre nous)
+    static let statsAdversaireScoring: [DefinitionStat] = [
+        DefinitionStat(action: .killAdversaire, label: "Kill adv.", icone: "flame.fill", categorie: .pointContre, couleur: .red),
+        DefinitionStat(action: .aceAdversaire, label: "Ace adv.", icone: "arrow.up.forward", categorie: .pointContre, couleur: .red),
+        DefinitionStat(action: .blocAdversaire, label: "Bloc adv.", icone: "shield.fill", categorie: .pointContre, couleur: .red),
+    ]
+
+    /// Stats adversaire : leurs erreurs (point pour nous)
+    static let statsAdversaireErreurs: [DefinitionStat] = [
+        DefinitionStat(action: .erreurAdversaire, label: "Erreur adv.", icone: "xmark.circle", categorie: .pointPourNous, couleur: .green),
+        DefinitionStat(action: .erreurAttaqueAdversaire, label: "Err. att. adv.", icone: "flame", categorie: .pointPourNous, couleur: .green),
+        DefinitionStat(action: .erreurServiceAdversaire, label: "Err. serv. adv.", icone: "arrow.up.forward.circle", categorie: .pointPourNous, couleur: .green),
+    ]
+
+    /// Toutes les stats adversaire combinées (scoring + erreurs)
+    static let statsAdversaire: [DefinitionStat] = statsAdversaireScoring + statsAdversaireErreurs
 }

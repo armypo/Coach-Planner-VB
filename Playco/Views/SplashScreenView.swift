@@ -82,7 +82,7 @@ struct SplashScreenView: View {
 
             // Transition vers l'app après 2s total
             try? await Task.sleep(for: .milliseconds(1200))
-            withAnimation(.easeInOut(duration: 0.4)) {
+            withAnimation(LiquidGlassKit.springDefaut) {
                 onTermine()
             }
         }

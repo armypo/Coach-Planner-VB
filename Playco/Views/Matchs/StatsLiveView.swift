@@ -35,7 +35,7 @@ struct StatsLiveView: View {
 
     @State private var statSelectionnee: TypeActionPoint?
     @State private var afficherPickerJoueur = false
-    @State private var joueurReceptionEnCours: JoueurEquipe?
+    @State private var joueurReceptionEnCours: JoueurSurTerrain?
     @State private var afficherPickerReception = false
     @State private var triggerPointNous = 0
     @State private var triggerPointAdv = 0
@@ -99,6 +99,9 @@ struct StatsLiveView: View {
                         // Mode courtside : stats réduites (6 boutons essentiels)
                         sectionStats(titre: "POINT POUR NOUS", stats: statsCourtside.filter { $0.categorie == .pointPourNous }, couleur: .green)
                         sectionStats(titre: "NOS ERREURS", stats: statsCourtside.filter { $0.categorie == .pointContre }, couleur: .red)
+
+                        // Stats adversaire essentielles en courtside
+                        sectionStatsAdversaire(titre: "ADVERSAIRE — SCORING", stats: DefinitionStat.statsAdversaireScoring, couleur: .red)
                     } else {
                         // Stats pour nous
                         sectionStats(titre: "POINT POUR NOUS", stats: DefinitionStat.statsPourNous, couleur: .green)
@@ -106,8 +109,11 @@ struct StatsLiveView: View {
                         // Stats contre nous (nos erreurs)
                         sectionStats(titre: "NOS ERREURS (POINT ADV.)", stats: DefinitionStat.statsContre, couleur: .red)
 
-                        // Stats adversaire (entrée par équipe, pas par joueur)
-                        sectionStatsAdversaire
+                        // Stats adversaire scoring (point contre nous)
+                        sectionStatsAdversaire(titre: "ADVERSAIRE — SCORING", stats: DefinitionStat.statsAdversaireScoring, couleur: .red)
+
+                        // Stats adversaire erreurs (point pour nous)
+                        sectionStatsAdversaire(titre: "ADVERSAIRE — ERREURS", stats: DefinitionStat.statsAdversaireErreurs, couleur: .green)
                     }
 
                     // Annuler dernier point + historique simplifié en courtside
@@ -191,7 +197,13 @@ struct StatsLiveView: View {
                 HStack(spacing: 8) {
                     Text("R\(viewModel.rotationActuelle)")
                         .font(.caption.weight(.medium))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(PaletteMat.bleu)
+                    Text("·")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                    Text("R\(viewModel.rotationAdversaire)")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.red)
 
                     if courtside {
                         Button {
@@ -361,7 +373,7 @@ struct StatsLiveView: View {
                 }
 
                 // Actions sans joueur spécifique
-                if stat.action == .erreurAdversaire || stat.action == .fauteJeu {
+                if stat.action.estStatAdversaire {
                     Divider()
                     Button {
                         withAnimation(LiquidGlassKit.springDefaut) {
@@ -389,45 +401,47 @@ struct StatsLiveView: View {
             }
             .foregroundStyle(couleur)
         }
+        .accessibilityLabel("Ajouter un \(stat.label)")
+        .accessibilityHint("Double-tapez pour choisir le joueur et enregistrer le point")
     }
 
-    // MARK: - Stats adversaire (entrée par équipe)
+    // MARK: - Stats adversaire (entrée par équipe, pas par joueur)
 
-    private var sectionStatsAdversaire: some View {
+    private func sectionStatsAdversaire(titre: String, stats: [DefinitionStat], couleur: Color) -> some View {
         VStack(alignment: .leading, spacing: LiquidGlassKit.espaceSM) {
-            Text("STATS ADVERSAIRE")
-                .font(.caption.weight(.bold))
-                .foregroundStyle(.orange)
+            Text(titre)
+                .font(courtside ? .subheadline.weight(.bold) : .caption.weight(.bold))
+                .foregroundStyle(couleur)
                 .tracking(0.5)
 
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), spacing: LiquidGlassKit.espaceSM)], spacing: LiquidGlassKit.espaceSM) {
-                // Kill adversaire (point pour eux)
-                boutonStatAdversaire(label: "Kill adv.", icone: "flame.fill", action: .fauteJeu, couleur: .red)
-                // Ace adversaire (point pour eux)
-                boutonStatAdversaire(label: "Ace adv.", icone: "arrow.up.forward", action: .fauteJeu, couleur: .red)
-                // Bloc adversaire (point pour eux)
-                boutonStatAdversaire(label: "Bloc adv.", icone: "shield.fill", action: .fauteJeu, couleur: .red)
-                // Erreur adversaire (point pour nous)
-                boutonStatAdversaire(label: "Erreur adv.", icone: "xmark.circle", action: .erreurAdversaire, couleur: .green)
+            let columns = courtside
+                ? [GridItem(.adaptive(minimum: LiquidGlassKit.grilleCourtside), spacing: LiquidGlassKit.espaceMD)]
+                : [GridItem(.adaptive(minimum: 100), spacing: LiquidGlassKit.espaceSM)]
+
+            LazyVGrid(columns: columns, spacing: courtside ? LiquidGlassKit.espaceMD : LiquidGlassKit.espaceSM) {
+                ForEach(stats) { stat in
+                    boutonStatAdversaire(stat: stat, couleur: couleur)
+                }
             }
         }
     }
 
-    private func boutonStatAdversaire(label: String, icone: String, action: TypeActionPoint, couleur: Color) -> some View {
+    /// Bouton stat adversaire — enregistrement direct sans sélection de joueur
+    private func boutonStatAdversaire(stat: DefinitionStat, couleur: Color) -> some View {
         Button {
             withAnimation(LiquidGlassKit.springDefaut) {
-                viewModel.enregistrerStat(action: action, joueurID: nil)
+                viewModel.enregistrerStat(action: stat.action, joueurID: nil)
             }
         } label: {
-            VStack(spacing: 4) {
-                Image(systemName: icone)
-                    .font(.title3)
-                Text(label)
-                    .font(.caption2.weight(.semibold))
+            VStack(spacing: courtside ? 8 : 4) {
+                Image(systemName: stat.icone)
+                    .font(courtside ? .title2 : .title3)
+                Text(stat.label)
+                    .font(courtside ? .caption.weight(.bold) : .caption2.weight(.semibold))
                     .lineLimit(1)
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
+            .padding(.vertical, courtside ? 20 : 14)
             .background(couleur.opacity(0.08), in: RoundedRectangle(cornerRadius: LiquidGlassKit.rayonPetit))
             .overlay {
                 RoundedRectangle(cornerRadius: LiquidGlassKit.rayonPetit)
@@ -436,6 +450,8 @@ struct StatsLiveView: View {
             .foregroundStyle(couleur)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Stat adversaire : \(stat.label)")
+        .accessibilityHint("Double-tapez pour enregistrer")
     }
 
     // MARK: - Historique
@@ -543,8 +559,6 @@ struct StatsLiveView: View {
                             ForEach(joueursActifs) { joueur in
                                 Button {
                                     if type == .reception {
-                                        joueurReceptionEnCours = nil
-                                        // On va stocker le joueur ID pour le picker
                                         enregistrerActionRallyeAvecJoueur(joueurID: joueur.joueurID, type: type)
                                     } else {
                                         enregistrerActionRallye(joueurID: joueur.joueurID, type: type)
@@ -621,10 +635,8 @@ struct StatsLiveView: View {
 
     private func enregistrerActionRallyeAvecJoueur(joueurID: UUID, type: TypeActionRallye) {
         if type == .reception {
-            // Pour la réception, on veut le picker qualité
-            // On doit trouver le JoueurEquipe pour le passer au picker
-            // Utiliser le viewModel pour trouver le joueur
-            enregistrerActionRallye(joueurID: joueurID, type: type)
+            joueurReceptionEnCours = joueursActifs.first(where: { $0.joueurID == joueurID })
+            afficherPickerReception = true
         } else {
             enregistrerActionRallye(joueurID: joueurID, type: type)
         }
