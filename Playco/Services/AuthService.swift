@@ -20,60 +20,28 @@ final class AuthService {
     var erreur: String?
     var chargement: Bool = false
 
-    // MARK: - Verrouillage persisté dans Keychain (Sprint B)
-    //
-    // Le Keychain survit à la désinstallation/réinstallation de l'app (jusqu'à
-    // supprimer via Réglages), empêchant le contournement du lockout par simple
-    // réinstall. Les anciennes clés UserDefaults sont migrées au premier init.
-
-    /// Clé Keychain pour l'état verrouillage (JSON encodé Codable).
-    static let cleEtatVerrouillage = "playco_auth_state"
-
-    /// Clés legacy UserDefaults — lues une fois pour migration, puis supprimées.
-    private static let cleTentativesLegacy = "playco_auth_tentatives"
-    private static let cleVerrouillageLegacy = "playco_auth_verrouillage"
-
-    /// Store UserDefaults injectable — conservé pour compat tests + migration.
+    /// Store UserDefaults injectable — conservé pour migration session legacy.
     private let userDefaults: UserDefaults
 
-    /// État sérialisable persisté dans le Keychain.
-    /// Versionné pour permettre l'évolution du format sans perte de données :
-    /// un futur champ ajouté avec `decodeIfPresent` ou `?` ne cassera pas le
-    /// décodage des entrées pré-existantes.
-    private struct EtatVerrouillage: Codable {
-        var version: Int = 1
-        var tentatives: Int
-        var jusqua: TimeInterval?
-    }
+    // MARK: - Verrouillage (délégué à LockoutManager)
 
-    private(set) var tentativesEchouees: Int
-    private(set) var verrouillageJusqua: Date?
+    /// Gestionnaire du verrouillage progressif + persistance Keychain.
+    private let lockout: LockoutManager
 
-    /// Persiste l'état courant dans le Keychain. Appelée explicitement après
-    /// chaque mutation de `tentativesEchouees` ou `verrouillageJusqua`.
-    private func persisterEtatVerrouillage() {
-        let etat = EtatVerrouillage(
-            tentatives: tentativesEchouees,
-            jusqua: verrouillageJusqua?.timeIntervalSince1970
-        )
-        do {
-            let data = try JSONCoderCache.encoder.encode(etat)
-            guard let json = String(data: data, encoding: .utf8) else { return }
-            KeychainService.sauvegarder(cle: Self.cleEtatVerrouillage, valeur: json)
-        } catch {
-            Self.logger.error("Échec encodage état verrouillage: \(error.localizedDescription)")
-        }
-    }
+    /// Alias statique pour compat tests : la vraie clé vit dans LockoutManager.
+    static var cleEtatVerrouillage: String { LockoutManager.cleKeychain }
 
-    var estVerrouille: Bool {
-        guard let jusqua = verrouillageJusqua else { return false }
-        return Date() < jusqua
-    }
+    /// Nombre d'échecs consécutifs (délégué à `lockout`).
+    var tentativesEchouees: Int { lockout.tentatives }
 
-    var tempsRestantVerrouillage: Int {
-        guard let jusqua = verrouillageJusqua else { return 0 }
-        return max(0, Int(jusqua.timeIntervalSince(Date())))
-    }
+    /// Date de fin de lockout si actif (délégué à `lockout`).
+    var verrouillageJusqua: Date? { lockout.verrouillageJusqua }
+
+    /// `true` si un lockout est actuellement actif (délégué à `lockout`).
+    var estVerrouille: Bool { lockout.estVerrouille }
+
+    /// Secondes restantes avant fin du lockout (délégué à `lockout`).
+    var tempsRestantVerrouillage: Int { lockout.tempsRestant }
 
     // MARK: - Session persistée dans le Keychain
 
@@ -94,40 +62,14 @@ final class AuthService {
         return nil
     }
 
-    // MARK: - init : chargement de l'état persisté
+    // MARK: - init
 
-    /// - Parameter userDefaults: magasin UserDefaults pour la migration legacy uniquement.
-    ///   Les tests peuvent injecter `UserDefaults(suiteName: UUID().uuidString)`, mais le
-    ///   verrouillage lui-même est maintenant stocké dans le Keychain (global iOS).
-    ///   Les tests doivent nettoyer `KeychainService.supprimer(cle: cleEtatVerrouillage)`
-    ///   avant chaque test.
+    /// - Parameter userDefaults: magasin UserDefaults pour la migration legacy.
+    ///   Injectable pour isolation des tests. La logique de verrouillage elle-même
+    ///   est déléguée à `LockoutManager` qui gère sa propre persistance Keychain.
     init(userDefaults: UserDefaults = .standard) {
         self.userDefaults = userDefaults
-
-        // 1. Tentative lecture Keychain (source de vérité)
-        if let json = KeychainService.lire(cle: Self.cleEtatVerrouillage),
-           let data = json.data(using: .utf8),
-           let etat = try? JSONCoderCache.decoder.decode(EtatVerrouillage.self, from: data) {
-            self.tentativesEchouees = etat.tentatives
-            self.verrouillageJusqua = etat.jusqua.map { Date(timeIntervalSince1970: $0) }
-            return
-        }
-
-        // 2. Fallback : migration depuis UserDefaults legacy
-        let tentativesLegacy = userDefaults.integer(forKey: Self.cleTentativesLegacy)
-        let intervalLegacy = userDefaults.double(forKey: Self.cleVerrouillageLegacy)
-        self.tentativesEchouees = tentativesLegacy
-        self.verrouillageJusqua = intervalLegacy > 0
-            ? Date(timeIntervalSince1970: intervalLegacy)
-            : nil
-
-        // Si des données legacy existent, migrer vers Keychain et nettoyer UserDefaults
-        if tentativesLegacy > 0 || intervalLegacy > 0 {
-            persisterEtatVerrouillage()
-            userDefaults.removeObject(forKey: Self.cleTentativesLegacy)
-            userDefaults.removeObject(forKey: Self.cleVerrouillageLegacy)
-            Self.logger.info("Migration état verrouillage UserDefaults → Keychain")
-        }
+        self.lockout = LockoutManager(userDefaults: userDefaults)
     }
 
     // MARK: - Dérivation de clé (PBKDF2-HMAC-SHA256)
@@ -337,10 +279,8 @@ final class AuthService {
                 return
             }
 
-            // Succès → reset tentatives
-            tentativesEchouees = 0
-            verrouillageJusqua = nil
-            persisterEtatVerrouillage()
+            // Succès → reset verrouillage
+            lockout.reinitialiser()
 
             // Migration progressive vers PBKDF2 600k itérations :
             //   • compte sans sel (pré-v0.6)              → SHA256     → PBKDF2
@@ -398,27 +338,14 @@ final class AuthService {
         chargement = false
     }
 
-    // MARK: - Verrouillage progressif
-    // 5 tentatives → 5 min, 10 tentatives → 15 min, 15+ tentatives → 1h
+    // MARK: - Enregistrer un échec de connexion
 
+    /// Délègue à `LockoutManager.enregistrerEchec()` et propage le message de
+    /// lockout vers `erreur` si un palier est atteint.
     func enregistrerEchec() {
-        tentativesEchouees += 1
-
-        let cycleActuel = tentativesEchouees / 5
-        let reste = tentativesEchouees % 5
-
-        if reste == 0 && cycleActuel >= 1 {
-            let dureesVerrouillage: [TimeInterval] = [300, 900, 3600]
-            let indexDuree = min(cycleActuel - 1, dureesVerrouillage.count - 1)
-            let duree = dureesVerrouillage[indexDuree]
-
-            verrouillageJusqua = Date().addingTimeInterval(duree)
-
-            let minutes = Int(duree / 60)
-            erreur = "Trop de tentatives. Compte verrouillé pendant \(minutes) minute(s)."
+        if let message = lockout.enregistrerEchec() {
+            erreur = message
         }
-
-        persisterEtatVerrouillage()
     }
 
     // MARK: - Création de compte (par le coach/admin)
