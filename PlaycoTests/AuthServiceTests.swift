@@ -255,6 +255,88 @@ struct AuthServiceTests {
         KeychainService.supprimer(cle: "playco_session_utilisateurConnecteID")
     }
 
+    // MARK: - État session (foreground check)
+
+    @Test("verifierEtatSession retourne .valide pour compte actif")
+    func etatSessionValide() throws {
+        let auth = creerAuthIsole()
+        let context = try creerContexteEnMemoire()
+
+        let sel = auth.genererSel()
+        let hash = auth.hashMotDePasse("pass", sel: sel)
+        let user = Utilisateur(identifiant: "actif.user", motDePasseHash: hash,
+                               prenom: "A", nom: "U", role: .etudiant)
+        user.sel = sel
+        user.iterations = AuthService.iterationsParDefaut
+        context.insert(user)
+        try context.save()
+
+        auth.connexion(identifiant: "actif.user", motDePasse: "pass", context: context)
+        #expect(auth.estConnecte)
+
+        let etat = auth.verifierEtatSession(context: context)
+        #expect(etat == .valide)
+    }
+
+    @Test("verifierEtatSession retourne .desactive si estActif = false")
+    func etatSessionDesactive() throws {
+        let auth = creerAuthIsole()
+        let context = try creerContexteEnMemoire()
+
+        let sel = auth.genererSel()
+        let hash = auth.hashMotDePasse("pass", sel: sel)
+        let user = Utilisateur(identifiant: "ex.athlete", motDePasseHash: hash,
+                               prenom: "X", nom: "A", role: .etudiant)
+        user.sel = sel
+        user.iterations = AuthService.iterationsParDefaut
+        context.insert(user)
+        try context.save()
+
+        auth.connexion(identifiant: "ex.athlete", motDePasse: "pass", context: context)
+        #expect(auth.estConnecte)
+
+        // Le coach désactive le compte en BD
+        user.estActif = false
+        try context.save()
+
+        let etat = auth.verifierEtatSession(context: context)
+        #expect(etat == .desactive)
+    }
+
+    @Test("verifierEtatSession retourne .supprime si utilisateur absent")
+    func etatSessionSupprime() throws {
+        let auth = creerAuthIsole()
+        let context = try creerContexteEnMemoire()
+
+        let sel = auth.genererSel()
+        let hash = auth.hashMotDePasse("pass", sel: sel)
+        let user = Utilisateur(identifiant: "fantome", motDePasseHash: hash,
+                               prenom: "F", nom: "T", role: .etudiant)
+        user.sel = sel
+        user.iterations = AuthService.iterationsParDefaut
+        context.insert(user)
+        try context.save()
+
+        auth.connexion(identifiant: "fantome", motDePasse: "pass", context: context)
+        #expect(auth.estConnecte)
+
+        // Suppression physique du compte
+        context.delete(user)
+        try context.save()
+
+        let etat = auth.verifierEtatSession(context: context)
+        #expect(etat == .supprime)
+    }
+
+    @Test("verifierEtatSession retourne .valide si personne connecté")
+    func etatSessionPasConnecte() throws {
+        let auth = creerAuthIsole()
+        let context = try creerContexteEnMemoire()
+
+        let etat = auth.verifierEtatSession(context: context)
+        #expect(etat == .valide, "Si aucun utilisateur connecté, pas de vérif à faire")
+    }
+
     // MARK: - Déconnexion
 
     @Test("Déconnexion")

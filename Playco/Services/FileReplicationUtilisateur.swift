@@ -22,7 +22,12 @@ struct UtilisateurEnAttente: Codable {
 
 /// Politique de retry : délais successifs, puis cap au dernier.
 enum PolitiqueRetry {
-    static let delais: [TimeInterval] = [30, 120, 600, 3600]
+    static let delais: [TimeInterval] = [
+        30,          // 30 secondes
+        2 * 60,      // 2 minutes
+        10 * 60,     // 10 minutes
+        60 * 60      // 1 heure
+    ]
 
     /// Nombre max de tentatives avant abandon (NEW-SEC-04).
     /// 10 tentatives ≈ 10h cumulés avec le backoff plafonné à 1h.

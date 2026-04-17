@@ -8,7 +8,7 @@ import CryptoKit
 import CommonCrypto
 import os
 
-// MARK: - Correction 6 : @MainActor
+// MARK: - AuthService (MainActor — thread safety)
 @MainActor
 @Observable
 final class AuthService {
@@ -71,7 +71,7 @@ final class AuthService {
         return max(0, Int(jusqua.timeIntervalSince(Date())))
     }
 
-    // MARK: - Correction 5 : Session dans le Keychain
+    // MARK: - Session persistée dans le Keychain
 
     private let cleSession = "playco_session_utilisateurConnecteID"
     private let cleSessionLegacy = "utilisateurConnecteID"
@@ -361,11 +361,11 @@ final class AuthService {
             }
 
             utilisateurConnecte = utilisateur
-            // Correction 5 : session dans le Keychain
+            // Persistance session Keychain (survit à fermeture app, pas à logout explicite)
             KeychainService.sauvegarder(cle: cleSession, valeur: utilisateur.id.uuidString)
 
         } catch {
-            // Correction 4 : message générique + log détaillé
+            // Message générique côté UI, détail uniquement dans le log privé
             Self.logger.error("Erreur connexion: \(error.localizedDescription)")
             erreur = "Une erreur est survenue lors de la connexion."
         }
@@ -495,6 +495,33 @@ final class AuthService {
     func deconnexion() {
         utilisateurConnecte = nil
         KeychainService.supprimer(cle: cleSession)
+    }
+
+    // MARK: - Vérification état utilisateur (foreground check)
+
+    /// Résultat de la vérification de l'état de l'utilisateur connecté.
+    enum EtatSession {
+        /// Utilisateur toujours actif et valide.
+        case valide
+        /// Utilisateur désactivé par le coach depuis la dernière connexion.
+        case desactive
+        /// Utilisateur supprimé de la BD depuis la dernière connexion.
+        case supprime
+    }
+
+    /// Vérifie que l'utilisateur connecté est toujours valide dans la BD.
+    /// À appeler au retour foreground (scenePhase = .active) pour révoquer
+    /// rapidement les comptes désactivés par le coach.
+    /// NE modifie PAS l'état — le caller décide de la déconnexion.
+    func verifierEtatSession(context: ModelContext) -> EtatSession {
+        guard let utilisateurID = utilisateurConnecte?.id else { return .valide }
+        let descripteur = FetchDescriptor<Utilisateur>(
+            predicate: #Predicate { $0.id == utilisateurID }
+        )
+        guard let utilisateur = try? context.fetch(descripteur).first else {
+            return .supprime
+        }
+        return utilisateur.estActif ? .valide : .desactive
     }
 
 }

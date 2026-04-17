@@ -100,10 +100,9 @@ struct ContentView: View {
             }
         }
         .onChange(of: scenePhase) { _, nouveau in
-            guard nouveau == .active,
-                  let user = authService.utilisateurConnecte else { return }
+            guard nouveau == .active, authService.estConnecte else { return }
             Task { @MainActor in
-                verifierEstActif(utilisateurID: user.id)
+                verifierEtatSessionForeground()
             }
         }
         .overlay(alignment: .top) {
@@ -124,21 +123,15 @@ struct ContentView: View {
         .animation(LiquidGlassKit.springDefaut, value: afficherToastDesactivation)
     }
 
-    /// Vérifie que l'utilisateur connecté est toujours actif dans la BD.
-    /// Déconnecte et affiche un toast si le coach l'a désactivé pendant que l'app
-    /// était en background. N'interrompt pas le flux en cas d'erreur de fetch.
-    private func verifierEstActif(utilisateurID: UUID) {
-        let descripteur = FetchDescriptor<Utilisateur>(
-            predicate: #Predicate { $0.id == utilisateurID }
-        )
-        guard let utilisateur = try? modelContext.fetch(descripteur).first else {
-            // Utilisateur supprimé → déconnexion aussi
-            authService.deconnexion()
-            afficherToastDesactivation = true
-            Task { try? await Task.sleep(for: .seconds(4)); afficherToastDesactivation = false }
+    /// Au retour foreground, vérifie que l'utilisateur connecté est toujours
+    /// actif. Déconnecte + toast si désactivé/supprimé côté coach.
+    /// La logique métier vit dans AuthService — cette fonction ne gère que l'UI.
+    private func verifierEtatSessionForeground() {
+        let etat = authService.verifierEtatSession(context: modelContext)
+        switch etat {
+        case .valide:
             return
-        }
-        if !utilisateur.estActif {
+        case .desactive, .supprime:
             authService.deconnexion()
             afficherToastDesactivation = true
             Task { try? await Task.sleep(for: .seconds(4)); afficherToastDesactivation = false }
