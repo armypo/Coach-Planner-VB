@@ -89,6 +89,28 @@ struct FileReplicationUtilisateurTests {
         #expect(prets.count == 20, "listerPrets limite à tailleBatchRejeu=20")
     }
 
+    @Test("planifierRetry sur ID absent est no-op (idempotent)")
+    func planifierRetryIDAbsent() async {
+        await reset()
+        let idInexistant = UUID()
+        // Ne doit pas crasher ni créer une entrée fantôme
+        await FileReplicationUtilisateur.shared.planifierRetry(idInexistant)
+        let taille = await FileReplicationUtilisateur.shared.taille()
+        #expect(taille == 0, "Aucune entrée ne doit être créée par un retry sur ID inconnu")
+    }
+
+    @Test("marquerPublie sur ID absent est no-op")
+    func marquerPublieIDAbsent() async {
+        await reset()
+        let id = UUID()
+        await FileReplicationUtilisateur.shared.enregistrer(id)
+
+        // Marquer un autre ID publié ne doit pas affecter l'entrée existante
+        await FileReplicationUtilisateur.shared.marquerPublie(UUID())
+        let taille = await FileReplicationUtilisateur.shared.taille()
+        #expect(taille == 1, "L'entrée originale doit rester intacte")
+    }
+
     @Test("Abandon après tentativesMax retries infructueux")
     func abandonApresTentativesMax() async {
         await reset()

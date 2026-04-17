@@ -153,7 +153,7 @@ struct AuthServiceTests {
 
     @Test("Politique mdp : refuse < 12 caractères")
     func mdpTropCourt() {
-        let erreur = AuthService.validerMotDePasse("court12345",
+        let erreur = PasswordPolicy.valider("court12345",
                                                     identifiant: "user",
                                                     prenom: "Jean",
                                                     nom: "Tremblay")
@@ -162,7 +162,7 @@ struct AuthServiceTests {
 
     @Test("Politique mdp : refuse mdp commun (blacklist)")
     func mdpCommunRefuse() {
-        let erreur = AuthService.validerMotDePasse("motdepasse12",
+        let erreur = PasswordPolicy.valider("motdepasse12",
                                                     identifiant: "user",
                                                     prenom: "Jean",
                                                     nom: "Tremblay")
@@ -171,7 +171,7 @@ struct AuthServiceTests {
 
     @Test("Politique mdp : refuse contournement par suffixe")
     func mdpBlacklistContournementRefuse() {
-        let erreur = AuthService.validerMotDePasse("volleyball123!",
+        let erreur = PasswordPolicy.valider("volleyball123!",
                                                     identifiant: "user",
                                                     prenom: "Jean",
                                                     nom: "Tremblay")
@@ -180,7 +180,7 @@ struct AuthServiceTests {
 
     @Test("Politique mdp : refuse si contient identifiant/prénom/nom")
     func mdpContientPII() {
-        let erreur = AuthService.validerMotDePasse("SuperTremblay9!",
+        let erreur = PasswordPolicy.valider("SuperTremblay9!",
                                                     identifiant: "jean.tremblay",
                                                     prenom: "Jean",
                                                     nom: "Tremblay")
@@ -189,7 +189,7 @@ struct AuthServiceTests {
 
     @Test("Politique mdp : accepte mdp valide unique")
     func mdpValideAccepte() {
-        let erreur = AuthService.validerMotDePasse("Cheval-Sauvage-2026!",
+        let erreur = PasswordPolicy.valider("Cheval-Sauvage-2026!",
                                                     identifiant: "jean.tremblay",
                                                     prenom: "Jean",
                                                     nom: "Tremblay")

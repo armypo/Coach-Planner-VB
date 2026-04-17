@@ -37,7 +37,11 @@ final class AuthService {
     private let userDefaults: UserDefaults
 
     /// État sérialisable persisté dans le Keychain.
+    /// Versionné pour permettre l'évolution du format sans perte de données :
+    /// un futur champ ajouté avec `decodeIfPresent` ou `?` ne cassera pas le
+    /// décodage des entrées pré-existantes.
     private struct EtatVerrouillage: Codable {
+        var version: Int = 1
         var tentatives: Int
         var jusqua: TimeInterval?
     }
@@ -419,42 +423,6 @@ final class AuthService {
 
     // MARK: - Création de compte (par le coach/admin)
 
-    /// Mots de passe interdits (liste noire NIST 800-63B).
-    /// Comprend les termes contextuels Playco, patterns clavier communs, et
-    /// mots de passe par défaut historiques. La vérification utilisateur
-    /// (contient prenom/nom/identifiant) est faite en plus à `creerCompte`.
-    static let motsDePasseInterdits: Set<String> = [
-        "motdepasse", "password", "passe1234", "volleyball", "volleyball123",
-        "playco", "playco123", "garneau", "equipe", "coach", "admin",
-        "123456789012", "azertyuiopqs", "qwertyuiopas", "aaaaaaaaaaaa",
-        "000000000000", "111111111111"
-    ]
-
-    /// Valide un mot de passe selon la politique NIST 800-63B.
-    /// Retourne `nil` si valide, sinon le message d'erreur spécifique.
-    static func validerMotDePasse(_ motDePasse: String,
-                                  identifiant: String,
-                                  prenom: String,
-                                  nom: String) -> String? {
-        guard motDePasse.count >= 12 else {
-            return "Le mot de passe doit contenir au moins 12 caractères."
-        }
-        let mdpBas = motDePasse.lowercased()
-        // `contains` pour éviter le contournement trivial par suffixe
-        // ("motdepasse123" serait accepté par une égalité stricte).
-        for interdit in motsDePasseInterdits where mdpBas.contains(interdit) {
-            return "Ce mot de passe est trop commun. Choisissez-en un autre."
-        }
-        // Refuser si contient identifiant, prénom ou nom (≥ 3 car, insensible casse)
-        let interditsContextuels = [identifiant, prenom, nom]
-            .map { $0.lowercased().trimmingCharacters(in: .whitespaces) }
-            .filter { $0.count >= 3 }
-        for terme in interditsContextuels where mdpBas.contains(terme) {
-            return "Le mot de passe ne peut pas contenir votre identifiant, prénom ou nom."
-        }
-        return nil
-    }
-
     /// Crée un nouveau compte utilisateur (coach/admin uniquement).
     /// - Returns: `nil` si succès, sinon le message d'erreur à afficher à l'UI.
     ///
@@ -472,7 +440,7 @@ final class AuthService {
             return "L'identifiant doit contenir au moins 3 caractères."
         }
 
-        if let erreurMdp = Self.validerMotDePasse(motDePasse,
+        if let erreurMdp = PasswordPolicy.valider(motDePasse,
                                                   identifiant: idNormalise,
                                                   prenom: prenom,
                                                   nom: nom) {
