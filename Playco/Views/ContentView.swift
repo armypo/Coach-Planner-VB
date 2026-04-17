@@ -18,12 +18,14 @@ enum SectionApp: Hashable {
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(AuthService.self) private var authService
+    @Environment(\.scenePhase) private var scenePhase
     @State private var sectionActive: SectionApp?
     @State private var afficherProfil: Bool = false
     @State private var afficherMessages: Bool = false
     @State private var afficherRecherche: Bool = false
     @State private var equipeSelectionnee: Equipe?
     @State private var selectionEquipeFaite = false
+    @State private var afficherToastDesactivation = false
 
     @Query private var equipes: [Equipe]
     @Query(sort: \MessageEquipe.dateEnvoi) private var tousMessages: [MessageEquipe]
@@ -96,6 +98,50 @@ struct ContentView: View {
                 equipeSelectionnee = nil
                 sectionActive = nil
             }
+        }
+        .onChange(of: scenePhase) { _, nouveau in
+            guard nouveau == .active,
+                  let user = authService.utilisateurConnecte else { return }
+            Task { @MainActor in
+                verifierEstActif(utilisateurID: user.id)
+            }
+        }
+        .overlay(alignment: .top) {
+            if afficherToastDesactivation {
+                HStack(spacing: LiquidGlassKit.espaceSM) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                    Text("Votre compte a été désactivé. Contactez votre coach.")
+                        .font(.subheadline.weight(.medium))
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, LiquidGlassKit.espaceLG)
+                .padding(.vertical, LiquidGlassKit.espaceSM)
+                .background(.orange, in: Capsule(style: .continuous))
+                .padding(.top, LiquidGlassKit.espaceLG)
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(LiquidGlassKit.springDefaut, value: afficherToastDesactivation)
+    }
+
+    /// Vérifie que l'utilisateur connecté est toujours actif dans la BD.
+    /// Déconnecte et affiche un toast si le coach l'a désactivé pendant que l'app
+    /// était en background. N'interrompt pas le flux en cas d'erreur de fetch.
+    private func verifierEstActif(utilisateurID: UUID) {
+        let descripteur = FetchDescriptor<Utilisateur>(
+            predicate: #Predicate { $0.id == utilisateurID }
+        )
+        guard let utilisateur = try? modelContext.fetch(descripteur).first else {
+            // Utilisateur supprimé → déconnexion aussi
+            authService.deconnexion()
+            afficherToastDesactivation = true
+            Task { try? await Task.sleep(for: .seconds(4)); afficherToastDesactivation = false }
+            return
+        }
+        if !utilisateur.estActif {
+            authService.deconnexion()
+            afficherToastDesactivation = true
+            Task { try? await Task.sleep(for: .seconds(4)); afficherToastDesactivation = false }
         }
     }
 

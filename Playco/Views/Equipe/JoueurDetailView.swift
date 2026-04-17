@@ -312,6 +312,7 @@ struct JoueurDetailView: View {
             if let utilisateur = try? modelContext.fetch(descriptor).first {
                 utilisateur.motDePasseHash = hash
                 utilisateur.sel = sel
+                utilisateur.iterations = AuthService.iterationsParDefaut
             }
         }
 

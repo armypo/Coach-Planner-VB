@@ -64,6 +64,11 @@ final class Utilisateur {
     // S1 : Sel pour hashage sécurisé
     var sel: String? = nil
 
+    /// Nombre d'itérations PBKDF2 utilisées pour dériver `motDePasseHash`.
+    /// `1` = chemin legacy SHA256 (compatibilité avec comptes pré-v1.10).
+    /// `>= 600_000` = PBKDF2-HMAC-SHA256 conforme OWASP 2024.
+    var iterations: Int = 1
+
     /// Date du dernier début de session — utilisée pour l'expiration 30 jours
     var sessionCreeeLe: Date? = nil
 

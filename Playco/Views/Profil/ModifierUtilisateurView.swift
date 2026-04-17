@@ -422,6 +422,7 @@ struct ModifierUtilisateurView: View {
             let nouveauSel = authService.genererSel()
             utilisateur.sel = nouveauSel
             utilisateur.motDePasseHash = authService.hashMotDePasse(nouveauMotDePasse, sel: nouveauSel)
+            utilisateur.iterations = AuthService.iterationsParDefaut
         }
 
         // Données physiques — convertir pieds/pouces → cm pour stockage

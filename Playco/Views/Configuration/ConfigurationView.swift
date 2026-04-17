@@ -5,6 +5,9 @@
 import SwiftUI
 import SwiftData
 import CryptoKit
+import os
+
+private let loggerConfig = Logger(subsystem: "com.origotech.playco", category: "Configuration")
 
 /// Wizard de configuration au premier lancement — 6 étapes
 struct ConfigurationView: View {
@@ -291,13 +294,23 @@ struct ConfigurationView: View {
         equipe.couleurPrincipalHex = couleurPrincipale.toHex()
         equipe.couleurSecondaireHex = couleurSecondaire.toHex()
         equipe.etablissement = etablissement
-        // Générer un code d'équipe unique (ex: "DIAB26")
-        let prefixe = String(nomEquipe.uppercased()
-            .folding(options: .diacriticInsensitive, locale: .current)
-            .filter(\.isLetter)
-            .prefix(4))
-        let suffixe = String(format: "%02d", Int.random(in: 10...99))
-        let codeEquipe = (prefixe + suffixe).uppercased()
+        // Code équipe 8 caractères Base32 Crockford (voir Equipe.genererCodeEquipe).
+        // Unicité locale : retry jusqu'à 5 fois sur collision en BD (très improbable
+        // avec ~31^8 combinaisons, mais ceinture-bretelles).
+        var codeEquipe = Equipe.genererCodeEquipe()
+        var tentative = 0
+        let descripteurCode = { (code: String) in
+            FetchDescriptor<Equipe>(predicate: #Predicate { $0.codeEquipe == code })
+        }
+        while tentative < 5,
+              let existants = try? modelContext.fetch(descripteurCode(codeEquipe)),
+              !existants.isEmpty {
+            codeEquipe = Equipe.genererCodeEquipe()
+            tentative += 1
+        }
+        if tentative == 5 {
+            loggerConfig.critical("Échec génération code équipe unique après 5 tentatives — collision persistante improbable")
+        }
         equipe.codeEquipe = codeEquipe
         modelContext.insert(equipe)
 
@@ -325,6 +338,7 @@ struct ConfigurationView: View {
                 codeEcole: codeEquipe
             )
             utilisateur.sel = sel
+            utilisateur.iterations = AuthService.iterationsParDefaut
             utilisateur.codeInvitation = Utilisateur.genererCodeUniqueInvitation(context: modelContext)
             modelContext.insert(utilisateur)
 
@@ -367,6 +381,7 @@ struct ConfigurationView: View {
                 codeEcole: codeEquipe
             )
             utilisateur.sel = sel
+            utilisateur.iterations = AuthService.iterationsParDefaut
             utilisateur.joueurEquipeID = joueur.id
             utilisateur.numero = j.numero
             utilisateur.posteRaw = j.poste.rawValue
@@ -433,6 +448,7 @@ struct ConfigurationView: View {
             codeEcole: codeEquipe
         )
         coachUser.sel = sel
+        coachUser.iterations = AuthService.iterationsParDefaut
         modelContext.insert(coachUser)
         try? modelContext.save()
 

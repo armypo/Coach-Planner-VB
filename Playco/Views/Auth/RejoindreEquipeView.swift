@@ -70,9 +70,17 @@ struct RejoindreEquipeView: View {
                                     Image(systemName: "number.circle.fill")
                                         .foregroundStyle(PaletteMat.orange)
                                         .frame(width: 20)
-                                    TextField("ABC123", text: $codeEquipe)
+                                    TextField("ABCD2345", text: $codeEquipe)
                                         .textInputAutocapitalization(.characters)
                                         .autocorrectionDisabled()
+                                        .onChange(of: codeEquipe) { _, nouveau in
+                                            // Filtre alphabet + uppercase + max 8 car
+                                            let normalise = Equipe.normaliserCodeEquipe(nouveau)
+                                            let tronque = String(normalise.prefix(8))
+                                            if tronque != nouveau {
+                                                codeEquipe = tronque
+                                            }
+                                        }
                                 }
                                 .padding(14)
                                 .background(Color(.systemGray6).opacity(0.6),
@@ -190,8 +198,7 @@ struct RejoindreEquipeView: View {
     }
 
     private func seConnecter() async {
-        // Fix edge case : le code équipe doit être normalisé en majuscules ET sans espaces
-        let codeNormalise = codeEquipe.trimmingCharacters(in: .whitespaces).uppercased()
+        let codeNormalise = Equipe.normaliserCodeEquipe(codeEquipe.trimmingCharacters(in: .whitespaces))
         let idNormalise = identifiant.lowercased().trimmingCharacters(in: .whitespaces)
         erreurLocale = nil
         authService.erreur = nil
@@ -199,6 +206,10 @@ struct RejoindreEquipeView: View {
         // Validation locale avant toute requête réseau
         guard !codeNormalise.isEmpty, !idNormalise.isEmpty, !motDePasse.isEmpty else {
             erreurLocale = "Veuillez remplir tous les champs."
+            return
+        }
+        guard Equipe.codeEquipeValide(codeNormalise) else {
+            erreurLocale = "Code équipe invalide. Format attendu : 8 caractères (lettres + chiffres)."
             return
         }
 
@@ -218,7 +229,7 @@ struct RejoindreEquipeView: View {
                 codeEquipe: codeNormalise,
                 context: modelContext
             )
-            logger.info("Données équipe \(codeNormalise) importées depuis CloudKit")
+            logger.info("Données équipe \(codeNormalise, privacy: .private) importées depuis CloudKit")
         } catch {
             chargementCloud = false
             logger.error("Erreur récupération équipe: \(error.localizedDescription)")

@@ -176,6 +176,11 @@ struct PlaycoApp: App {
                                 analyticsService.suivre(evenement: EvenementAnalytics.appLancee)
                                 syncService.demarrerSuivi()
                                 syncService.demarrerSurveillanceReseau()
+                                // Brancher le rejeu automatique de la file de publication
+                                // d'utilisateurs quand le réseau revient en ligne.
+                                syncService.onReseauRestaure = { [sharingService, container] in
+                                    await sharingService.rejouerFileAttente(context: container.mainContext)
+                                }
                                 Task {
                                     await syncService.attendreSyncInitiale()
                                     authService.restaurerSession(context: container.mainContext)

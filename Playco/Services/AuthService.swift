@@ -5,6 +5,7 @@
 import Foundation
 import SwiftData
 import CryptoKit
+import CommonCrypto
 import os
 
 // MARK: - Correction 6 : @MainActor
@@ -19,27 +20,44 @@ final class AuthService {
     var erreur: String?
     var chargement: Bool = false
 
-    // MARK: - Correction 3 : Verrouillage persisté dans UserDefaults
+    // MARK: - Verrouillage persisté dans Keychain (Sprint B)
+    //
+    // Le Keychain survit à la désinstallation/réinstallation de l'app (jusqu'à
+    // supprimer via Réglages), empêchant le contournement du lockout par simple
+    // réinstall. Les anciennes clés UserDefaults sont migrées au premier init.
 
-    private static let cleTentatives = "playco_auth_tentatives"
-    private static let cleVerrouillage = "playco_auth_verrouillage"
+    /// Clé Keychain pour l'état verrouillage (JSON encodé Codable).
+    static let cleEtatVerrouillage = "playco_auth_state"
 
-    /// Store persistant injecté — permet l'isolation des tests via des suites dédiées
+    /// Clés legacy UserDefaults — lues une fois pour migration, puis supprimées.
+    private static let cleTentativesLegacy = "playco_auth_tentatives"
+    private static let cleVerrouillageLegacy = "playco_auth_verrouillage"
+
+    /// Store UserDefaults injectable — conservé pour compat tests + migration.
     private let userDefaults: UserDefaults
 
-    private(set) var tentativesEchouees: Int {
-        didSet {
-            userDefaults.set(tentativesEchouees, forKey: Self.cleTentatives)
-        }
+    /// État sérialisable persisté dans le Keychain.
+    private struct EtatVerrouillage: Codable {
+        var tentatives: Int
+        var jusqua: TimeInterval?
     }
 
-    private(set) var verrouillageJusqua: Date? {
-        didSet {
-            if let date = verrouillageJusqua {
-                userDefaults.set(date.timeIntervalSince1970, forKey: Self.cleVerrouillage)
-            } else {
-                userDefaults.removeObject(forKey: Self.cleVerrouillage)
-            }
+    private(set) var tentativesEchouees: Int
+    private(set) var verrouillageJusqua: Date?
+
+    /// Persiste l'état courant dans le Keychain. Appelée explicitement après
+    /// chaque mutation de `tentativesEchouees` ou `verrouillageJusqua`.
+    private func persisterEtatVerrouillage() {
+        let etat = EtatVerrouillage(
+            tentatives: tentativesEchouees,
+            jusqua: verrouillageJusqua?.timeIntervalSince1970
+        )
+        do {
+            let data = try JSONCoderCache.encoder.encode(etat)
+            guard let json = String(data: data, encoding: .utf8) else { return }
+            KeychainService.sauvegarder(cle: Self.cleEtatVerrouillage, valeur: json)
+        } catch {
+            Self.logger.error("Échec encodage état verrouillage: \(error.localizedDescription)")
         }
     }
 
@@ -74,51 +92,141 @@ final class AuthService {
 
     // MARK: - init : chargement de l'état persisté
 
-    /// - Parameter userDefaults: magasin persistant à utiliser pour tentatives/verrouillage.
-    ///   Les tests peuvent injecter `UserDefaults(suiteName: UUID().uuidString)` pour l'isolation.
+    /// - Parameter userDefaults: magasin UserDefaults pour la migration legacy uniquement.
+    ///   Les tests peuvent injecter `UserDefaults(suiteName: UUID().uuidString)`, mais le
+    ///   verrouillage lui-même est maintenant stocké dans le Keychain (global iOS).
+    ///   Les tests doivent nettoyer `KeychainService.supprimer(cle: cleEtatVerrouillage)`
+    ///   avant chaque test.
     init(userDefaults: UserDefaults = .standard) {
         self.userDefaults = userDefaults
-        tentativesEchouees = userDefaults.integer(forKey: Self.cleTentatives)
-        let intervalSauvegarde = userDefaults.double(forKey: Self.cleVerrouillage)
-        if intervalSauvegarde > 0 {
-            verrouillageJusqua = Date(timeIntervalSince1970: intervalSauvegarde)
-        } else {
-            verrouillageJusqua = nil
+
+        // 1. Tentative lecture Keychain (source de vérité)
+        if let json = KeychainService.lire(cle: Self.cleEtatVerrouillage),
+           let data = json.data(using: .utf8),
+           let etat = try? JSONCoderCache.decoder.decode(EtatVerrouillage.self, from: data) {
+            self.tentativesEchouees = etat.tentatives
+            self.verrouillageJusqua = etat.jusqua.map { Date(timeIntervalSince1970: $0) }
+            return
+        }
+
+        // 2. Fallback : migration depuis UserDefaults legacy
+        let tentativesLegacy = userDefaults.integer(forKey: Self.cleTentativesLegacy)
+        let intervalLegacy = userDefaults.double(forKey: Self.cleVerrouillageLegacy)
+        self.tentativesEchouees = tentativesLegacy
+        self.verrouillageJusqua = intervalLegacy > 0
+            ? Date(timeIntervalSince1970: intervalLegacy)
+            : nil
+
+        // Si des données legacy existent, migrer vers Keychain et nettoyer UserDefaults
+        if tentativesLegacy > 0 || intervalLegacy > 0 {
+            persisterEtatVerrouillage()
+            userDefaults.removeObject(forKey: Self.cleTentativesLegacy)
+            userDefaults.removeObject(forKey: Self.cleVerrouillageLegacy)
+            Self.logger.info("Migration état verrouillage UserDefaults → Keychain")
         }
     }
 
-    // MARK: - S1 : Hash du mot de passe avec sel (salt)
+    // MARK: - Dérivation de clé (PBKDF2-HMAC-SHA256)
 
-    /// Génère un sel aléatoire de 16 bytes
+    /// Nombre d'itérations PBKDF2 pour les nouveaux comptes (OWASP 2024 : ≥ 600 000).
+    static let iterationsParDefaut: Int = 600_000
+
+    /// Génère un sel aléatoire de 16 bytes (encodé en hex, 32 caractères)
     func genererSel() -> String {
         let bytes = (0..<16).map { _ in UInt8.random(in: 0...255) }
         return Data(bytes).map { String(format: "%02x", $0) }.joined()
     }
 
-    /// Hash avec sel : SHA256(sel + motDePasse)
+    /// Hash du mot de passe avec PBKDF2-HMAC-SHA256 + sel.
+    /// Utilise `iterationsParDefaut` (600 000) pour tous les nouveaux comptes.
+    /// Sortie : 32 bytes → 64 caractères hex (même taille que l'ancien SHA256 pour compat tests).
     func hashMotDePasse(_ motDePasse: String, sel: String) -> String {
+        deriverCle(motDePasse: motDePasse, sel: sel, iterations: Self.iterationsParDefaut)
+    }
+
+    /// Dérive une clé avec PBKDF2-HMAC-SHA256. Paramètre `iterations` exposé pour
+    /// la vérification des comptes legacy (migration progressive).
+    private func deriverCle(motDePasse: String, sel: String, iterations: Int) -> String {
+        // Garde-fou : pointeur nil + count=0 sur CCKeyDerivationPBKDF est UB.
+        guard !motDePasse.isEmpty else {
+            Self.logger.error("deriverCle appelé avec motDePasse vide — refus")
+            return ""
+        }
+        // Utilise Data.utf8 pour compter tous les bytes (tolère les NUL éventuels,
+        // contrairement à strlen).
+        let mdpData = Data(motDePasse.utf8)
+        let selData = Data(sel.utf8)
+        var derivee = [UInt8](repeating: 0, count: 32)
+
+        let statut: Int32 = mdpData.withUnsafeBytes { mdpBuf in
+            selData.withUnsafeBytes { selBuf in
+                CCKeyDerivationPBKDF(
+                    CCPBKDFAlgorithm(kCCPBKDF2),
+                    mdpBuf.baseAddress?.assumingMemoryBound(to: CChar.self),
+                    mdpData.count,
+                    selBuf.baseAddress?.assumingMemoryBound(to: UInt8.self),
+                    selData.count,
+                    CCPseudoRandomAlgorithm(kCCPRFHmacAlgSHA256),
+                    UInt32(iterations),
+                    &derivee, derivee.count
+                )
+            }
+        }
+
+        guard statut == kCCSuccess else {
+            Self.logger.critical("CCKeyDerivationPBKDF échec statut \(statut) — échec crypto, connexion refusée")
+            return ""
+        }
+
+        return derivee.map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Hash SHA256+sel d'origine (v1.0 → v1.9) — conservé pour la vérification
+    /// des comptes pré-PBKDF2. Ne JAMAIS utiliser pour de nouveaux comptes.
+    private func hashLegacySHA256AvecSel(_ motDePasse: String, sel: String) -> String {
         let donnees = Data((sel + motDePasse).utf8)
         let hash = SHA256.hash(data: donnees)
         return hash.compactMap { String(format: "%02x", $0) }.joined()
     }
 
-    /// Hash sans sel (rétrocompatibilité pour anciens comptes) — privée
-    private func hashMotDePasse(_ motDePasse: String) -> String {
+    /// Hash SHA256 sans sel (v0.x) — préhistoire, uniquement pour la compat.
+    private func hashLegacySHA256SansSel(_ motDePasse: String) -> String {
         let donnees = Data(motDePasse.utf8)
         let hash = SHA256.hash(data: donnees)
         return hash.compactMap { String(format: "%02x", $0) }.joined()
     }
 
-    /// Vérifie le mot de passe (avec ou sans sel)
-    /// Utilise `sel?.isEmpty ?? true` pour traiter nil et "" comme "pas de sel"
-    private func verifierMotDePasse(_ motDePasse: String, hash: String, sel: String?) -> Bool {
-        let selAbsent = sel?.isEmpty ?? true
-        if selAbsent {
-            // Rétrocompatibilité : hash sans sel
-            return hashMotDePasse(motDePasse) == hash
-        } else {
-            return hashMotDePasse(motDePasse, sel: sel!) == hash
+    /// Vérifie le mot de passe en choisissant l'algorithme selon les métadonnées
+    /// du compte. Trois chemins :
+    ///   • sel absent           → SHA256 brut (pré-v0.6)
+    ///   • iterations ≤ 1 + sel → SHA256+sel (v0.6 → v1.9)
+    ///   • iterations ≥ 2       → PBKDF2 avec le nombre d'itérations stocké
+    private func verifierMotDePasse(_ motDePasse: String,
+                                    hash: String,
+                                    sel: String?,
+                                    iterations: Int) -> Bool {
+        guard let sel = sel, !sel.isEmpty else {
+            return egaliteConstante(hashLegacySHA256SansSel(motDePasse), hash)
         }
+        let candidat: String
+        if iterations <= 1 {
+            candidat = hashLegacySHA256AvecSel(motDePasse, sel: sel)
+        } else {
+            candidat = deriverCle(motDePasse: motDePasse, sel: sel, iterations: iterations)
+        }
+        return egaliteConstante(candidat, hash)
+    }
+
+    /// Comparaison constant-time pour éviter les timing attacks.
+    private func egaliteConstante(_ a: String, _ b: String) -> Bool {
+        let aBytes = Array(a.utf8)
+        let bBytes = Array(b.utf8)
+        guard aBytes.count == bBytes.count else { return false }
+        var diff: UInt8 = 0
+        for i in 0..<aBytes.count {
+            diff |= aBytes[i] ^ bBytes[i]
+        }
+        return diff == 0
     }
 
     // MARK: - Restauration de session
@@ -194,7 +302,10 @@ final class AuthService {
                 return
             }
 
-            guard verifierMotDePasse(motDePasse, hash: utilisateur.motDePasseHash, sel: utilisateur.sel) else {
+            guard verifierMotDePasse(motDePasse,
+                                     hash: utilisateur.motDePasseHash,
+                                     sel: utilisateur.sel,
+                                     iterations: utilisateur.iterations) else {
                 enregistrerEchec()
                 erreur = "Identifiant ou mot de passe incorrect."
                 chargement = false
@@ -204,24 +315,49 @@ final class AuthService {
             // Succès → reset tentatives
             tentativesEchouees = 0
             verrouillageJusqua = nil
+            persisterEtatVerrouillage()
 
-            // S1 : Migrer vers hash avec sel si l'ancien compte n'en avait pas
-            if utilisateur.sel?.isEmpty ?? true {
+            // Migration progressive vers PBKDF2 600k itérations :
+            //   • compte sans sel (pré-v0.6)              → SHA256     → PBKDF2
+            //   • compte avec sel mais iterations <= 1    → SHA256+sel → PBKDF2
+            //   • compte déjà en PBKDF2 mais < 600k       → re-dérive avec 600k
+            let needsMigration = (utilisateur.sel?.isEmpty ?? true) ||
+                                 utilisateur.iterations < Self.iterationsParDefaut
+
+            if needsMigration {
+                let ancienHash = utilisateur.motDePasseHash
+                let ancienSel = utilisateur.sel
+                let ancienIterations = utilisateur.iterations
                 let nouveauSel = genererSel()
                 utilisateur.sel = nouveauSel
                 utilisateur.motDePasseHash = hashMotDePasse(motDePasse, sel: nouveauSel)
-            }
-
-            // Marquer la date de début de session pour expiration 30 jours
-            utilisateur.sessionCreeeLe = Date()
-
-            do {
-                try context.save()
-            } catch {
-                Self.logger.error("Erreur sauvegarde session utilisateur: \(error.localizedDescription)")
-                erreur = "Impossible d'enregistrer votre session. Réessayez."
-                chargement = false
-                return
+                utilisateur.iterations = Self.iterationsParDefaut
+                utilisateur.sessionCreeeLe = Date()
+                do {
+                    try context.save()
+                    Self.logger.info("Migration hash réussie: \(utilisateur.identifiant, privacy: .private)")
+                } catch {
+                    // Rollback — éviter état incohérent hash mémoire vs BD
+                    utilisateur.sel = ancienSel
+                    utilisateur.motDePasseHash = ancienHash
+                    utilisateur.iterations = ancienIterations
+                    utilisateur.sessionCreeeLe = nil
+                    Self.logger.error("Migration hash échouée, rollback: \(error.localizedDescription)")
+                    erreur = "Impossible d'enregistrer votre session. Réessayez."
+                    chargement = false
+                    return
+                }
+            } else {
+                // Marquer la date de début de session pour expiration 30 jours
+                utilisateur.sessionCreeeLe = Date()
+                do {
+                    try context.save()
+                } catch {
+                    Self.logger.error("Erreur sauvegarde session: \(error.localizedDescription)")
+                    erreur = "Impossible d'enregistrer votre session. Réessayez."
+                    chargement = false
+                    return
+                }
             }
 
             utilisateurConnecte = utilisateur
@@ -237,7 +373,7 @@ final class AuthService {
         chargement = false
     }
 
-    // MARK: - Correction 3 : Verrouillage progressif
+    // MARK: - Verrouillage progressif
     // 5 tentatives → 5 min, 10 tentatives → 15 min, 15+ tentatives → 1h
 
     func enregistrerEchec() {
@@ -246,19 +382,57 @@ final class AuthService {
         let cycleActuel = tentativesEchouees / 5
         let reste = tentativesEchouees % 5
 
-        guard reste == 0 && cycleActuel >= 1 else { return }
+        if reste == 0 && cycleActuel >= 1 {
+            let dureesVerrouillage: [TimeInterval] = [300, 900, 3600]
+            let indexDuree = min(cycleActuel - 1, dureesVerrouillage.count - 1)
+            let duree = dureesVerrouillage[indexDuree]
 
-        let dureesVerrouillage: [TimeInterval] = [300, 900, 3600]
-        let indexDuree = min(cycleActuel - 1, dureesVerrouillage.count - 1)
-        let duree = dureesVerrouillage[indexDuree]
+            verrouillageJusqua = Date().addingTimeInterval(duree)
 
-        verrouillageJusqua = Date().addingTimeInterval(duree)
+            let minutes = Int(duree / 60)
+            erreur = "Trop de tentatives. Compte verrouillé pendant \(minutes) minute(s)."
+        }
 
-        let minutes = Int(duree / 60)
-        erreur = "Trop de tentatives. Compte verrouillé pendant \(minutes) minute(s)."
+        persisterEtatVerrouillage()
     }
 
     // MARK: - Création de compte (par le coach/admin)
+
+    /// Mots de passe interdits (liste noire NIST 800-63B).
+    /// Comprend les termes contextuels Playco, patterns clavier communs, et
+    /// mots de passe par défaut historiques. La vérification utilisateur
+    /// (contient prenom/nom/identifiant) est faite en plus à `creerCompte`.
+    static let motsDePasseInterdits: Set<String> = [
+        "motdepasse", "password", "passe1234", "volleyball", "volleyball123",
+        "playco", "playco123", "garneau", "equipe", "coach", "admin",
+        "123456789012", "azertyuiopqs", "qwertyuiopas", "aaaaaaaaaaaa",
+        "000000000000", "111111111111"
+    ]
+
+    /// Valide un mot de passe selon la politique NIST 800-63B.
+    /// Retourne `nil` si valide, sinon le message d'erreur spécifique.
+    static func validerMotDePasse(_ motDePasse: String,
+                                  identifiant: String,
+                                  prenom: String,
+                                  nom: String) -> String? {
+        guard motDePasse.count >= 12 else {
+            return "Le mot de passe doit contenir au moins 12 caractères."
+        }
+        let mdpBas = motDePasse.lowercased()
+        // `contains` pour éviter le contournement trivial par suffixe
+        // ("motdepasse123" serait accepté par une égalité stricte).
+        for interdit in motsDePasseInterdits where mdpBas.contains(interdit) {
+            return "Ce mot de passe est trop commun. Choisissez-en un autre."
+        }
+        // Refuser si contient identifiant, prénom ou nom (≥ 3 car, insensible casse)
+        let interditsContextuels = [identifiant, prenom, nom]
+            .map { $0.lowercased().trimmingCharacters(in: .whitespaces) }
+            .filter { $0.count >= 3 }
+        for terme in interditsContextuels where mdpBas.contains(terme) {
+            return "Le mot de passe ne peut pas contenir votre identifiant, prénom ou nom."
+        }
+        return nil
+    }
 
     func creerCompte(identifiant: String, motDePasse: String, prenom: String, nom: String, role: RoleUtilisateur, context: ModelContext) -> String? {
         let idNormalise = identifiant.lowercased().trimmingCharacters(in: .whitespaces)
@@ -267,12 +441,11 @@ final class AuthService {
             return "L'identifiant doit contenir au moins 3 caractères."
         }
 
-        // Politique renforcée : min 8 caractères + au moins 1 chiffre
-        guard motDePasse.count >= 8 else {
-            return "Le mot de passe doit contenir au moins 8 caractères."
-        }
-        guard motDePasse.contains(where: { $0.isNumber }) else {
-            return "Le mot de passe doit contenir au moins 1 chiffre."
+        if let erreurMdp = Self.validerMotDePasse(motDePasse,
+                                                  identifiant: idNormalise,
+                                                  prenom: prenom,
+                                                  nom: nom) {
+            return erreurMdp
         }
 
         guard !prenom.trimmingCharacters(in: .whitespaces).isEmpty,
@@ -304,6 +477,7 @@ final class AuthService {
             role: role
         )
         nouvelUtilisateur.sel = sel
+        nouvelUtilisateur.iterations = Self.iterationsParDefaut
         nouvelUtilisateur.codeInvitation = Utilisateur.genererCodeUniqueInvitation(context: context)
 
         context.insert(nouvelUtilisateur)

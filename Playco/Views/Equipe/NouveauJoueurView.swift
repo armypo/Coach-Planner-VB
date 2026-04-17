@@ -459,6 +459,7 @@ struct NouveauJoueurView: View {
             codeEcole: codeEcole
         )
         utilisateur.sel = sel
+        utilisateur.iterations = AuthService.iterationsParDefaut
         utilisateur.numero = numero
         utilisateur.posteRaw = poste.rawValue
         utilisateur.codeInvitation = Utilisateur.genererCodeUniqueInvitation(context: modelContext)

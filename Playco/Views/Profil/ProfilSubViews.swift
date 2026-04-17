@@ -164,10 +164,7 @@ struct NouvelleEquipeSheet: View {
         equipe.division = division
         equipe.saison = saison
         equipe.etablissement = etab
-        let prefixe = String(nom.uppercased()
-            .folding(options: .diacriticInsensitive, locale: .current)
-            .filter(\.isLetter).prefix(4))
-        equipe.codeEquipe = (prefixe + String(format: "%02d", Int.random(in: 10...99))).uppercased()
+        equipe.codeEquipe = Equipe.genererCodeEquipe()
         modelContext.insert(equipe)
         try? modelContext.save()
         dismiss()

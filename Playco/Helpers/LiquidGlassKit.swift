@@ -49,6 +49,27 @@ enum LiquidGlassKit {
     static let teinteFond: CGFloat = 0.05
     static let badgeFond: CGFloat = 0.08
 
+    // MARK: - Tailles d'icônes (écrans d'auth et formulaires)
+
+    static let iconePetite: CGFloat = 13
+    static let iconeMoyenne: CGFloat = 15
+    static let iconeGrande: CGFloat = 30
+    /// Largeur réservée aux icônes de champ input
+    static let iconeChamp: CGFloat = 20
+
+    /// Rayon du conteneur de toggle segmenté (plus grand que rayonMoyen pour
+    /// englober visuellement les pilules internes).
+    static let rayonToggleContainer: CGFloat = 20
+
+    // MARK: - Padding champs de saisie
+
+    static let paddingChamp: CGFloat = 14
+
+    // MARK: - Espacements hero (login, onboarding)
+
+    static let hauteurSpacerHero: CGFloat = 80
+    static let hauteurSpacerBas: CGFloat = 60
+
     // MARK: - Mode bord de terrain (courtside)
 
     /// Hauteur minimale des boutons en mode courtside (touch target)

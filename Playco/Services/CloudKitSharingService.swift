@@ -65,9 +65,18 @@ final class CloudKitSharingService {
             // 2. Publier l'équipe
             try await publierEquipe(equipe)
 
-            // 3. Publier les utilisateurs
+            // 3. Publier les utilisateurs — échec par utilisateur n'interrompt pas la boucle,
+            //    l'ID est enfilé pour re-publication automatique.
+            var echecsUtilisateurs: [UUID] = []
             for utilisateur in utilisateurs {
-                try await publierUtilisateur(utilisateur)
+                do {
+                    try await publierUtilisateur(utilisateur)
+                    await FileReplicationUtilisateur.shared.marquerPublie(utilisateur.id)
+                } catch {
+                    echecsUtilisateurs.append(utilisateur.id)
+                    await FileReplicationUtilisateur.shared.enregistrer(utilisateur.id)
+                    logger.warning("Publication échouée pour utilisateur \(utilisateur.id.uuidString, privacy: .private), enfilé : \(error.localizedDescription)")
+                }
             }
 
             // 4. Publier les joueurs
@@ -75,13 +84,46 @@ final class CloudKitSharingService {
                 try await publierJoueur(joueur)
             }
 
-            logger.info("Équipe \(equipe.codeEquipe) publiée avec succès (\(utilisateurs.count) utilisateurs, \(joueurs.count) joueurs)")
+            if echecsUtilisateurs.isEmpty {
+                logger.info("Équipe \(equipe.codeEquipe, privacy: .private) publiée avec succès (\(utilisateurs.count) utilisateurs, \(joueurs.count) joueurs)")
+            } else {
+                logger.warning("Équipe \(equipe.codeEquipe, privacy: .private) publiée partiellement : \(echecsUtilisateurs.count)/\(utilisateurs.count) utilisateurs en attente de retry")
+            }
         } catch {
             logger.error("Erreur publication équipe: \(error.localizedDescription)")
             self.erreur = error.localizedDescription
         }
 
         estEnCoursDePublication = false
+    }
+
+    /// Rejoue les utilisateurs en attente dans `FileReplicationUtilisateur`.
+    /// Appelé depuis CloudKitSyncService quand le réseau revient en ligne.
+    /// `context` sert à récupérer les @Model Utilisateur frais depuis SwiftData.
+    func rejouerFileAttente(context: ModelContext) async {
+        let ids = await FileReplicationUtilisateur.shared.listerPrets()
+        guard !ids.isEmpty else { return }
+
+        logger.info("Rejoue \(ids.count) utilisateur(s) en attente de publication")
+
+        for id in ids {
+            let descripteur = FetchDescriptor<Utilisateur>(
+                predicate: #Predicate { $0.id == id }
+            )
+            guard let utilisateur = try? context.fetch(descripteur).first else {
+                // Utilisateur supprimé localement entretemps → retirer de la file
+                await FileReplicationUtilisateur.shared.marquerPublie(id)
+                continue
+            }
+
+            do {
+                try await publierUtilisateur(utilisateur)
+                await FileReplicationUtilisateur.shared.marquerPublie(id)
+            } catch {
+                await FileReplicationUtilisateur.shared.planifierRetry(id)
+                logger.warning("Retry publication utilisateur \(id.uuidString, privacy: .private) échoué : \(error.localizedDescription)")
+            }
+        }
     }
 
     /// Publie un seul utilisateur (quand le coach ajoute un athlète après la config initiale)
@@ -91,7 +133,7 @@ final class CloudKitSharingService {
             if let joueur {
                 try await publierJoueur(joueur)
             }
-            logger.info("Utilisateur \(utilisateur.identifiant) publié")
+            logger.info("Utilisateur \(utilisateur.identifiant, privacy: .private) publié")
         } catch {
             logger.error("Erreur publication utilisateur: \(error.localizedDescription)")
         }
@@ -134,7 +176,7 @@ final class CloudKitSharingService {
 
             derniereSyncDate = Date()
             let totalPub = (equipe.dateModification > seuil ? 1 : 0) + usersModifies.count + joueursModifies.count
-            logger.info("Sync incrémentale: \(totalPub) records publiés pour \(equipe.codeEquipe)")
+            logger.info("Sync incrémentale: \(totalPub) records publiés pour \(equipe.codeEquipe, privacy: .private)")
         } catch {
             logger.error("Erreur sync incrémentale: \(error.localizedDescription)")
             self.erreur = error.localizedDescription
@@ -218,7 +260,7 @@ final class CloudKitSharingService {
 
         try context.save()
 
-        logger.info("Équipe \(codeEquipe) importée: \(utilisateurRecords.count) utilisateurs, \(joueurRecords.count) joueurs")
+        logger.info("Équipe \(codeEquipe, privacy: .private) importée: \(utilisateurRecords.count) utilisateurs, \(joueurRecords.count) joueurs")
     }
 
     // MARK: - Sync incrémentale
@@ -238,7 +280,7 @@ final class CloudKitSharingService {
             }
 
             try? context.save()
-            logger.info("Sync incrémentale terminée pour \(codeEquipe)")
+            logger.info("Sync incrémentale terminée pour \(codeEquipe, privacy: .private)")
         } catch {
             logger.error("Erreur sync incrémentale: \(error.localizedDescription)")
         }
@@ -281,12 +323,17 @@ final class CloudKitSharingService {
 
         record["utilisateurID"] = utilisateur.id.uuidString as CKRecordValue
         record["identifiant"] = utilisateur.identifiant as CKRecordValue
+        record["motDePasseHash"] = utilisateur.motDePasseHash as CKRecordValue
         record["prenom"] = utilisateur.prenom as CKRecordValue
         record["nom"] = utilisateur.nom as CKRecordValue
         record["roleRaw"] = utilisateur.roleRaw as CKRecordValue
         record["codeEcole"] = utilisateur.codeEcole as CKRecordValue
         record["estActif"] = (utilisateur.estActif ? 1 : 0) as CKRecordValue
 
+        if let sel = utilisateur.sel, !sel.isEmpty {
+            record["sel"] = sel as CKRecordValue
+        }
+        record["iterations"] = utilisateur.iterations as CKRecordValue
         if let joueurID = utilisateur.joueurEquipeID {
             record["joueurEquipeID"] = joueurID.uuidString as CKRecordValue
         }
@@ -362,11 +409,15 @@ final class CloudKitSharingService {
             // Mettre à jour les champs mutables
             existant.estActif = (record["estActif"] as? Int ?? 1) == 1
             existant.dateModification = remoteDateMod
-            if let motDePasseHash = record["motDePasseHash"] as? String {
+            // Toujours synchroniser le hash — le coach peut avoir changé le mot de passe
+            if let motDePasseHash = record["motDePasseHash"] as? String, !motDePasseHash.isEmpty {
                 existant.motDePasseHash = motDePasseHash
             }
-            if let sel = record["sel"] as? String {
+            if let sel = record["sel"] as? String, !sel.isEmpty {
                 existant.sel = sel
+            }
+            if let iterations = record["iterations"] as? Int, iterations >= 1 {
+                existant.iterations = iterations
             }
             if let prenom = record["prenom"] as? String {
                 existant.prenom = prenom
@@ -383,10 +434,18 @@ final class CloudKitSharingService {
             return
         }
 
-        // Créer le nouvel utilisateur
+        // Créer le nouvel utilisateur avec les credentials de la source.
+        // Refuser la création si le hash est absent : un compte sans hash est
+        // inexploitable (connexion impossible), polluerait la BD locale, et
+        // masquerait le problème côté diagnostic.
+        let hashImporte = record["motDePasseHash"] as? String ?? ""
+        guard !hashImporte.isEmpty else {
+            logger.warning("Skip création utilisateur \(uuid.uuidString, privacy: .private) — hash absent, record source corrompu ou pré-v1.9")
+            return
+        }
         let utilisateur = Utilisateur(
             identifiant: record["identifiant"] as? String ?? "",
-            motDePasseHash: record["motDePasseHash"] as? String ?? "",
+            motDePasseHash: hashImporte,
             prenom: record["prenom"] as? String ?? "",
             nom: record["nom"] as? String ?? "",
             role: RoleUtilisateur(rawValue: record["roleRaw"] as? String ?? "Étudiant") ?? .etudiant,
@@ -396,6 +455,8 @@ final class CloudKitSharingService {
         utilisateur.id = uuid
         utilisateur.estActif = (record["estActif"] as? Int ?? 1) == 1
         utilisateur.sel = record["sel"] as? String
+        // Itérations PBKDF2 — défaut 1 = chemin legacy SHA256 pour records pré-v1.10
+        utilisateur.iterations = record["iterations"] as? Int ?? 1
 
         if let joueurIDStr = record["joueurEquipeID"] as? String {
             utilisateur.joueurEquipeID = UUID(uuidString: joueurIDStr)

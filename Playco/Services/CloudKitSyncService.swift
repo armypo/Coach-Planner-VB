@@ -86,6 +86,12 @@ final class CloudKitSyncService {
     nonisolated private let fileReseau = DispatchQueue(label: "com.origotech.playco.reseau")
     nonisolated private let boiteObserveur = BoiteObserveur()
 
+    /// Callback invoqué quand le réseau passe hors-ligne → en-ligne.
+    /// Utilisé par PlaycoApp pour déclencher `sharingService.rejouerFileAttente`.
+    /// `@Sendable` pour préparer Swift 6 strict concurrency (appelé depuis
+    /// `pathUpdateHandler` sur une queue secondaire puis hop-main).
+    var onReseauRestaure: (@Sendable () async -> Void)?
+
     // MARK: - Démarrage
 
     /// Vérifie le compte iCloud et commence à observer les événements de sync
@@ -108,10 +114,13 @@ final class CloudKitSyncService {
                     self.statutSync = .horsLigne
                     logger.info("Réseau indisponible — mode hors ligne")
                 } else if etaitHorsLigne {
-                    // Retour en ligne → re-vérifier iCloud
+                    // Retour en ligne → re-vérifier iCloud + rejouer file de publication
                     self.statutSync = .enCours
                     self.verifierCompteICloud()
                     logger.info("Réseau restauré — reprise sync")
+                    if let callback = self.onReseauRestaure {
+                        Task { await callback() }
+                    }
                 }
             }
         }

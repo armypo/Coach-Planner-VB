@@ -78,4 +78,34 @@ final class Equipe {
         self.nom = nom
         self.dateCreation = Date()
     }
+
+    // MARK: - Génération code équipe haute entropie
+
+    /// Alphabet Base32 Crockford sans caractères ambigus (0/O/1/I/L).
+    /// 31 symboles × 8 positions ≈ 40 bits d'entropie.
+    static let alphabetCodeEquipe = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
+
+    /// Génère un code équipe de 8 caractères via CSPRNG.
+    static func genererCodeEquipe() -> String {
+        var rng = SystemRandomNumberGenerator()
+        let alphabet = Array(alphabetCodeEquipe)
+        let n = UInt64(alphabet.count)
+        return String((0..<8).map { _ in
+            alphabet[Int(rng.next() % n)]
+        })
+    }
+
+    /// Normalise une saisie utilisateur (uppercase + filtre alphabet).
+    static func normaliserCodeEquipe(_ saisie: String) -> String {
+        let majuscule = saisie.uppercased()
+        let autorises = Set(alphabetCodeEquipe)
+        return String(majuscule.filter { autorises.contains($0) })
+    }
+
+    /// Vérifie qu'un code respecte le format 8-char alphabet restreint.
+    static func codeEquipeValide(_ code: String) -> Bool {
+        guard code.count == 8 else { return false }
+        let autorises = Set(alphabetCodeEquipe)
+        return code.allSatisfy { autorises.contains($0) }
+    }
 }

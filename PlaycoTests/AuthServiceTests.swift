@@ -22,13 +22,19 @@ struct AuthServiceTests {
         return ModelContext(container)
     }
 
-    /// AuthService avec un UserDefaults isolé par test — évite les collisions
-    /// entre tests qui partagent l'état (tentativesEchouees, verrouillage).
-    /// Nettoie également le Keychain pour la clé de session avant chaque test.
+    /// Nettoie l'état Keychain global (session + verrouillage) avant chaque test.
+    /// Le Keychain iOS n'est pas isolable par suite, d'où le nettoyage explicite.
+    @MainActor
+    private func nettoyerKeychainGlobal() {
+        KeychainService.supprimer(cle: "playco_session_utilisateurConnecteID")
+        KeychainService.supprimer(cle: AuthService.cleEtatVerrouillage)
+    }
+
+    /// AuthService avec UserDefaults isolé — conservé pour la migration legacy
+    /// UserDefaults → Keychain. Le verrouillage lui-même est en Keychain global.
     @MainActor
     private func creerAuthIsole() -> AuthService {
-        // Nettoyer l'état global Keychain entre les tests
-        KeychainService.supprimer(cle: "playco_session_utilisateurConnecteID")
+        nettoyerKeychainGlobal()
         let suite = UserDefaults(suiteName: "playco-test-\(UUID().uuidString)")!
         return AuthService(userDefaults: suite)
     }
@@ -37,7 +43,7 @@ struct AuthServiceTests {
     /// pour les tests qui doivent écrire dans le même store (ex: restaurerSession).
     @MainActor
     private func creerAuthAvecSuite() -> (AuthService, UserDefaults) {
-        KeychainService.supprimer(cle: "playco_session_utilisateurConnecteID")
+        nettoyerKeychainGlobal()
         let suite = UserDefaults(suiteName: "playco-test-\(UUID().uuidString)")!
         return (AuthService(userDefaults: suite), suite)
     }
@@ -97,6 +103,53 @@ struct AuthServiceTests {
         #expect(sel1.count == 32, "Sel = 16 bytes = 32 hex chars")
     }
 
+    // MARK: - Politique mot de passe NIST 800-63B
+
+    @Test("Politique mdp : refuse < 12 caractères")
+    func mdpTropCourt() {
+        let erreur = AuthService.validerMotDePasse("court12345",
+                                                    identifiant: "user",
+                                                    prenom: "Jean",
+                                                    nom: "Tremblay")
+        #expect(erreur?.contains("12 caractères") == true)
+    }
+
+    @Test("Politique mdp : refuse mdp commun (blacklist)")
+    func mdpCommunRefuse() {
+        let erreur = AuthService.validerMotDePasse("motdepasse12",
+                                                    identifiant: "user",
+                                                    prenom: "Jean",
+                                                    nom: "Tremblay")
+        #expect(erreur?.contains("trop commun") == true)
+    }
+
+    @Test("Politique mdp : refuse contournement par suffixe")
+    func mdpBlacklistContournementRefuse() {
+        let erreur = AuthService.validerMotDePasse("volleyball123!",
+                                                    identifiant: "user",
+                                                    prenom: "Jean",
+                                                    nom: "Tremblay")
+        #expect(erreur?.contains("trop commun") == true)
+    }
+
+    @Test("Politique mdp : refuse si contient identifiant/prénom/nom")
+    func mdpContientPII() {
+        let erreur = AuthService.validerMotDePasse("SuperTremblay9!",
+                                                    identifiant: "jean.tremblay",
+                                                    prenom: "Jean",
+                                                    nom: "Tremblay")
+        #expect(erreur?.contains("identifiant") == true)
+    }
+
+    @Test("Politique mdp : accepte mdp valide unique")
+    func mdpValideAccepte() {
+        let erreur = AuthService.validerMotDePasse("Cheval-Sauvage-2026!",
+                                                    identifiant: "jean.tremblay",
+                                                    prenom: "Jean",
+                                                    nom: "Tremblay")
+        #expect(erreur == nil)
+    }
+
     // MARK: - Lockout
 
     @Test("Verrouillage après 5 tentatives")
@@ -132,6 +185,7 @@ struct AuthServiceTests {
         let hash = auth.hashMotDePasse("secret123", sel: sel)
         let user = Utilisateur(identifiant: "chris.dionne", motDePasseHash: hash, prenom: "Chris", nom: "Dionne", role: .admin)
         user.sel = sel
+        user.iterations = AuthService.iterationsParDefaut
         context.insert(user)
         try context.save()
 
@@ -150,6 +204,7 @@ struct AuthServiceTests {
         let hash = auth.hashMotDePasse("correct", sel: sel)
         let user = Utilisateur(identifiant: "test.user", motDePasseHash: hash, prenom: "Test", nom: "User", role: .etudiant)
         user.sel = sel
+        user.iterations = AuthService.iterationsParDefaut
         context.insert(user)
         try context.save()
 
@@ -183,6 +238,7 @@ struct AuthServiceTests {
         let hash = auth.hashMotDePasse("pass", sel: sel)
         let user = Utilisateur(identifiant: "session.test", motDePasseHash: hash, prenom: "S", nom: "T", role: .etudiant)
         user.sel = sel
+        user.iterations = AuthService.iterationsParDefaut
         context.insert(user)
         try context.save()
 
@@ -210,6 +266,7 @@ struct AuthServiceTests {
         let hash = auth.hashMotDePasse("pass", sel: sel)
         let user = Utilisateur(identifiant: "deco.test", motDePasseHash: hash, prenom: "D", nom: "T", role: .etudiant)
         user.sel = sel
+        user.iterations = AuthService.iterationsParDefaut
         context.insert(user)
         try context.save()
 
