@@ -92,6 +92,52 @@ struct AuthServiceTests {
 
         auth.connexion(identifiant: "ancien.compte", motDePasse: motDePasse, context: context)
         #expect(auth.estConnecte, "Doit accepter un ancien hash sans sel (rétrocompatibilité)")
+
+        // Après connexion réussie, le compte doit avoir été migré vers PBKDF2 600k
+        #expect(user.iterations == AuthService.iterationsParDefaut,
+                "Migration auto SHA256 → PBKDF2 au login")
+        #expect((user.sel?.isEmpty ?? true) == false,
+                "Migration a généré un sel aléatoire")
+    }
+
+    @Test("Migration hash v1.9 (SHA256+sel) → PBKDF2 au login")
+    func connexionMigrationSHA256Sel() throws {
+        let auth = creerAuthIsole()
+        let context = try creerContexteEnMemoire()
+
+        // Simuler un compte v1.9 : sel présent, hash = SHA256(sel + mdp), iterations = 1
+        let motDePasse = "motdepassev19"
+        let sel = "7f3a9b21d4c6e8f05a1b3c2d4e5f6789"
+        let hashV19 = SHA256.hash(data: Data((sel + motDePasse).utf8))
+            .compactMap { String(format: "%02x", $0) }.joined()
+
+        let user = Utilisateur(
+            identifiant: "v19.compte",
+            motDePasseHash: hashV19,
+            prenom: "Un",
+            nom: "Neuf",
+            role: .etudiant
+        )
+        user.sel = sel
+        user.iterations = 1 // chemin legacy v1.9
+        context.insert(user)
+        try context.save()
+
+        auth.connexion(identifiant: "v19.compte", motDePasse: motDePasse, context: context)
+        #expect(auth.estConnecte, "Doit accepter un hash SHA256+sel legacy")
+
+        // Migration vers PBKDF2 600k
+        #expect(user.iterations == AuthService.iterationsParDefaut,
+                "iterations doit être à 600k après migration")
+        #expect(user.motDePasseHash != hashV19,
+                "hash doit avoir changé (nouveau hash PBKDF2)")
+        #expect(user.sel != sel,
+                "sel doit avoir changé (migration régénère un sel)")
+
+        // Se reconnecter avec le même mot de passe après migration doit fonctionner
+        auth.deconnexion()
+        auth.connexion(identifiant: "v19.compte", motDePasse: motDePasse, context: context)
+        #expect(auth.estConnecte, "Le même mot de passe doit fonctionner post-migration")
     }
 
     @Test("Génération de sel unique")

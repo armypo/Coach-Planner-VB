@@ -234,6 +234,16 @@ final class AuthService {
     /// Durée maximum d'une session avant réauthentification obligatoire (30 jours)
     private static let dureeMaxSessionSecondes: TimeInterval = 30 * 24 * 3600
 
+    /// Tente de restaurer la session précédente à partir du UUID stocké dans le
+    /// Keychain. À appeler au démarrage de l'app après `attendreSyncInitiale()`
+    /// pour éviter les faux-négatifs si CloudKit n'a pas encore rapatrié l'utilisateur.
+    /// - Parameter context: contexte SwiftData pour fetch l'Utilisateur par id.
+    ///
+    /// Comportements :
+    /// - Pas de session sauvegardée → no-op
+    /// - Session > 30 jours → supprimée + `erreur` = "Session expirée"
+    /// - Utilisateur absent/inactif → session supprimée, `utilisateurConnecte` reste nil
+    /// - Session valide → `utilisateurConnecte` défini
     func restaurerSession(context: ModelContext) {
         guard let idString = idSessionSauvegardee,
               let id = UUID(uuidString: idString) else { return }
@@ -272,6 +282,17 @@ final class AuthService {
 
     // MARK: - Connexion par Identifiant + Mot de passe
 
+    /// Tente de connecter un utilisateur avec identifiant + mot de passe.
+    ///
+    /// Effets :
+    /// - Succès : `utilisateurConnecte` défini, session Keychain écrite, compteur
+    ///   tentatives reset. Migration auto SHA256 → PBKDF2 si compte legacy.
+    /// - Échec : `erreur` défini avec message générique (pas d'info fuite sur
+    ///   "identifiant inconnu" vs "mdp incorrect"), `enregistrerEchec()` appelé.
+    /// - Verrouillé : retour early avec message + temps restant.
+    ///
+    /// Toutes les interpolations d'identifiant dans les logs utilisent
+    /// `privacy: .private`. La comparaison de hash est constant-time.
     func connexion(identifiant: String, motDePasse: String, context: ModelContext) {
         erreur = nil
         chargement = true
@@ -434,6 +455,16 @@ final class AuthService {
         return nil
     }
 
+    /// Crée un nouveau compte utilisateur (coach/admin uniquement).
+    /// - Returns: `nil` si succès, sinon le message d'erreur à afficher à l'UI.
+    ///
+    /// Valide :
+    /// - Identifiant : ≥ 3 caractères, unique en BD
+    /// - Mot de passe : politique NIST 800-63B (12 chars + pas dans blacklist +
+    ///   ne contient pas identifiant/prénom/nom)
+    /// - Prénom / nom : non vides
+    ///
+    /// Le hash est dérivé avec PBKDF2-HMAC-SHA256 600k itérations.
     func creerCompte(identifiant: String, motDePasse: String, prenom: String, nom: String, role: RoleUtilisateur, context: ModelContext) -> String? {
         let idNormalise = identifiant.lowercased().trimmingCharacters(in: .whitespaces)
 
@@ -466,7 +497,7 @@ final class AuthService {
             return "Erreur lors de la vérification."
         }
 
-        // S1 : Hash avec sel
+        // PBKDF2-HMAC-SHA256 600k itérations (cf. iterationsParDefaut).
         let sel = genererSel()
         let hash = hashMotDePasse(motDePasse, sel: sel)
         let nouvelUtilisateur = Utilisateur(
