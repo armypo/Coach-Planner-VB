@@ -178,8 +178,11 @@ struct PlaycoApp: App {
                                 syncService.demarrerSurveillanceReseau()
                                 // Brancher le rejeu automatique de la file de publication
                                 // d'utilisateurs quand le réseau revient en ligne.
-                                syncService.onReseauRestaure = { [sharingService, container] in
-                                    await sharingService.rejouerFileAttente(context: container.mainContext)
+                                // Capture explicite des références pour clarté sémantique.
+                                let sharing = sharingService
+                                let containerRef = container
+                                syncService.onReseauRestaure = { @Sendable in
+                                    await sharing.rejouerFileAttente(context: containerRef.mainContext)
                                 }
                                 Task {
                                     await syncService.attendreSyncInitiale()

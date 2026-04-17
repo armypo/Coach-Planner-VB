@@ -26,6 +26,7 @@ struct ContentView: View {
     @State private var equipeSelectionnee: Equipe?
     @State private var selectionEquipeFaite = false
     @State private var afficherToastDesactivation = false
+    @State private var toastTask: Task<Void, Never>?
 
     @Query private var equipes: [Equipe]
     @Query(sort: \MessageEquipe.dateEnvoi) private var tousMessages: [MessageEquipe]
@@ -133,8 +134,20 @@ struct ContentView: View {
             return
         case .desactive, .supprime:
             authService.deconnexion()
-            afficherToastDesactivation = true
-            Task { try? await Task.sleep(for: .seconds(4)); afficherToastDesactivation = false }
+            afficherToastAvecDelai()
+        }
+    }
+
+    /// Affiche le toast et programme sa disparition à 4s.
+    /// Annule toute tâche précédente pour éviter un reset prématuré si la
+    /// scène passe active→inactive→active rapidement.
+    private func afficherToastAvecDelai() {
+        toastTask?.cancel()
+        afficherToastDesactivation = true
+        toastTask = Task {
+            try? await Task.sleep(for: .seconds(4))
+            guard !Task.isCancelled else { return }
+            afficherToastDesactivation = false
         }
     }
 
