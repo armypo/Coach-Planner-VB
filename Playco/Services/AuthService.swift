@@ -4,8 +4,6 @@
 
 import Foundation
 import SwiftData
-import CryptoKit
-import CommonCrypto
 import os
 
 // MARK: - AuthService (MainActor — thread safety)
@@ -62,107 +60,22 @@ final class AuthService {
         self.session = SessionManager(userDefaults: userDefaults)
     }
 
-    // MARK: - Dérivation de clé (PBKDF2-HMAC-SHA256)
+    // MARK: - Dérivation de clé (délégué à KeyDerivation)
 
-    /// Nombre d'itérations PBKDF2 pour les nouveaux comptes (OWASP 2024 : ≥ 600 000).
-    static let iterationsParDefaut: Int = 600_000
+    /// Alias statique pour compat : la valeur canonique vit dans KeyDerivation.
+    static var iterationsParDefaut: Int { KeyDerivation.iterationsParDefaut }
 
-    /// Génère un sel aléatoire de 16 bytes (encodé en hex, 32 caractères)
+    /// Wrapper délégant à `KeyDerivation.genererSel()`.
+    /// Maintenu en API publique pour compat avec les 7 call sites (ConfigurationView,
+    /// NouveauJoueurView, ModifierUtilisateurView, JoueurDetailView, etc.).
     func genererSel() -> String {
-        let bytes = (0..<16).map { _ in UInt8.random(in: 0...255) }
-        return Data(bytes).map { String(format: "%02x", $0) }.joined()
+        KeyDerivation.genererSel()
     }
 
-    /// Hash du mot de passe avec PBKDF2-HMAC-SHA256 + sel.
-    /// Utilise `iterationsParDefaut` (600 000) pour tous les nouveaux comptes.
-    /// Sortie : 32 bytes → 64 caractères hex (même taille que l'ancien SHA256 pour compat tests).
+    /// Wrapper délégant à `KeyDerivation.hashPBKDF2(_:sel:)`.
+    /// Maintenu en API publique pour compat avec les 7 call sites.
     func hashMotDePasse(_ motDePasse: String, sel: String) -> String {
-        deriverCle(motDePasse: motDePasse, sel: sel, iterations: Self.iterationsParDefaut)
-    }
-
-    /// Dérive une clé avec PBKDF2-HMAC-SHA256. Paramètre `iterations` exposé pour
-    /// la vérification des comptes legacy (migration progressive).
-    private func deriverCle(motDePasse: String, sel: String, iterations: Int) -> String {
-        // Garde-fou : pointeur nil + count=0 sur CCKeyDerivationPBKDF est UB.
-        guard !motDePasse.isEmpty else {
-            Self.logger.error("deriverCle appelé avec motDePasse vide — refus")
-            return ""
-        }
-        // Utilise Data.utf8 pour compter tous les bytes (tolère les NUL éventuels,
-        // contrairement à strlen).
-        let mdpData = Data(motDePasse.utf8)
-        let selData = Data(sel.utf8)
-        var derivee = [UInt8](repeating: 0, count: 32)
-
-        let statut: Int32 = mdpData.withUnsafeBytes { mdpBuf in
-            selData.withUnsafeBytes { selBuf in
-                CCKeyDerivationPBKDF(
-                    CCPBKDFAlgorithm(kCCPBKDF2),
-                    mdpBuf.baseAddress?.assumingMemoryBound(to: CChar.self),
-                    mdpData.count,
-                    selBuf.baseAddress?.assumingMemoryBound(to: UInt8.self),
-                    selData.count,
-                    CCPseudoRandomAlgorithm(kCCPRFHmacAlgSHA256),
-                    UInt32(iterations),
-                    &derivee, derivee.count
-                )
-            }
-        }
-
-        guard statut == kCCSuccess else {
-            Self.logger.critical("CCKeyDerivationPBKDF échec statut \(statut) — échec crypto, connexion refusée")
-            return ""
-        }
-
-        return derivee.map { String(format: "%02x", $0) }.joined()
-    }
-
-    /// Hash SHA256+sel d'origine (v1.0 → v1.9) — conservé pour la vérification
-    /// des comptes pré-PBKDF2. Ne JAMAIS utiliser pour de nouveaux comptes.
-    private func hashLegacySHA256AvecSel(_ motDePasse: String, sel: String) -> String {
-        let donnees = Data((sel + motDePasse).utf8)
-        let hash = SHA256.hash(data: donnees)
-        return hash.compactMap { String(format: "%02x", $0) }.joined()
-    }
-
-    /// Hash SHA256 sans sel (v0.x) — préhistoire, uniquement pour la compat.
-    private func hashLegacySHA256SansSel(_ motDePasse: String) -> String {
-        let donnees = Data(motDePasse.utf8)
-        let hash = SHA256.hash(data: donnees)
-        return hash.compactMap { String(format: "%02x", $0) }.joined()
-    }
-
-    /// Vérifie le mot de passe en choisissant l'algorithme selon les métadonnées
-    /// du compte. Trois chemins :
-    ///   • sel absent           → SHA256 brut (pré-v0.6)
-    ///   • iterations ≤ 1 + sel → SHA256+sel (v0.6 → v1.9)
-    ///   • iterations ≥ 2       → PBKDF2 avec le nombre d'itérations stocké
-    private func verifierMotDePasse(_ motDePasse: String,
-                                    hash: String,
-                                    sel: String?,
-                                    iterations: Int) -> Bool {
-        guard let sel = sel, !sel.isEmpty else {
-            return egaliteConstante(hashLegacySHA256SansSel(motDePasse), hash)
-        }
-        let candidat: String
-        if iterations <= 1 {
-            candidat = hashLegacySHA256AvecSel(motDePasse, sel: sel)
-        } else {
-            candidat = deriverCle(motDePasse: motDePasse, sel: sel, iterations: iterations)
-        }
-        return egaliteConstante(candidat, hash)
-    }
-
-    /// Comparaison constant-time pour éviter les timing attacks.
-    private func egaliteConstante(_ a: String, _ b: String) -> Bool {
-        let aBytes = Array(a.utf8)
-        let bBytes = Array(b.utf8)
-        guard aBytes.count == bBytes.count else { return false }
-        var diff: UInt8 = 0
-        for i in 0..<aBytes.count {
-            diff |= aBytes[i] ^ bBytes[i]
-        }
-        return diff == 0
+        KeyDerivation.hashPBKDF2(motDePasse, sel: sel)
     }
 
     // MARK: - Restauration de session
@@ -256,10 +169,10 @@ final class AuthService {
                 return
             }
 
-            guard verifierMotDePasse(motDePasse,
-                                     hash: utilisateur.motDePasseHash,
-                                     sel: utilisateur.sel,
-                                     iterations: utilisateur.iterations) else {
+            guard KeyDerivation.verifier(motDePasse,
+                                         hash: utilisateur.motDePasseHash,
+                                         sel: utilisateur.sel,
+                                         iterations: utilisateur.iterations) else {
                 enregistrerEchec()
                 erreur = "Identifiant ou mot de passe incorrect."
                 chargement = false
