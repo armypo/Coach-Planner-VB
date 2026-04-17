@@ -26,7 +26,7 @@ struct AuthServiceTests {
     /// Le Keychain iOS n'est pas isolable par suite, d'où le nettoyage explicite.
     @MainActor
     private func nettoyerKeychainGlobal() {
-        KeychainService.supprimer(cle: "playco_session_utilisateurConnecteID")
+        KeychainService.supprimer(cle: SessionManager.cleKeychain)
         KeychainService.supprimer(cle: AuthService.cleEtatVerrouillage)
     }
 
@@ -298,7 +298,7 @@ struct AuthServiceTests {
 
         // Cleanup
         suite.removeObject(forKey: "utilisateurConnecteID")
-        KeychainService.supprimer(cle: "playco_session_utilisateurConnecteID")
+        KeychainService.supprimer(cle: SessionManager.cleKeychain)
     }
 
     // MARK: - État session (foreground check)

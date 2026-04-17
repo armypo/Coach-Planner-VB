@@ -43,24 +43,13 @@ final class AuthService {
     /// Secondes restantes avant fin du lockout (délégué à `lockout`).
     var tempsRestantVerrouillage: Int { lockout.tempsRestant }
 
-    // MARK: - Session persistée dans le Keychain
+    // MARK: - Session (délégué à SessionManager)
 
-    private let cleSession = "playco_session_utilisateurConnecteID"
-    private let cleSessionLegacy = "utilisateurConnecteID"
+    /// Gestionnaire de session (persistance Keychain + expiration 30j).
+    private let session: SessionManager
 
-    var idSessionSauvegardee: String? {
-        // Lecture depuis le Keychain ; migration depuis UserDefaults si nécessaire
-        if let idKeychain = KeychainService.lire(cle: cleSession) {
-            return idKeychain
-        }
-        // Migration : ancienne valeur UserDefaults → Keychain
-        if let idLegacy = userDefaults.string(forKey: cleSessionLegacy) {
-            KeychainService.sauvegarder(cle: cleSession, valeur: idLegacy)
-            userDefaults.removeObject(forKey: cleSessionLegacy)
-            return idLegacy
-        }
-        return nil
-    }
+    /// UUID de session sauvegardé, ou `nil` (délégué à `session`).
+    var idSessionSauvegardee: String? { session.idSauvegarde }
 
     // MARK: - init
 
@@ -70,6 +59,7 @@ final class AuthService {
     init(userDefaults: UserDefaults = .standard) {
         self.userDefaults = userDefaults
         self.lockout = LockoutManager(userDefaults: userDefaults)
+        self.session = SessionManager(userDefaults: userDefaults)
     }
 
     // MARK: - Dérivation de clé (PBKDF2-HMAC-SHA256)
@@ -177,9 +167,6 @@ final class AuthService {
 
     // MARK: - Restauration de session
 
-    /// Durée maximum d'une session avant réauthentification obligatoire (30 jours)
-    private static let dureeMaxSessionSecondes: TimeInterval = 30 * 24 * 3600
-
     /// Tente de restaurer la session précédente à partir du UUID stocké dans le
     /// Keychain. À appeler au démarrage de l'app après `attendreSyncInitiale()`
     /// pour éviter les faux-négatifs si CloudKit n'a pas encore rapatrié l'utilisateur.
@@ -191,7 +178,7 @@ final class AuthService {
     /// - Utilisateur absent/inactif → session supprimée, `utilisateurConnecte` reste nil
     /// - Session valide → `utilisateurConnecte` défini
     func restaurerSession(context: ModelContext) {
-        guard let idString = idSessionSauvegardee,
+        guard let idString = session.idSauvegarde,
               let id = UUID(uuidString: idString) else { return }
 
         let descripteur = FetchDescriptor<Utilisateur>(
@@ -199,15 +186,15 @@ final class AuthService {
         )
 
         guard let utilisateur = try? context.fetch(descripteur).first else {
-            KeychainService.supprimer(cle: cleSession)
+            session.supprimer()
             return
         }
 
         // Vérifier l'expiration de session (30 jours max)
         if let sessionCreee = utilisateur.sessionCreeeLe,
-           Date().timeIntervalSince(sessionCreee) > Self.dureeMaxSessionSecondes {
+           SessionManager.estExpiree(dateCreation: sessionCreee) {
             Self.logger.info("Session expirée après 30 jours — déconnexion automatique")
-            KeychainService.supprimer(cle: cleSession)
+            session.supprimer()
             erreur = "Session expirée, veuillez vous reconnecter."
             return
         }
@@ -327,7 +314,7 @@ final class AuthService {
 
             utilisateurConnecte = utilisateur
             // Persistance session Keychain (survit à fermeture app, pas à logout explicite)
-            KeychainService.sauvegarder(cle: cleSession, valeur: utilisateur.id.uuidString)
+            session.sauvegarder(utilisateurID: utilisateur.id)
 
         } catch {
             // Message générique côté UI, détail uniquement dans le log privé
@@ -420,7 +407,7 @@ final class AuthService {
 
     func deconnexion() {
         utilisateurConnecte = nil
-        KeychainService.supprimer(cle: cleSession)
+        session.supprimer()
     }
 
     // MARK: - Vérification état utilisateur (foreground check)

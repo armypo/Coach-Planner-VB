@@ -14,7 +14,7 @@ struct MultiUtilisateurTests {
 
     @MainActor
     private func creerAuthIsole() -> AuthService {
-        KeychainService.supprimer(cle: "playco_session_utilisateurConnecteID")
+        KeychainService.supprimer(cle: SessionManager.cleKeychain)
         let suite = UserDefaults(suiteName: "playco-test-\(UUID().uuidString)")!
         return AuthService(userDefaults: suite)
     }
