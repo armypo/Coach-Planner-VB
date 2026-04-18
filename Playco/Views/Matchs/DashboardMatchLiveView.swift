@@ -166,7 +166,8 @@ struct DashboardMatchLiveView: View {
 
     private var lectureSeule: Bool {
         guard let user = authService.utilisateurConnecte else { return true }
-        if user.role == .admin || user.role == .coach { return false }
+        // Coach (principal + assistant) et admin ont tous les droits
+        if user.role == .admin || user.role == .coach || user.role == .assistantCoach { return false }
         if let perms = toutesPermissions.first(where: { $0.assistantID == user.id && $0.codeEquipe == codeEquipeActif }) {
             return !perms.peutGererStats
         }

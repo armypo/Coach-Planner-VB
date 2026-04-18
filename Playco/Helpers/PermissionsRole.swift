@@ -8,37 +8,37 @@ import SwiftUI
 extension RoleUtilisateur {
     /// Peut créer/modifier/supprimer des séances et exercices
     var peutModifierSeances: Bool {
-        self == .coach || self == .admin
+        self == .coach || self == .assistantCoach || self == .admin
     }
 
     /// Peut créer/modifier/supprimer des stratégies
     var peutModifierStrategies: Bool {
-        self == .coach || self == .admin
+        self == .coach || self == .assistantCoach || self == .admin
     }
 
     /// Peut gérer les joueurs de l'équipe (ajouter, modifier, supprimer)
     var peutGererEquipe: Bool {
-        self == .coach || self == .admin
+        self == .coach || self == .assistantCoach || self == .admin
     }
 
     /// Peut prendre les présences et évaluer
     var peutEvaluer: Bool {
-        self == .coach || self == .admin
+        self == .coach || self == .assistantCoach || self == .admin
     }
 
     /// Peut créer/gérer les programmes de musculation
     var peutGererProgrammes: Bool {
-        self == .coach || self == .admin
+        self == .coach || self == .assistantCoach || self == .admin
     }
 
     /// Peut exporter/importer des données
     var peutExporter: Bool {
-        self == .coach || self == .admin
+        self == .coach || self == .assistantCoach || self == .admin
     }
 
     /// Peut créer des comptes utilisateurs
     var peutCreerComptes: Bool {
-        self == .coach || self == .admin
+        self == .coach || self == .assistantCoach || self == .admin
     }
 }
 

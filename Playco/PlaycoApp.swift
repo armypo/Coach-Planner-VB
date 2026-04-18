@@ -32,7 +32,8 @@ struct PlaycoApp: App {
         AssistantCoach.self, CreneauRecurrent.self, MatchCalendrier.self,
         MessageEquipe.self, ScoutingReport.self, PointMatch.self, ActionRallye.self,
         PhaseSaison.self, ObjectifJoueur.self,
-        CategorieExercice.self, StaffPermissions.self
+        CategorieExercice.self, StaffPermissions.self,
+        CredentialAthlete.self
     ]
 
     init() {
@@ -85,10 +86,10 @@ struct PlaycoApp: App {
     /// Écrans du flux de lancement
     enum EcranLancement {
         case chargement
-        case choixInitial      // premier lancement : configurer ou rejoindre
+        case choixInitial      // premier lancement : configurer ou se connecter
         case configuration     // wizard 6 étapes
-        case rejoindre         // connexion avec code équipe
-        case app               // ContentView (login + sections)
+        case login             // connexion unifiée (Coach / Assistant / Athlète)
+        case app               // ContentView (sections)
     }
 
     var body: some Scene {
@@ -109,8 +110,8 @@ struct PlaycoApp: App {
                             onConfigurer: {
                                 withAnimation { ecranActif = .configuration }
                             },
-                            onRejoindre: {
-                                withAnimation { ecranActif = .rejoindre }
+                            onConnexion: {
+                                withAnimation { ecranActif = .login }
                             }
                         )
                         .environment(authService)
@@ -144,11 +145,12 @@ struct PlaycoApp: App {
                         )
                         .environment(authService)
                         .environment(sharingService)
+                        .environment(analyticsService)
                         .modelContainer(container)
                         .transition(.move(edge: .trailing).combined(with: .opacity))
 
-                    case .rejoindre:
-                        RejoindreEquipeView(
+                    case .login:
+                        LoginView(
                             onRetour: {
                                 withAnimation { ecranActif = .choixInitial }
                             },

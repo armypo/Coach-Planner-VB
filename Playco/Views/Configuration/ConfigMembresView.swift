@@ -3,11 +3,14 @@
 //
 
 import SwiftUI
+import SwiftData
 
 /// Étape 5 — Ajouter assistants et joueurs
 struct ConfigMembresView: View {
     @Binding var assistants: [AssistantTemp]
     @Binding var joueurs: [JoueurTemp]
+
+    @Environment(\.modelContext) private var modelContext
 
     @State private var onglet: Int = 0 // 0 = joueurs, 1 = assistants
 
@@ -102,21 +105,31 @@ struct ConfigMembresView: View {
                     Text("Identifiant")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
-                    TextField("auto", text: joueur.identifiant)
-                        .font(.caption)
-                        .padding(8)
-                        .background(Color(.tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8))
-                        .onChange(of: joueur.wrappedValue.prenom) { autoId(joueur: joueur) }
-                        .onChange(of: joueur.wrappedValue.nom) { autoId(joueur: joueur) }
+                    champMonospaceAvecDice(
+                        valeur: joueur.wrappedValue.identifiant,
+                        placeholder: "auto",
+                        onRegenerer: {
+                            joueur.wrappedValue.identifiant = Utilisateur.genererIdentifiantUnique(
+                                prenom: joueur.wrappedValue.prenom,
+                                nom: joueur.wrappedValue.nom,
+                                context: modelContext
+                            )
+                        }
+                    )
+                    .onChange(of: joueur.wrappedValue.prenom) { autoIdJoueur(joueur: joueur) }
+                    .onChange(of: joueur.wrappedValue.nom) { autoIdJoueur(joueur: joueur) }
                 }
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Mot de passe (min 6 car.)")
+                    Text("Mot de passe (auto-généré)")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
-                    SecureField("••••••", text: joueur.motDePasse)
-                        .font(.caption)
-                        .padding(8)
-                        .background(Color(.tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8))
+                    champMonospaceAvecDice(
+                        valeur: joueur.wrappedValue.motDePasse,
+                        placeholder: "auto",
+                        onRegenerer: {
+                            joueur.wrappedValue.motDePasse = Utilisateur.genererMotDePasseAthlete()
+                        }
+                    )
                 }
             }
         }
@@ -124,14 +137,45 @@ struct ConfigMembresView: View {
         .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14))
     }
 
-    private func autoId(joueur: Binding<JoueurTemp>) {
-        if joueur.wrappedValue.identifiant.isEmpty ||
-           joueur.wrappedValue.identifiant == genererIdentifiant(prenom: "", nom: "") {
-            joueur.wrappedValue.identifiant = genererIdentifiant(
-                prenom: joueur.wrappedValue.prenom,
-                nom: joueur.wrappedValue.nom
-            )
+    /// Génère un identifiant `prenom.nom.XXXX` tant que l'utilisateur n'a pas
+    /// personnalisé le champ lui-même (= vide).
+    private func autoIdJoueur(joueur: Binding<JoueurTemp>) {
+        let j = joueur.wrappedValue
+        guard j.identifiant.isEmpty,
+              !j.prenom.trimmingCharacters(in: .whitespaces).isEmpty,
+              !j.nom.trimmingCharacters(in: .whitespaces).isEmpty
+        else { return }
+        joueur.wrappedValue.identifiant = Utilisateur.genererIdentifiantUnique(
+            prenom: j.prenom,
+            nom: j.nom,
+            context: modelContext
+        )
+    }
+
+    /// Champ monospace read-only (placeholder si vide) avec bouton dé pour régénérer.
+    private func champMonospaceAvecDice(
+        valeur: String,
+        placeholder: String,
+        onRegenerer: @escaping () -> Void
+    ) -> some View {
+        HStack(spacing: 6) {
+            Text(valeur.isEmpty ? placeholder : valeur)
+                .font(.system(.caption, design: .monospaced))
+                .foregroundStyle(valeur.isEmpty ? .tertiary : .primary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Button {
+                onRegenerer()
+            } label: {
+                Image(systemName: "dice")
+                    .foregroundStyle(.secondary)
+                    .font(.caption)
+            }
+            .buttonStyle(.plain)
         }
+        .padding(8)
+        .background(Color(.tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8))
     }
 
     // MARK: - Assistants
@@ -201,39 +245,48 @@ struct ConfigMembresView: View {
                     Text("Identifiant")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
-                    TextField("auto", text: assistant.identifiant)
-                        .font(.caption)
-                        .padding(8)
-                        .background(Color(.tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8))
-                        .onChange(of: assistant.wrappedValue.prenom) {
-                            if assistant.wrappedValue.identifiant.isEmpty {
-                                assistant.wrappedValue.identifiant = genererIdentifiant(
-                                    prenom: assistant.wrappedValue.prenom,
-                                    nom: assistant.wrappedValue.nom
-                                )
-                            }
+                    champMonospaceAvecDice(
+                        valeur: assistant.wrappedValue.identifiant,
+                        placeholder: "auto",
+                        onRegenerer: {
+                            assistant.wrappedValue.identifiant = Utilisateur.genererIdentifiantUnique(
+                                prenom: assistant.wrappedValue.prenom,
+                                nom: assistant.wrappedValue.nom,
+                                context: modelContext
+                            )
                         }
-                        .onChange(of: assistant.wrappedValue.nom) {
-                            if assistant.wrappedValue.identifiant.isEmpty {
-                                assistant.wrappedValue.identifiant = genererIdentifiant(
-                                    prenom: assistant.wrappedValue.prenom,
-                                    nom: assistant.wrappedValue.nom
-                                )
-                            }
-                        }
+                    )
+                    .onChange(of: assistant.wrappedValue.prenom) { autoIdAssistant(assistant: assistant) }
+                    .onChange(of: assistant.wrappedValue.nom) { autoIdAssistant(assistant: assistant) }
                 }
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Mot de passe (min 6 car.)")
+                    Text("Mot de passe (auto-généré)")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
-                    SecureField("••••••", text: assistant.motDePasse)
-                        .font(.caption)
-                        .padding(8)
-                        .background(Color(.tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8))
+                    champMonospaceAvecDice(
+                        valeur: assistant.wrappedValue.motDePasse,
+                        placeholder: "auto",
+                        onRegenerer: {
+                            assistant.wrappedValue.motDePasse = Utilisateur.genererMotDePasseAthlete()
+                        }
+                    )
                 }
             }
         }
         .padding(14)
         .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14))
+    }
+
+    private func autoIdAssistant(assistant: Binding<AssistantTemp>) {
+        let a = assistant.wrappedValue
+        guard a.identifiant.isEmpty,
+              !a.prenom.trimmingCharacters(in: .whitespaces).isEmpty,
+              !a.nom.trimmingCharacters(in: .whitespaces).isEmpty
+        else { return }
+        assistant.wrappedValue.identifiant = Utilisateur.genererIdentifiantUnique(
+            prenom: a.prenom,
+            nom: a.nom,
+            context: modelContext
+        )
     }
 }

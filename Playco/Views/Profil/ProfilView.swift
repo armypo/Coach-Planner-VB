@@ -17,7 +17,7 @@ struct ProfilView: View {
 
     private var estCoach: Bool {
         let role = authService.utilisateurConnecte?.role
-        return role == .coach || role == .admin
+        return role == .coach || role == .assistantCoach || role == .admin
     }
 
     var body: some View {
@@ -179,6 +179,7 @@ struct ProfilView: View {
     @State private var afficherAjoutCoach = false
     @State private var afficherGestionStaff = false
     @State private var afficherJournalSync = false
+    @State private var afficherIdentifiantsEquipe = false
 
     private func sectionOrganisation(_ utilisateur: Utilisateur) -> some View {
         let codeEcole = utilisateur.codeEcole
@@ -196,6 +197,10 @@ struct ProfilView: View {
                              couleur: PaletteMat.bleu) {
                     afficherAjoutCoach = true
                 }
+                boutonAction(icone: "key.fill", titre: "Identifiants de l'équipe",
+                             couleur: PaletteMat.violet) {
+                    afficherIdentifiantsEquipe = true
+                }
                 boutonAction(icone: "lock.shield", titre: "Permissions du staff",
                              couleur: PaletteMat.vert) {
                     afficherGestionStaff = true
@@ -209,6 +214,17 @@ struct ProfilView: View {
         }
         .sheet(isPresented: $afficherAjoutCoach) {
             AjoutUtilisateurView(codeEcole: codeEcole, roleParDefaut: .coach)
+        }
+        .sheet(isPresented: $afficherIdentifiantsEquipe) {
+            NavigationStack {
+                IdentifiantsEquipeView()
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("Fermer") { afficherIdentifiantsEquipe = false }
+                        }
+                    }
+            }
+            .environment(authService)
         }
         .sheet(isPresented: $afficherGestionStaff) {
             NavigationStack {

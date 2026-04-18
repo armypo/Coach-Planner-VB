@@ -31,3 +31,4 @@ extension PointMatch: FiltreParEquipe {}
 extension Equipe: FiltreParEquipe {}
 extension CategorieExercice: FiltreParEquipe {}
 extension ActionRallye: FiltreParEquipe {}
+extension CredentialAthlete: FiltreParEquipe {}

@@ -66,6 +66,10 @@ struct ConfigurationView: View {
     @State var matchsTemp: [MatchTemp] = []
     @State var dateFinSaison: Date = Calendar.current.date(byAdding: .month, value: 4, to: Date()) ?? Date()
 
+    // Sheet récap credentials (affichée post-finalisation, bloquante)
+    @State private var credsRecap: [CredentialRecap] = []
+    @State private var afficherRecap = false
+
     // MARK: - Validation
 
     private var etapeValide: Bool {
@@ -119,6 +123,13 @@ struct ConfigurationView: View {
         .onAppear {
             // Marque le wizard comme en cours dès l'entrée — sera effacé par finaliser() ou onRetour
             wizardEnCours = true
+        }
+        .sheet(isPresented: $afficherRecap) {
+            IdentifiantsRecapSheet(creds: credsRecap) {
+                afficherRecap = false
+                onTermine()
+            }
+            .interactiveDismissDisabled(true)
         }
     }
 
@@ -317,8 +328,9 @@ struct ConfigurationView: View {
         // Set des identifiants réservés dans la session (évite collisions en mémoire
         // car SwiftData ne voit pas les insertions non-committées)
         var idsCreesEnMemoire = Set<String>()
+        var credsPourSheet: [CredentialRecap] = []
 
-        // 4. Assistants → Utilisateur
+        // 4. Assistants → Utilisateur + CredentialAthlete
         for a in assistants {
             let sel = authService.genererSel()
             let hash = authService.hashMotDePasse(a.motDePasse, sel: sel)
@@ -334,7 +346,7 @@ struct ConfigurationView: View {
                 motDePasseHash: hash,
                 prenom: a.prenom,
                 nom: a.nom,
-                role: .coach,
+                role: .assistantCoach,
                 codeEcole: codeEquipe
             )
             utilisateur.sel = sel
@@ -345,26 +357,37 @@ struct ConfigurationView: View {
             let assistant = AssistantCoach(prenom: a.prenom, nom: a.nom)
             assistant.courriel = a.courriel
             assistant.roleAssistant = a.role
-            assistant.identifiant = a.identifiant
+            assistant.identifiant = idUnique
             assistant.motDePasseHash = hash
             assistant.sel = sel
             assistant.equipe = equipe
             assistant.codeEquipe = codeEquipe
             modelContext.insert(assistant)
+
+            let cred = CredentialAthlete(
+                utilisateurID: utilisateur.id,
+                joueurEquipeID: nil,
+                identifiant: idUnique,
+                motDePasseClair: a.motDePasse,
+                codeEquipe: codeEquipe
+            )
+            modelContext.insert(cred)
+
+            credsPourSheet.append(CredentialRecap(
+                nomComplet: "\(a.prenom) \(a.nom)",
+                identifiant: idUnique,
+                motDePasse: a.motDePasse,
+                role: "Assistant"
+            ))
         }
 
-        // 5. Joueurs → JoueurEquipe + Utilisateur
+        // 5. Joueurs → JoueurEquipe + Utilisateur + CredentialAthlete
         for j in joueursTemp {
             let joueur = JoueurEquipe(nom: j.nom, prenom: j.prenom, numero: j.numero, poste: j.poste)
             joueur.codeEquipe = codeEquipe
             joueur.equipe = equipe
             let sel = authService.genererSel()
             let hash = authService.hashMotDePasse(j.motDePasse, sel: sel)
-            joueur.identifiant = j.identifiant
-            joueur.motDePasseHash = hash
-            joueur.sel = sel
-            modelContext.insert(joueur)
-
             let idJoueur = Utilisateur.genererIdentifiantUnique(
                 prenom: j.prenom,
                 nom: j.nom,
@@ -372,6 +395,11 @@ struct ConfigurationView: View {
                 exclusions: idsCreesEnMemoire
             )
             idsCreesEnMemoire.insert(idJoueur)
+            joueur.identifiant = idJoueur
+            joueur.motDePasseHash = hash
+            joueur.sel = sel
+            modelContext.insert(joueur)
+
             let utilisateur = Utilisateur(
                 identifiant: idJoueur,
                 motDePasseHash: hash,
@@ -389,6 +417,22 @@ struct ConfigurationView: View {
             modelContext.insert(utilisateur)
 
             joueur.utilisateurID = utilisateur.id
+
+            let cred = CredentialAthlete(
+                utilisateurID: utilisateur.id,
+                joueurEquipeID: joueur.id,
+                identifiant: idJoueur,
+                motDePasseClair: j.motDePasse,
+                codeEquipe: codeEquipe
+            )
+            modelContext.insert(cred)
+
+            credsPourSheet.append(CredentialRecap(
+                nomComplet: "\(j.prenom) \(j.nom)",
+                identifiant: idJoueur,
+                motDePasse: j.motDePasse,
+                role: "Athlète"
+            ))
         }
 
         // 6. Créneaux récurrents → Séances pour 4 semaines
@@ -495,7 +539,14 @@ struct ConfigurationView: View {
         // Wizard finalisé : lever le flag "en cours"
         wizardEnCours = false
 
-        onTermine()
+        // Si au moins un athlète/assistant a été créé, présenter la sheet récap
+        // bloquante avant d'ouvrir l'app (le coach DOIT noter ses credentials).
+        if credsPourSheet.isEmpty {
+            onTermine()
+        } else {
+            credsRecap = credsPourSheet
+            afficherRecap = true
+        }
     }
 
     // MARK: - Helpers
@@ -521,7 +572,7 @@ struct AssistantTemp: Identifiable {
     var courriel = ""
     var role: RoleAssistant = .assistantCoach
     var identifiant = ""
-    var motDePasse = ""
+    var motDePasse = Utilisateur.genererMotDePasseAthlete()
 }
 
 struct JoueurTemp: Identifiable {
@@ -531,7 +582,17 @@ struct JoueurTemp: Identifiable {
     var numero: Int = 1
     var poste: PosteJoueur = .recepteur
     var identifiant = ""
-    var motDePasse = ""
+    var motDePasse = Utilisateur.genererMotDePasseAthlete()
+}
+
+/// Résumé d'un couple identifiant + mot de passe créé pendant un wizard ou une
+/// création manuelle, présenté dans la sheet bloquante `IdentifiantsRecapSheet`.
+struct CredentialRecap: Identifiable {
+    let id = UUID()
+    let nomComplet: String
+    let identifiant: String
+    let motDePasse: String
+    let role: String   // "Athlète" ou "Assistant"
 }
 
 struct CreneauTemp: Identifiable {

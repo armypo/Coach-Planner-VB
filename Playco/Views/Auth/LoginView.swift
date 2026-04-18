@@ -5,16 +5,56 @@
 import SwiftUI
 import SwiftData
 
+/// Rôle sélectionné dans le picker de la `LoginView` unifiée.
+/// Le rôle réel de l'utilisateur est lu depuis le modèle `Utilisateur` après
+/// authentification ; ce picker permet simplement de valider que le type de
+/// compte correspond à ce que l'utilisateur a sélectionné (évite les
+/// confusions du style « coach qui clique Athlète »).
+enum RoleLogin: String, CaseIterable, Identifiable {
+    case coach
+    case assistant
+    case athlete
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .coach: return "Coach"
+        case .assistant: return "Assistant"
+        case .athlete: return "Athlète"
+        }
+    }
+
+    var couleur: Color {
+        switch self {
+        case .coach: return PaletteMat.bleu
+        case .assistant: return Color(hex: "#7FB0F7")
+        case .athlete: return PaletteMat.orange
+        }
+    }
+
+    var rolesValides: [RoleUtilisateur] {
+        switch self {
+        case .coach: return [.coach, .admin]
+        case .assistant: return [.assistantCoach]
+        case .athlete: return [.etudiant]
+        }
+    }
+}
+
 struct LoginView: View {
     @Environment(AuthService.self) private var authService
     @Environment(\.modelContext) private var modelContext
 
+    var onRetour: (() -> Void)? = nil
+    var onConnecte: (() -> Void)? = nil
+
     @State private var identifiant = ""
     @State private var motDePasse = ""
     @State private var afficherMotDePasse = false
-    @State private var modeCoach = true
+    @State private var roleSelectionne: RoleLogin = .coach
 
-    private var couleurActive: Color { modeCoach ? PaletteMat.bleu : PaletteMat.orange }
+    private var couleurActive: Color { roleSelectionne.couleur }
 
     private var formulaireValide: Bool {
         !identifiant.trimmingCharacters(in: .whitespaces).isEmpty && !motDePasse.isEmpty
@@ -23,7 +63,7 @@ struct LoginView: View {
     var body: some View {
         ZStack {
             couleurActive.opacity(0.04).ignoresSafeArea()
-                .animation(LiquidGlassKit.springDefaut, value: modeCoach)
+                .animation(LiquidGlassKit.springDefaut, value: roleSelectionne)
 
             ScrollView {
                 VStack(spacing: 0) {
@@ -31,7 +71,7 @@ struct LoginView: View {
 
                     VStack(spacing: LiquidGlassKit.espaceLG) {
                         entete
-                        toggleRole
+                        pickerRole
                         formulaire
                         bandeauErreur
                         boutonConnexion
@@ -68,38 +108,17 @@ struct LoginView: View {
         }
     }
 
-    // MARK: - Toggle Coach / Athlète
+    // MARK: - Picker Coach / Assistant / Athlète
 
-    private var toggleRole: some View {
-        HStack(spacing: 0) {
-            roleButton(label: "Coach", icone: "figure.volleyball", estCoach: true)
-            roleButton(label: "Athlète", icone: "figure.run", estCoach: false)
-        }
-        .padding(LiquidGlassKit.espaceXS / 2)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: LiquidGlassKit.rayonToggleContainer))
-    }
-
-    @ViewBuilder
-    private func roleButton(label: String, icone: String, estCoach: Bool) -> some View {
-        let estSelectionne = modeCoach == estCoach
-        let couleur: Color = estCoach ? PaletteMat.bleu : PaletteMat.orange
-        Button {
-            withAnimation(LiquidGlassKit.springRebond) { modeCoach = estCoach }
-        } label: {
-            HStack(spacing: LiquidGlassKit.espaceSM) {
-                Image(systemName: icone).font(.system(size: LiquidGlassKit.iconeMoyenne, weight: .medium))
-                Text(label).font(.subheadline.weight(.semibold))
+    private var pickerRole: some View {
+        Picker("Type de compte", selection: $roleSelectionne) {
+            ForEach(RoleLogin.allCases) { role in
+                Text(role.label).tag(role)
             }
-            .foregroundStyle(estSelectionne ? .white : .secondary)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, LiquidGlassKit.espaceSM + 2)
-            .background(
-                estSelectionne ? couleur : Color.clear,
-                in: RoundedRectangle(cornerRadius: LiquidGlassKit.rayonPetit)
-            )
         }
-        .buttonStyle(.plain)
-        .animation(LiquidGlassKit.springDefaut, value: estSelectionne)
+        .pickerStyle(.segmented)
+        .tint(couleurActive)
+        .animation(LiquidGlassKit.springDefaut, value: roleSelectionne)
     }
 
     // MARK: - Formulaire
@@ -108,7 +127,7 @@ struct LoginView: View {
         VStack(spacing: LiquidGlassKit.espaceMD) {
             champSaisie(
                 titre: "IDENTIFIANT",
-                placeholder: "prenom.nom",
+                placeholder: "prenom.nom.1234",
                 icone: "person.text.rectangle.fill",
                 couleur: couleurActive,
                 texte: $identifiant
@@ -195,12 +214,7 @@ struct LoginView: View {
 
     private var boutonConnexion: some View {
         Button {
-            authService.erreur = nil
-            authService.connexion(
-                identifiant: identifiant,
-                motDePasse: motDePasse,
-                context: modelContext
-            )
+            tenterConnexion()
         } label: {
             HStack(spacing: LiquidGlassKit.espaceSM) {
                 if authService.chargement {
@@ -223,11 +237,36 @@ struct LoginView: View {
         .buttonStyle(GlassButtonStyle())
     }
 
-    // MARK: - Lien premier setup
+    /// Tente la connexion puis vérifie que le rôle réel correspond au picker sélectionné.
+    /// En cas de mismatch (ex: coach qui clique Athlète), déconnecte l'utilisateur
+    /// immédiatement et affiche un message d'erreur explicite.
+    private func tenterConnexion() {
+        authService.erreur = nil
+        authService.connexion(
+            identifiant: identifiant,
+            motDePasse: motDePasse,
+            context: modelContext
+        )
+        guard let user = authService.utilisateurConnecte else { return }
+        guard roleSelectionne.rolesValides.contains(user.role) else {
+            let roleReel = user.role.label
+            let roleAttendu = roleSelectionne.label
+            authService.deconnexion()
+            authService.erreur = "Mauvais type de compte. Tu as sélectionné « \(roleAttendu) » mais ton compte est « \(roleReel) ». Sélectionne le bon type et réessaie."
+            return
+        }
+        onConnecte?()
+    }
+
+    // MARK: - Lien retour / premier setup
 
     private var lienSetup: some View {
         Button {
-            NotificationCenter.default.post(name: .allerChoixInitial, object: nil)
+            if let onRetour {
+                onRetour()
+            } else {
+                NotificationCenter.default.post(name: .allerChoixInitial, object: nil)
+            }
         } label: {
             HStack(spacing: LiquidGlassKit.espaceXS) {
                 Image(systemName: "person.3.fill").font(.system(size: LiquidGlassKit.iconePetite))

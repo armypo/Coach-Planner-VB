@@ -23,6 +23,16 @@ struct AjoutUtilisateurView: View {
     @State private var erreur: String?
     @State private var succes = false
 
+    // Sheet récap affichée après la création d'un compte auto-gen (athlète/assistant)
+    @State private var afficherRecap = false
+    @State private var credACopier: [CredentialRecap] = []
+
+    /// Vrai quand le rôle sélectionné bénéficie de la génération auto d'identifiant + mdp.
+    /// Les coachs et admins continuent de saisir leur mdp eux-mêmes.
+    private var estRoleAutoGen: Bool {
+        roleChoisi == .etudiant || roleChoisi == .assistantCoach
+    }
+
     // Données physiques (pour élèves)
     @State private var numero = ""
     @State private var posteChoisi: PosteJoueur = .recepteur
@@ -69,6 +79,7 @@ struct AjoutUtilisateurView: View {
 
                             Picker("Rôle", selection: $roleChoisi) {
                                 Text("Athlète").tag(RoleUtilisateur.etudiant)
+                                Text("Assistant").tag(RoleUtilisateur.assistantCoach)
                                 Text("Coach").tag(RoleUtilisateur.coach)
                             }
                             .pickerStyle(.segmented)
@@ -79,7 +90,34 @@ struct AjoutUtilisateurView: View {
                         champFormulaire(icone: "person.fill", label: "Prénom", texte: $prenom)
                         champFormulaire(icone: "person.fill", label: "Nom", texte: $nom)
 
-                        VStack(alignment: .leading, spacing: 6) {
+                        if estRoleAutoGen {
+                                champAutoGen(
+                                    label: "Identifiant (auto : prenom.nom.xxxx)",
+                                    icone: "person.text.rectangle.fill",
+                                    valeur: identifiant.isEmpty ? "Complétez prénom + nom" : identifiant,
+                                    valeurEstPlaceholder: identifiant.isEmpty,
+                                    onRegenerer: {
+                                        if !prenom.isEmpty, !nom.isEmpty {
+                                            identifiant = Utilisateur.genererIdentifiantUnique(
+                                                prenom: prenom,
+                                                nom: nom,
+                                                context: modelContext
+                                            )
+                                        }
+                                    }
+                                )
+
+                                champAutoGen(
+                                    label: "Mot de passe (auto : LLLLL_DD)",
+                                    icone: "key.fill",
+                                    valeur: motDePasse,
+                                    valeurEstPlaceholder: false,
+                                    onRegenerer: {
+                                        motDePasse = Utilisateur.genererMotDePasseAthlete()
+                                    }
+                                )
+                        } else {
+                            VStack(alignment: .leading, spacing: 6) {
                                 Text("Identifiant")
                                     .font(.caption)
                                     .fontWeight(.semibold)
@@ -132,6 +170,7 @@ struct AjoutUtilisateurView: View {
                                 .padding(14)
                                 .background(RoundedRectangle(cornerRadius: 12).fill(Color(.systemGray6)))
                             }
+                        }
 
                             // Info code école
                             HStack(spacing: 8) {
@@ -309,7 +348,80 @@ struct AjoutUtilisateurView: View {
             }
             .onAppear {
                 roleChoisi = roleParDefaut
+                if estRoleAutoGen, motDePasse.isEmpty {
+                    motDePasse = Utilisateur.genererMotDePasseAthlete()
+                }
             }
+            .onChange(of: roleChoisi) { _, _ in
+                // Bascule vers un rôle auto-gen : pré-remplir le mdp si absent.
+                if estRoleAutoGen, motDePasse.isEmpty {
+                    motDePasse = Utilisateur.genererMotDePasseAthlete()
+                }
+                autoRefreshIdentifiant()
+            }
+            .onChange(of: prenom) { _, _ in autoRefreshIdentifiant() }
+            .onChange(of: nom) { _, _ in autoRefreshIdentifiant() }
+            .sheet(isPresented: $afficherRecap) {
+                IdentifiantsRecapSheet(creds: credACopier) {
+                    afficherRecap = false
+                    dismiss()
+                }
+                .interactiveDismissDisabled(true)
+            }
+        }
+    }
+
+    /// Régénère l'identifiant auto (`prenom.nom.xxxx`) tant qu'il est vide
+    /// et que prénom + nom sont tous deux saisis.
+    private func autoRefreshIdentifiant() {
+        guard estRoleAutoGen,
+              identifiant.isEmpty,
+              !prenom.trimmingCharacters(in: .whitespaces).isEmpty,
+              !nom.trimmingCharacters(in: .whitespaces).isEmpty
+        else { return }
+        identifiant = Utilisateur.genererIdentifiantUnique(
+            prenom: prenom,
+            nom: nom,
+            context: modelContext
+        )
+    }
+
+    /// Champ read-only monospace + bouton dé pour régénérer — utilisé pour
+    /// l'identifiant et le mdp auto-générés des athlètes / assistants.
+    private func champAutoGen(
+        label: String,
+        icone: String,
+        valeur: String,
+        valeurEstPlaceholder: Bool,
+        onRegenerer: @escaping () -> Void
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label)
+                .font(.caption)
+                .fontWeight(.semibold)
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+
+            HStack(spacing: 12) {
+                Image(systemName: icone)
+                    .foregroundStyle(roleChoisi.couleur)
+                    .frame(width: 20)
+
+                Text(valeur)
+                    .font(.system(.callout, design: .monospaced, weight: .semibold))
+                    .foregroundStyle(valeurEstPlaceholder ? .tertiary : .primary)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                Button {
+                    onRegenerer()
+                } label: {
+                    Image(systemName: "dice.fill")
+                        .foregroundStyle(roleChoisi.couleur)
+                }
+            }
+            .padding(14)
+            .background(RoundedRectangle(cornerRadius: 12).fill(Color(.systemGray6)))
         }
     }
 
@@ -390,12 +502,13 @@ struct AjoutUtilisateurView: View {
                 try? modelContext.save()
             }
 
-            // Publier vers CloudKit public DB
+            // Publier vers CloudKit public DB + créer CredentialAthlete si auto-gen
             let idRecherche = idFinal
             let descriptorPub = FetchDescriptor<Utilisateur>(
                 predicate: #Predicate { $0.identifiant == idRecherche }
             )
-            if let utilisateurPub = try? modelContext.fetch(descriptorPub).first {
+            let utilisateurPub = try? modelContext.fetch(descriptorPub).first
+            if let utilisateurPub {
                 var joueurPub: JoueurEquipe?
                 if let jID = utilisateurPub.joueurEquipeID {
                     let descJoueur = FetchDescriptor<JoueurEquipe>(
@@ -406,22 +519,46 @@ struct AjoutUtilisateurView: View {
                 Task {
                     await sharingService.publierNouvelUtilisateur(utilisateurPub, joueur: joueurPub)
                 }
+
+                // Les rôles auto-gen ont leurs credentials stockés en private CloudKit DB
+                if estRoleAutoGen {
+                    let cred = CredentialAthlete(
+                        utilisateurID: utilisateurPub.id,
+                        joueurEquipeID: utilisateurPub.joueurEquipeID,
+                        identifiant: idFinal,
+                        motDePasseClair: motDePasse,
+                        codeEquipe: codeEcole
+                    )
+                    modelContext.insert(cred)
+                    try? modelContext.save()
+                }
             }
 
-            succes = true
-            // Reset le formulaire
-            prenom = ""
-            nom = ""
-            identifiant = ""
-            motDePasse = ""
-            numero = ""
-            poids = ""
-            posteChoisi = .recepteur
-            taillePieds = 5
-            taillePouces = 10
-            jourNaissance = ""
-            moisNaissance = ""
-            anneeNaissance = ""
+            if estRoleAutoGen {
+                // Sheet récap bloquante puis dismiss — le coach doit noter le mdp.
+                credACopier = [CredentialRecap(
+                    nomComplet: "\(prenom) \(nom)",
+                    identifiant: idFinal,
+                    motDePasse: motDePasse,
+                    role: roleChoisi == .etudiant ? "Athlète" : "Assistant"
+                )]
+                afficherRecap = true
+            } else {
+                succes = true
+                // Reset le formulaire (seulement en mode saisie manuelle)
+                prenom = ""
+                nom = ""
+                identifiant = ""
+                motDePasse = ""
+                numero = ""
+                poids = ""
+                posteChoisi = .recepteur
+                taillePieds = 5
+                taillePouces = 10
+                jourNaissance = ""
+                moisNaissance = ""
+                anneeNaissance = ""
+            }
         }
     }
 

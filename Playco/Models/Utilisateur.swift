@@ -11,12 +11,14 @@ import SwiftUI
 enum RoleUtilisateur: String, Codable, CaseIterable {
     case etudiant
     case coach
+    case assistantCoach
     case admin
 
     var label: String {
         switch self {
         case .etudiant: return "Élève"
         case .coach: return "Coach"
+        case .assistantCoach: return "Coach assistant"
         case .admin: return "Admin"
         }
     }
@@ -25,6 +27,7 @@ enum RoleUtilisateur: String, Codable, CaseIterable {
         switch self {
         case .etudiant: return "graduationcap.fill"
         case .coach: return "figure.volleyball"
+        case .assistantCoach: return "person.badge.shield.checkmark"
         case .admin: return "shield.checkered"
         }
     }
@@ -33,6 +36,7 @@ enum RoleUtilisateur: String, Codable, CaseIterable {
         switch self {
         case .etudiant: return "#FF6B35"
         case .coach: return "#2563EB"
+        case .assistantCoach: return "#4A8AF4"
         case .admin: return "#10B981"
         }
     }
@@ -204,10 +208,10 @@ final class Utilisateur {
         return code
     }
 
-    /// Génère un identifiant unique : prenom.nom (sans accents, minuscules)
-    /// Si un doublon existe, ajoute un suffixe numérique (prenom.nom2, prenom.nom3, etc.)
+    /// Génère un identifiant unique au format `prenom.nom.XXXX` (4 chiffres aléatoires).
+    /// Si le candidat est déjà pris (BD ou exclusions), tire un nouveau suffixe jusqu'à 1000 fois.
     /// - Parameter exclusions: identifiants déjà réservés en mémoire mais pas encore persistés
-    ///   (ex: pendant le wizard de création, évite les collisions entre joueurs du même lot)
+    ///   (ex: pendant le wizard de création, évite les collisions entre joueurs du même lot).
     static func genererIdentifiantUnique(
         prenom: String,
         nom: String,
@@ -220,22 +224,31 @@ final class Utilisateur {
             .replacingOccurrences(of: " ", with: "-")
             .filter { $0.isLetter || $0 == "." || $0 == "-" }
 
-        // Vérifier si l'identifiant de base est disponible (BD + exclusions)
-        if !exclusions.contains(base) && identifiantDisponible(base, context: context) {
-            return base
+        // Fallback immédiat si prénom/nom sont vides
+        guard !base.isEmpty, base != "." else {
+            return "user." + String(format: "%04d", Int.random(in: 0...9999))
         }
 
-        // Ajouter un suffixe numérique
-        var suffixe = 2
-        while suffixe < 1000 {
-            let candidat = "\(base)\(suffixe)"
+        for _ in 0..<1000 {
+            let suffixe = String(format: "%04d", Int.random(in: 0...9999))
+            let candidat = "\(base).\(suffixe)"
             if !exclusions.contains(candidat) && identifiantDisponible(candidat, context: context) {
                 return candidat
             }
-            suffixe += 1
         }
 
-        return base + UUID().uuidString.prefix(4).lowercased()
+        return base + "." + String(UUID().uuidString.prefix(4)).lowercased()
+    }
+
+    /// Génère un mot de passe athlète/assistant au format `LLLLL_DD`.
+    /// 5 lettres majuscules sans I/L/O + underscore + 2 chiffres sans 0/1
+    /// (évite la confusion visuelle lors de la transcription manuelle).
+    static func genererMotDePasseAthlete() -> String {
+        let lettres = "ABCDEFGHJKMNPQRSTUVWXYZ"  // sans I, L, O
+        let chiffres = "23456789"                 // sans 0, 1
+        let partieLettres = String((0..<5).compactMap { _ in lettres.randomElement() })
+        let partieChiffres = String((0..<2).compactMap { _ in chiffres.randomElement() })
+        return "\(partieLettres)_\(partieChiffres)"
     }
 
     /// Vérifie si un identifiant est disponible

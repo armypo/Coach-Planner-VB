@@ -7,7 +7,7 @@ import SwiftUI
 /// Premier lancement — choix entre configurer une équipe ou rejoindre avec un code
 struct ChoixInitialView: View {
     var onConfigurer: () -> Void
-    var onRejoindre: () -> Void
+    var onConnexion: () -> Void
 
     @State private var animee = false
 
@@ -54,14 +54,14 @@ struct ChoixInitialView: View {
                         .offset(x: animee ? 0 : -60)
                         .opacity(animee ? 1 : 0)
 
-                        // Rejoindre une équipe
-                        Button { onRejoindre() } label: {
+                        // Connexion
+                        Button { onConnexion() } label: {
                             carteChoix(
-                                icone: "person.badge.plus",
-                                titre: "Rejoindre une équipe",
-                                description: "Connectez-vous avec le code d'équipe et les identifiants fournis par votre coach.",
+                                icone: "person.fill.badge.plus",
+                                titre: "Connexion",
+                                description: "Connectez-vous avec les identifiants fournis par votre coach.",
                                 couleur: PaletteMat.bleu,
-                                badge: "Athlète / Assistant"
+                                badge: "Coach · Assistant · Athlète"
                             )
                         }
                         .buttonStyle(.plain)

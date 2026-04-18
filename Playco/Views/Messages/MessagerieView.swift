@@ -91,7 +91,7 @@ struct MessagerieView: View {
                     ForEach(membresEquipe) { membre in
                         NavigationLink(value: ConversationID.prive(membre.id)) {
                             ligneConversation(
-                                icone: membre.role == .coach || membre.role == .admin
+                                icone: membre.role == .coach || membre.role == .assistantCoach || membre.role == .admin
                                     ? "figure.volleyball" : "figure.run",
                                 nom: membre.nomComplet,
                                 couleur: membre.role.couleur,
