@@ -1,3 +1,11 @@
+---
+layout: page
+title: Politique de confidentialité
+lang: fr
+permalink: /legal/privacy-policy-fr/
+meta: "Entrée en vigueur : 15 avril 2026 — Conforme Loi 25 (Québec) et LPRPDE"
+---
+
 # Politique de confidentialité — Playco
 
 **Entrée en vigueur :** 15 avril 2026

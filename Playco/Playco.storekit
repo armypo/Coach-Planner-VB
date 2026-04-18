@@ -1,0 +1,236 @@
+{
+  "identifier" : "C1B2A3D4-5E6F-7890-ABCD-EF1234567890",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+
+  ],
+  "settings" : {
+    "_applicationInternalID" : "Playco",
+    "_developerTeamID" : "J7NDW7L3DZ",
+    "_failTransactionsEnabled" : false,
+    "_lastSynchronizedDate" : 766185600,
+    "_locale" : "fr_CA",
+    "_storefront" : "CAN",
+    "_storeKitErrors" : [
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Load Products"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Purchase"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Verification"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "App Store Sync"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Subscription Status"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "App Transaction"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Manage Subscriptions Sheet"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Refund Request Sheet"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Offer Code Redeem Sheet"
+      }
+    ]
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "21730001",
+      "localizations" : [
+        {
+          "description" : "Plans d'abonnement Playco",
+          "displayName" : "Playco Pro",
+          "locale" : "fr_CA"
+        },
+        {
+          "description" : "Playco subscription plans",
+          "displayName" : "Playco Pro",
+          "locale" : "en_CA"
+        }
+      ],
+      "name" : "Playco Pro",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "25.00",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "6000000001",
+          "introductoryOffer" : {
+            "internalID" : "9000000001",
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P2W"
+          },
+          "localizations" : [
+            {
+              "description" : "Pro + accès app pour tes athlètes et messagerie coach-athlète.",
+              "displayName" : "Playco Club Mensuel",
+              "locale" : "fr_CA"
+            },
+            {
+              "description" : "Pro + athlete app access and coach-athlete messaging.",
+              "displayName" : "Playco Club Monthly",
+              "locale" : "en_CA"
+            }
+          ],
+          "productID" : "com.origo.playco.club.mensuel",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Playco Club Mensuel",
+          "subscriptionGroupID" : "21730001",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "250.00",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "6000000002",
+          "introductoryOffer" : {
+            "internalID" : "9000000002",
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P2W"
+          },
+          "localizations" : [
+            {
+              "description" : "Playco Club annuel — économise 17 %. Accès complet athlètes et messagerie.",
+              "displayName" : "Playco Club Annuel",
+              "locale" : "fr_CA"
+            },
+            {
+              "description" : "Playco Club yearly — save 17%. Full athlete access and messaging.",
+              "displayName" : "Playco Club Yearly",
+              "locale" : "en_CA"
+            }
+          ],
+          "productID" : "com.origo.playco.club.annuel",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "Playco Club Annuel",
+          "subscriptionGroupID" : "21730001",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "14.99",
+          "familyShareable" : false,
+          "groupNumber" : 2,
+          "internalID" : "6000000003",
+          "introductoryOffer" : {
+            "internalID" : "9000000003",
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P2W"
+          },
+          "localizations" : [
+            {
+              "description" : "L'outil complet pour toi et ton staff. Stats live, export, analytics.",
+              "displayName" : "Playco Pro Mensuel",
+              "locale" : "fr_CA"
+            },
+            {
+              "description" : "Complete toolkit for you and your staff. Live stats, export, analytics.",
+              "displayName" : "Playco Pro Monthly",
+              "locale" : "en_CA"
+            }
+          ],
+          "productID" : "com.origo.playco.pro.mensuel",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Playco Pro Mensuel",
+          "subscriptionGroupID" : "21730001",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "149.99",
+          "familyShareable" : false,
+          "groupNumber" : 2,
+          "internalID" : "6000000004",
+          "introductoryOffer" : {
+            "internalID" : "9000000004",
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P2W"
+          },
+          "localizations" : [
+            {
+              "description" : "Playco Pro annuel — économise 17 %. Stats, analytics, multi-équipes.",
+              "displayName" : "Playco Pro Annuel",
+              "locale" : "fr_CA"
+            },
+            {
+              "description" : "Playco Pro yearly — save 17%. Stats, analytics, multi-team.",
+              "displayName" : "Playco Pro Yearly",
+              "locale" : "en_CA"
+            }
+          ],
+          "productID" : "com.origo.playco.pro.annuel",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "Playco Pro Annuel",
+          "subscriptionGroupID" : "21730001",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 4,
+    "minor" : 0
+  }
+}

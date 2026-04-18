@@ -1,0 +1,51 @@
+# Playco — site public hébergé sur GitHub Pages
+# Génère les pages légales + landing à partir des .md dans docs/
+#
+# Pour déployer :
+# 1. Repository → Settings → Pages → Source = « Deploy from a branch »
+# 2. Branch = main, Folder = /docs
+# 3. URL finale : https://armypo.github.io/Coach-Planner-VB/
+#
+# Migration future vers playco.ca :
+# - Pointer CNAME vers armypo.github.io
+# - Créer docs/CNAME avec « playco.ca »
+
+title: Playco — Volleyball coaching iPad
+description: L'application iPad de coaching volleyball, conçue au Québec. 100% français (Loi 96), conforme Loi 25.
+author: Origo Technologies
+lang: fr
+baseurl: "/Coach-Planner-VB"
+
+# Jurisdiction + langues officielles (Québec)
+jurisdiction: Québec, Canada
+langue_officielle: Français (Loi 96)
+conformite:
+  - Loi 25 (Québec)
+  - LPRPDE / PIPEDA (Canada)
+  - Loi 96 (Québec — français langue commune)
+
+# Identification du responsable (exigée au Québec pour site commercial)
+responsable:
+  nom: Origo Technologies
+  courriel: support@playco.ca
+  ville: Québec
+  province: QC
+  pays: Canada
+
+# Référence à l'autorité de contrôle privacy Québec
+autorite_controle:
+  nom: Commission d'accès à l'information du Québec (CAI)
+  url: https://www.cai.gouv.qc.ca/
+
+# Jekyll plugins GitHub Pages compatibles (whitelist)
+plugins:
+  - jekyll-seo-tag
+
+# Exclusions (ne pas publier)
+exclude:
+  - Audit_*.md
+  - Prochaines_Etapes_*.md
+  - Plan_Lancement_*.md
+  - CloudKit_Schema_Deployment.md
+  - Market_Research_*.md
+  - tests/
