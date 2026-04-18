@@ -60,6 +60,7 @@ struct MatchsView: View {
                             Image(systemName: "plus")
                         }
                         .siAutorise(peutModifier)
+                        .bloqueSiNonPayant(source: "matchs_create")
                     }
                     ToolbarItem(placement: .bottomBar) {
                         HStack(spacing: 20) {

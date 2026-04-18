@@ -69,6 +69,8 @@ struct ConfigurationView: View {
     // Sheet récap credentials (affichée post-finalisation, bloquante)
     @State private var credsRecap: [CredentialRecap] = []
     @State private var afficherRecap = false
+    // Sheet bienvenue paywall (enchaînée APRÈS la sheet récap si credentials, sinon directement)
+    @State private var afficherBienvenuePaywall = false
 
     // MARK: - Validation
 
@@ -127,6 +129,13 @@ struct ConfigurationView: View {
         .sheet(isPresented: $afficherRecap) {
             IdentifiantsRecapSheet(creds: credsRecap) {
                 afficherRecap = false
+                afficherBienvenuePaywall = true
+            }
+            .interactiveDismissDisabled(true)
+        }
+        .sheet(isPresented: $afficherBienvenuePaywall) {
+            BienvenuePaywallView {
+                afficherBienvenuePaywall = false
                 onTermine()
             }
             .interactiveDismissDisabled(true)
@@ -539,10 +548,12 @@ struct ConfigurationView: View {
         // Wizard finalisé : lever le flag "en cours"
         wizardEnCours = false
 
-        // Si au moins un athlète/assistant a été créé, présenter la sheet récap
-        // bloquante avant d'ouvrir l'app (le coach DOIT noter ses credentials).
+        // Séquence post-wizard :
+        // 1. (si credentials) sheet récap bloquante
+        // 2. sheet bienvenue paywall bloquante (2 tiers + essai 14j)
+        // 3. onTermine() → app
         if credsPourSheet.isEmpty {
-            onTermine()
+            afficherBienvenuePaywall = true
         } else {
             credsRecap = credsPourSheet
             afficherRecap = true

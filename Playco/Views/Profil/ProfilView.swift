@@ -8,6 +8,7 @@ import SwiftData
 /// Vue profil / paramètres — adaptée selon le rôle (Coach, Élève, Admin)
 struct ProfilView: View {
     @Environment(AuthService.self) private var authService
+    @Environment(AbonnementService.self) private var abonnementService
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @Environment(\.codeEquipeActif) private var codeEquipeActif
@@ -31,6 +32,11 @@ struct ProfilView: View {
                         if estCoach {
                             // Code d'équipe
                             sectionCodeEquipe
+
+                            // Mon abonnement (Pro / Club) — visible uniquement aux coachs payants
+                            if abonnementService.estCoachPayant(utilisateur: utilisateur) {
+                                sectionAbonnement
+                            }
 
                             // Visibilité athlètes
                             sectionVisibilite
@@ -139,6 +145,38 @@ struct ProfilView: View {
         }
         .padding(20)
         .glassCard()
+    }
+
+    // MARK: - Mon abonnement
+
+    private var sectionAbonnement: some View {
+        NavigationLink {
+            GestionAbonnementView()
+        } label: {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Label("Mon abonnement", systemImage: "creditcard.fill")
+                        .font(.headline)
+                        .foregroundStyle(PaletteMat.orange)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                HStack(spacing: 10) {
+                    BadgeStatut(statut: abonnementService.statut)
+                    if let jours = abonnementService.joursRestantsEssai {
+                        Text("\(jours) j restants")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                }
+            }
+            .padding(20)
+            .glassCard()
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Visibilité athlètes

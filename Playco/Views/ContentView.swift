@@ -18,6 +18,7 @@ enum SectionApp: Hashable {
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(AuthService.self) private var authService
+    @Environment(AbonnementService.self) private var abonnementService
     @Environment(\.scenePhase) private var scenePhase
     @State private var sectionActive: SectionApp?
     @State private var afficherProfil: Bool = false
@@ -105,6 +106,18 @@ struct ContentView: View {
             Task { @MainActor in
                 verifierEtatSessionForeground()
             }
+        }
+        .onChange(of: abonnementService.statut) { _, _ in
+            // Gate runtime : si un athlète est connecté et que le tier du coach
+            // tombe sous .club (ex: refund, revocation), déconnexion immédiate.
+            guard let user = authService.utilisateurConnecte else { return }
+            if user.role == .etudiant && abonnementService.tierActif != .club {
+                authService.deconnexion()
+                NotificationCenter.default.post(name: .allerChoixInitial, object: nil)
+            }
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            BanniereAbonnementView()
         }
         .overlay(alignment: .top) {
             if afficherToastDesactivation {

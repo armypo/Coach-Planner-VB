@@ -15,6 +15,9 @@ struct PlaycoApp: App {
     @State private var syncService = CloudKitSyncService()
     @State private var sharingService = CloudKitSharingService()
     @State private var analyticsService = AnalyticsService()
+    @State private var storeKitService = StoreKitService()
+    @State private var abonnementService = AbonnementService()
+    @State private var observerTransactionsTask: Task<Void, Never>? = nil
     @AppStorage("tutorielVu") private var tutorielVu = false
     @AppStorage("playco_wizard_en_cours") private var wizardEnCours = false
     @State private var afficherTutorielInitial = false
@@ -33,7 +36,8 @@ struct PlaycoApp: App {
         MessageEquipe.self, ScoutingReport.self, PointMatch.self, ActionRallye.self,
         PhaseSaison.self, ObjectifJoueur.self,
         CategorieExercice.self, StaffPermissions.self,
-        CredentialAthlete.self
+        CredentialAthlete.self,
+        Abonnement.self
     ]
 
     init() {
@@ -82,6 +86,7 @@ struct PlaycoApp: App {
     @State private var splashTermine = false
     @State private var configurationTerminee: Bool? = nil
     @State private var ecranActif: EcranLancement = .chargement
+    @State private var messageGateTier: String? = nil
 
     /// Écrans du flux de lancement
     enum EcranLancement {
@@ -131,6 +136,17 @@ struct PlaycoApp: App {
                         } message: {
                             Text("Un wizard de configuration a été commencé mais non terminé. Voulez-vous reprendre ou recommencer ? Les saisies précédentes ne sont pas conservées.")
                         }
+                        .alert(
+                            "Accès bloqué",
+                            isPresented: Binding(
+                                get: { messageGateTier != nil },
+                                set: { if !$0 { messageGateTier = nil } }
+                            )
+                        ) {
+                            Button("OK", role: .cancel) { messageGateTier = nil }
+                        } message: {
+                            Text(messageGateTier ?? "")
+                        }
 
                     case .configuration:
                         ConfigurationView(
@@ -146,6 +162,8 @@ struct PlaycoApp: App {
                         .environment(authService)
                         .environment(sharingService)
                         .environment(analyticsService)
+                        .environment(storeKitService)
+                        .environment(abonnementService)
                         .modelContainer(container)
                         .transition(.move(edge: .trailing).combined(with: .opacity))
 
@@ -155,6 +173,9 @@ struct PlaycoApp: App {
                                 withAnimation { ecranActif = .choixInitial }
                             },
                             onConnecte: {
+                                // Gate centrale : si athlète sans Club ou assistant sans Pro,
+                                // l'utilisateur est déconnecté ici et renvoyé vers .choixInitial.
+                                guard appliquerGateTier() else { return }
                                 withAnimation(LiquidGlassKit.springDefaut) {
                                     ecranActif = .app
                                 }
@@ -163,6 +184,7 @@ struct PlaycoApp: App {
                         .environment(authService)
                         .environment(syncService)
                         .environment(sharingService)
+                        .environment(abonnementService)
                         .modelContainer(container)
                         .transition(.move(edge: .trailing).combined(with: .opacity))
 
@@ -172,6 +194,8 @@ struct PlaycoApp: App {
                             .environment(syncService)
                             .environment(sharingService)
                             .environment(analyticsService)
+                            .environment(storeKitService)
+                            .environment(abonnementService)
                             .modelContainer(container)
                             .onAppear {
                                 analyticsService.initialiser()
@@ -189,6 +213,23 @@ struct PlaycoApp: App {
                                 Task {
                                     await syncService.attendreSyncInitiale()
                                     authService.restaurerSession(context: container.mainContext)
+                                    // Migration one-shot des assistants pré-v2.0 (role .coach → .assistantCoach)
+                                    abonnementService.migrerAssistantsVersNouveauRole(context: container.mainContext)
+                                    // Charger les 4 produits StoreKit
+                                    try? await storeKitService.chargerProduits()
+                                    // Statut courant (essai/actif/grace/expire)
+                                    await abonnementService.rafraichir(
+                                        utilisateur: authService.utilisateurConnecte,
+                                        context: container.mainContext,
+                                        storeKit: storeKitService
+                                    )
+                                    // Gate centrale : déconnecte immédiatement si l'utilisateur
+                                    // restauré n'a pas le bon tier (athlète sans Club, assistant sans Pro).
+                                    appliquerGateTier()
+                                    // Observer les renouvellements/révocations en arrière-plan
+                                    if observerTransactionsTask == nil {
+                                        observerTransactionsTask = storeKitService.observerTransactions()
+                                    }
                                     if authService.utilisateurConnecte != nil {
                                         analyticsService.suivre(
                                             evenement: EvenementAnalytics.utilisateurConnecte,
@@ -216,6 +257,41 @@ struct PlaycoApp: App {
             .animation(LiquidGlassKit.springDefaut, value: splashTermine)
             .animation(LiquidGlassKit.springDefaut, value: ecranActif)
         }
+    }
+
+    /// Gate centrale post-auth : déconnecte les athlètes (requiert tier Club)
+    /// et assistants (requiert Pro ou Club) si leur coach n'a pas le bon tier.
+    /// Appelée après `restaurerSession` et après `LoginView.onConnecte`.
+    /// Retourne `true` si l'utilisateur a le droit de rester connecté.
+    @discardableResult
+    private func appliquerGateTier() -> Bool {
+        guard let user = authService.utilisateurConnecte else { return true }
+        let code = user.codeEcole
+        guard !code.isEmpty else { return true }
+        let desc = FetchDescriptor<Equipe>(
+            predicate: #Predicate { $0.codeEquipe == code }
+        )
+        let tier = (try? container.mainContext.fetch(desc).first)?.tierAbonnement ?? .aucun
+
+        switch user.role {
+        case .etudiant:
+            guard tier == .club else {
+                authService.deconnexion()
+                messageGateTier = TextesPaywall.erreurAthleteBloque
+                ecranActif = .choixInitial
+                return false
+            }
+        case .assistantCoach:
+            guard tier != .aucun else {
+                authService.deconnexion()
+                messageGateTier = TextesPaywall.erreurAssistantBloque
+                ecranActif = .choixInitial
+                return false
+            }
+        case .coach, .admin:
+            break
+        }
+        return true
     }
 
     /// Vérifie si un ProfilCoach complété existe en base → route vers le bon écran

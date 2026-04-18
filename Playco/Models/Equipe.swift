@@ -40,6 +40,12 @@ final class Equipe {
     var codeEquipe: String = ""
     var dateModification: Date = Date()
 
+    /// Tier d'abonnement du coach propriétaire. Publié dans la CloudKit
+    /// public DB via `CloudKitSharingService.publierEquipeComplete` pour
+    /// que la gate athlète multi-Apple-ID fonctionne sans récupérer
+    /// l'abonnement privé du coach.
+    var tierAbonnementRaw: String = Tier.aucun.rawValue
+
     // Relations
     @Relationship(inverse: \Etablissement.equipes)
     var etablissement: Etablissement? = nil
@@ -63,6 +69,11 @@ final class Equipe {
     var division: DivisionEquipe {
         get { DivisionEquipe(rawValue: divisionRaw) ?? .division1 }
         set { divisionRaw = newValue.rawValue }
+    }
+
+    var tierAbonnement: Tier {
+        get { Tier(rawValue: tierAbonnementRaw) ?? .aucun }
+        set { tierAbonnementRaw = newValue.rawValue }
     }
 
     var couleurPrincipale: Color {
