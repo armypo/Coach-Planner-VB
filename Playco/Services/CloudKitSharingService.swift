@@ -288,9 +288,19 @@ final class CloudKitSharingService {
 
     // MARK: - Publication détaillée (privé)
 
+    /// Publie ou met à jour l'équipe dans la CloudKit public DB.
+    /// Fait un upsert : fetch existant + merge des clés, sinon création.
+    /// Embarque `tierAbonnementRaw` pour la gate athlète/assistant multi-Apple-ID.
     private func publierEquipe(_ equipe: Equipe) async throws {
         let recordID = CKRecord.ID(recordName: "equipe-\(equipe.codeEquipe)")
-        let record = CKRecord(recordType: RecordType.equipe, recordID: recordID)
+
+        // Upsert : on récupère l'existant pour éviter l'erreur « Record already exists ».
+        let record: CKRecord
+        if let existant = try? await publicDB.record(for: recordID) {
+            record = existant
+        } else {
+            record = CKRecord(recordType: RecordType.equipe, recordID: recordID)
+        }
 
         record["codeEquipe"] = equipe.codeEquipe as CKRecordValue
         record["nom"] = equipe.nom as CKRecordValue
@@ -299,9 +309,25 @@ final class CloudKitSharingService {
         record["saison"] = equipe.saison as CKRecordValue
         record["couleurPrincipalHex"] = equipe.couleurPrincipalHex as CKRecordValue
         record["couleurSecondaireHex"] = equipe.couleurSecondaireHex as CKRecordValue
+        record["tierAbonnementRaw"] = equipe.tierAbonnementRaw as CKRecordValue
         record["dateModification"] = equipe.dateModification as CKRecordValue
 
         try await publicDB.save(record)
+    }
+
+    /// Republie uniquement l'`Equipe` (sans les utilisateurs / joueurs) pour
+    /// propager rapidement un changement de tier ou de métadonnées.
+    /// Appelée par `AbonnementService.propagerTierAuxEquipes` quand le coach
+    /// change d'abonnement : les appareils athlètes/assistants lisent le
+    /// nouveau `tierAbonnementRaw` via `EquipePartagee`.
+    func republierEquipeComplete(equipe: Equipe) async {
+        do {
+            try await publierEquipe(equipe)
+            logger.info("Equipe \(equipe.codeEquipe, privacy: .private) republiée (tier: \(equipe.tierAbonnementRaw, privacy: .public))")
+        } catch {
+            logger.error("Échec republication equipe \(equipe.codeEquipe, privacy: .private): \(error.localizedDescription, privacy: .public)")
+            self.erreur = error.localizedDescription
+        }
     }
 
     private func publierEtablissement(_ etab: Etablissement, codeEquipe: String) async throws {

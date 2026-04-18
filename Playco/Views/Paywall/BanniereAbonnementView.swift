@@ -21,6 +21,8 @@ struct BanniereAbonnementView: View {
             }
             .buttonStyle(.plain)
             .transition(.move(edge: .top).combined(with: .opacity))
+            .accessibilityLabel("Bannière d'abonnement")
+            .accessibilityHint("Double-tapez pour gérer votre abonnement Playco")
             .sheet(isPresented: $afficherPaywall) {
                 NavigationStack {
                     PaywallView(

@@ -61,6 +61,8 @@ struct MatchsView: View {
                         }
                         .siAutorise(peutModifier)
                         .bloqueSiNonPayant(source: "matchs_create")
+                        .accessibilityLabel("Nouveau match")
+                        .accessibilityHint("Créer un match avec composition, score et saisie stats en direct")
                     }
                     ToolbarItem(placement: .bottomBar) {
                         HStack(spacing: 20) {

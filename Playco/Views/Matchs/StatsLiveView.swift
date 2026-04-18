@@ -162,6 +162,7 @@ struct StatsLiveView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
+        .bloqueSiNonPayant(source: "stats_live")
     }
 
     // MARK: - Tableau de score

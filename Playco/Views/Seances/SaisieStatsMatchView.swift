@@ -80,6 +80,7 @@ struct SaisieStatsMatchView: View {
                     Label("Sauvegarder", systemImage: "checkmark.circle.fill")
                         .font(.subheadline.weight(.semibold))
                 }
+                .bloqueSiNonPayant(source: "stats_write")
             }
         }
         .alert("Stats sauvegardées", isPresented: $confirmeSauvegarde) {

@@ -96,6 +96,7 @@ struct ExportMatchPDFView: View {
                 .tint(.red)
                 .padding(.horizontal)
                 .padding(.bottom, 16)
+                .bloqueSiNonPayant(source: "export_pdf")
             }
             .navigationTitle("Export PDF")
             .navigationBarTitleDisplayMode(.inline)

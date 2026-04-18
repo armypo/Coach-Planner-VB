@@ -86,6 +86,8 @@ struct PricingCard: View {
         }
         .buttonStyle(.plain)
         .animation(LiquidGlassKit.springDefaut, value: estSelectionne)
+        .accessibilityLabel("\(nomTier) — \(produit.displayPrice) \(IdentifiantsIAP.estAnnuel(produit.id) ? "par an" : "par mois")\(eligibleEssai ? ", 14 jours offerts" : "")\(estSelectionne ? ", sélectionné" : "")")
+        .accessibilityHint("Double-tapez pour sélectionner ce plan")
     }
 
     private var enTete: some View {

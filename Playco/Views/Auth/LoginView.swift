@@ -119,6 +119,8 @@ struct LoginView: View {
         .pickerStyle(.segmented)
         .tint(couleurActive)
         .animation(LiquidGlassKit.springDefaut, value: roleSelectionne)
+        .accessibilityLabel("Type de compte")
+        .accessibilityHint("Sélectionnez Coach, Assistant ou Athlète selon votre profil")
     }
 
     // MARK: - Formulaire
@@ -235,6 +237,8 @@ struct LoginView: View {
         .disabled(!formulaireValide || authService.chargement || authService.estVerrouille)
         .animation(LiquidGlassKit.springDefaut, value: formulaireValide)
         .buttonStyle(GlassButtonStyle())
+        .accessibilityLabel("Se connecter en tant que \(roleSelectionne.label)")
+        .accessibilityHint("Double-tapez pour accéder à votre compte")
     }
 
     /// Tente la connexion puis vérifie que le rôle réel correspond au picker sélectionné.

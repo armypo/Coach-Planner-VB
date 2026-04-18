@@ -33,6 +33,37 @@ final class AbonnementService {
         case gracePeriode(tier: Tier, dateExpirationAttendue: Date)
         case essaiExpire
         case expire(tier: Tier, depuis: Date)
+
+        /// Custom Equatable : ignore les Date associées car StoreKit peut
+        /// retourner une Date légèrement différente à chaque refresh
+        /// (expiration/renewal/revocation recalculées). Sans cette égalité
+        /// basée sur la forme logique, `onChange(of: statut)` dans ContentView
+        /// déclencherait la gate athlète à chaque refresh — risquant une
+        /// boucle de déconnexion pendant un refresh transient.
+        ///
+        /// Pour `.essaiActif`, on conserve `joursRestants` dans la comparaison
+        /// parce que la bannière J-3/J-1 dépend de ce nombre (notif utile).
+        static func == (lhs: Statut, rhs: Statut) -> Bool {
+            switch (lhs, rhs) {
+            case (.chargement, .chargement),
+                 (.aucun, .aucun),
+                 (.essaiExpire, .essaiExpire):
+                return true
+            case let (.essaiActif(t1, j1), .essaiActif(t2, j2)):
+                return t1 == t2 && j1 == j2
+            case (.proMensuel, .proMensuel),
+                 (.proAnnuel, .proAnnuel),
+                 (.clubMensuel, .clubMensuel),
+                 (.clubAnnuel, .clubAnnuel):
+                return true
+            case let (.gracePeriode(t1, _), .gracePeriode(t2, _)):
+                return t1 == t2
+            case let (.expire(t1, _), .expire(t2, _)):
+                return t1 == t2
+            default:
+                return false
+            }
+        }
     }
 
     // MARK: - État observable
@@ -161,15 +192,16 @@ final class AbonnementService {
 
     /// Met à jour `Equipe.tierAbonnementRaw` pour toutes les équipes du coach
     /// connecté (via `codeEcole`), puis republie publiquement via
-    /// `CloudKitSharingService` pour que les athlètes (Apple IDs différents)
-    /// puissent lire le tier sans accéder à l'`Abonnement` privé.
+    /// `CloudKitSharingService.republierEquipeComplete` pour que les athlètes
+    /// et assistants (Apple IDs différents) puissent lire le tier sans accéder
+    /// à l'`Abonnement` privé du coach.
     ///
-    /// `sharingService` est `Any?` tant que l'intégration CloudKit n'est pas
-    /// complétée (P8) — pour l'instant, on se contente du save local.
+    /// Si `sharingService` est `nil`, la propagation reste locale — utile pour
+    /// les tests unitaires ou les scénarios hors-ligne.
     func propagerTierAuxEquipes(
         utilisateur: Utilisateur?,
         context: ModelContext,
-        sharingService: Any? = nil
+        sharingService: CloudKitSharingService? = nil
     ) async {
         guard let user = utilisateur else { return }
         let code = user.codeEcole
@@ -180,15 +212,27 @@ final class AbonnementService {
         )
         let equipes = (try? context.fetch(descripteur)) ?? []
         let tierAPropager = tierActif
+        var equipesModifiees: [Equipe] = []
 
         for equipe in equipes where equipe.tierAbonnement != tierAPropager {
             equipe.tierAbonnement = tierAPropager
             equipe.dateModification = Date()
+            equipesModifiees.append(equipe)
         }
         try? context.save()
 
-        if !equipes.isEmpty {
-            logger.info("Tier \(tierAPropager.rawValue, privacy: .public) propagé localement à \(equipes.count, privacy: .public) équipe(s). Republication CloudKit sera faite en P8.")
+        guard !equipesModifiees.isEmpty else { return }
+        logger.info("Tier \(tierAPropager.rawValue, privacy: .public) propagé localement à \(equipesModifiees.count, privacy: .public) équipe(s).")
+
+        // Publication CloudKit : nécessaire pour que les athlètes multi-Apple-ID
+        // voient le changement (la gate centrale lit Equipe.tierAbonnement depuis
+        // le cache local SwiftData, alimenté par la sync publique CloudKit).
+        guard let sharing = sharingService else {
+            logger.warning("propagerTierAuxEquipes sans sharingService — les appareils athlètes ne verront pas le changement avant leur prochaine sync manuelle.")
+            return
+        }
+        for equipe in equipesModifiees {
+            await sharing.republierEquipeComplete(equipe: equipe)
         }
     }
 
@@ -196,11 +240,13 @@ final class AbonnementService {
 
     /// Parse l'état StoreKit courant et met à jour `statut`.
     /// Si le tier a changé depuis l'appel précédent, propage vers les équipes
-    /// du coach via `propagerTierAuxEquipes` (publication CloudKit en P8).
+    /// du coach via `propagerTierAuxEquipes` (publication CloudKit publique
+    /// pour la gate athlète/assistant multi-Apple-ID).
     func rafraichir(
         utilisateur: Utilisateur?,
         context: ModelContext,
-        storeKit: StoreKitService
+        storeKit: StoreKitService,
+        sharingService: CloudKitSharingService? = nil
     ) async {
         let tierAvant = tierActif
 
@@ -223,7 +269,11 @@ final class AbonnementService {
         persisterDansSwiftData(utilisateur: user, context: context, info: info)
 
         if tierActif != tierAvant {
-            await propagerTierAuxEquipes(utilisateur: user, context: context)
+            await propagerTierAuxEquipes(
+                utilisateur: user,
+                context: context,
+                sharingService: sharingService
+            )
         }
     }
 

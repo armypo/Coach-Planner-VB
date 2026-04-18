@@ -197,6 +197,9 @@ struct EquipeView: View {
                         Image(systemName: "plus")
                     }
                     .siAutorise(authService.utilisateurConnecte?.role.peutGererEquipe ?? false)
+                    .bloqueSiNonPayant(source: "joueur_create")
+                    .accessibilityLabel("Ajouter un joueur")
+                    .accessibilityHint("Créer un profil d'athlète pour ton équipe")
                 }
             }
         }

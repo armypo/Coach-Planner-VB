@@ -218,10 +218,13 @@ struct PlaycoApp: App {
                                     // Charger les 4 produits StoreKit
                                     try? await storeKitService.chargerProduits()
                                     // Statut courant (essai/actif/grace/expire)
+                                    // `sharingService` passé pour que le changement de tier
+                                    // soit republié publiquement (gate athlète multi-Apple-ID).
                                     await abonnementService.rafraichir(
                                         utilisateur: authService.utilisateurConnecte,
                                         context: container.mainContext,
-                                        storeKit: storeKitService
+                                        storeKit: storeKitService,
+                                        sharingService: sharingService
                                     )
                                     // Gate centrale : déconnecte immédiatement si l'utilisateur
                                     // restauré n'a pas le bon tier (athlète sans Club, assistant sans Pro).

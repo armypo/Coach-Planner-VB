@@ -112,15 +112,25 @@ final class StoreKitService {
 
     /// Retourne le produit actif (Subscription Group « playco.pro ») avec son
     /// `Product.SubscriptionInfo.Status`. `nil` si aucune subscription active.
+    ///
+    /// Si plusieurs entitlements sont actifs (ex: transition Pro→Club pendant
+    /// un upgrade), on retourne celui avec la `purchaseDate` la plus récente
+    /// pour un comportement déterministe côté UI et gate.
     func statutSouscriptionActif() async -> (produit: Product, status: Product.SubscriptionInfo.Status)? {
+        var candidats: [(produit: Product, status: Product.SubscriptionInfo.Status, purchaseDate: Date)] = []
+
         for await verification in Transaction.currentEntitlements {
             guard case .verified(let transaction) = verification,
                   IdentifiantsIAP.tous.contains(transaction.productID),
                   let produit = produits.first(where: { $0.id == transaction.productID }),
                   let status = try? await produit.subscription?.status.first
             else { continue }
-            return (produit, status)
+            candidats.append((produit, status, transaction.purchaseDate))
         }
-        return nil
+
+        guard let plusRecent = candidats.max(by: { $0.purchaseDate < $1.purchaseDate }) else {
+            return nil
+        }
+        return (plusRecent.produit, plusRecent.status)
     }
 }

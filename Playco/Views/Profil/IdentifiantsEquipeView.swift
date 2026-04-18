@@ -4,6 +4,9 @@
 
 import SwiftUI
 import SwiftData
+import os
+
+private let logger = Logger(subsystem: "com.origotech.playco", category: "IdentifiantsEquipe")
 
 /// Liste les identifiants + mots de passe auto-générés des athlètes et
 /// assistants de l'équipe active. Accessible depuis ProfilView → Organisation
@@ -17,6 +20,7 @@ struct IdentifiantsEquipeView: View {
     @Query private var utilisateurs: [Utilisateur]
 
     @State private var nouveauMdpAffiche: NouveauMdpWrapper?
+    @State private var erreurRegeneration: String?
 
     private var credsFiltres: [CredentialAthlete] {
         credentials.filtreEquipe(codeEquipeActif)
@@ -53,6 +57,17 @@ struct IdentifiantsEquipeView: View {
         .sheet(item: $nouveauMdpAffiche) { wrapper in
             feuilleNouveauMdp(wrapper: wrapper)
         }
+        .alert(
+            "Régénération impossible",
+            isPresented: Binding(
+                get: { erreurRegeneration != nil },
+                set: { if !$0 { erreurRegeneration = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { erreurRegeneration = nil }
+        } message: {
+            Text(erreurRegeneration ?? "")
+        }
     }
 
     // MARK: - Ligne credential
@@ -73,6 +88,8 @@ struct IdentifiantsEquipeView: View {
                         .font(.caption)
                 }
                 .buttonStyle(.bordered)
+                .accessibilityLabel("Régénérer le mot de passe de \(user?.nomComplet ?? "l'utilisateur")")
+                .accessibilityHint("L'ancien mot de passe ne fonctionnera plus après régénération")
 
                 Spacer()
 
@@ -81,6 +98,8 @@ struct IdentifiantsEquipeView: View {
                         .font(.caption)
                 }
                 .buttonStyle(.bordered)
+                .accessibilityLabel("Partager les identifiants de \(user?.nomComplet ?? "l'utilisateur")")
+                .accessibilityHint("Ouvre un menu de partage avec un message pré-rempli")
             }
         }
         .padding(.vertical, 4)
@@ -107,7 +126,18 @@ struct IdentifiantsEquipeView: View {
     // MARK: - Régénération mdp
 
     private func regenererMdp(cred: CredentialAthlete, user: Utilisateur?) {
-        guard let user else { return }
+        guard let user else {
+            erreurRegeneration = "Utilisateur introuvable."
+            return
+        }
+
+        // Snapshot avant pour rollback en cas d'échec save.
+        let ancienHash = user.motDePasseHash
+        let ancienSel = user.sel
+        let ancienIterations = user.iterations
+        let ancienMdpClair = cred.motDePasseClair
+        let ancienneDateMod = cred.dateModification
+
         let nouveauMdp = Utilisateur.genererMotDePasseAthlete()
         let nouveauSel = authService.genererSel()
         user.sel = nouveauSel
@@ -115,8 +145,22 @@ struct IdentifiantsEquipeView: View {
         user.iterations = AuthService.iterationsParDefaut
         cred.motDePasseClair = nouveauMdp
         cred.dateModification = Date()
-        try? modelContext.save()
-        nouveauMdpAffiche = NouveauMdpWrapper(nom: user.nomComplet, mdp: nouveauMdp)
+
+        do {
+            try modelContext.save()
+            nouveauMdpAffiche = NouveauMdpWrapper(nom: user.nomComplet, mdp: nouveauMdp)
+            logger.info("Mdp régénéré pour \(user.id.uuidString, privacy: .private)")
+        } catch {
+            // Rollback : la sauvegarde a échoué, restaurer les anciens attributs
+            // pour éviter un mdp UI ≠ mdp en BD.
+            user.motDePasseHash = ancienHash
+            user.sel = ancienSel
+            user.iterations = ancienIterations
+            cred.motDePasseClair = ancienMdpClair
+            cred.dateModification = ancienneDateMod
+            logger.error("Échec régénération mdp : \(error.localizedDescription, privacy: .public)")
+            erreurRegeneration = "Impossible d'enregistrer le nouveau mot de passe. Vérifiez votre connexion iCloud et réessayez."
+        }
     }
 
     private func feuilleNouveauMdp(wrapper: NouveauMdpWrapper) -> some View {

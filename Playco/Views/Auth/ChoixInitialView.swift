@@ -53,6 +53,8 @@ struct ChoixInitialView: View {
                         .buttonStyle(.plain)
                         .offset(x: animee ? 0 : -60)
                         .opacity(animee ? 1 : 0)
+                        .accessibilityLabel("Créer mon équipe — parcours coach")
+                        .accessibilityHint("Double-tapez pour commencer le wizard de configuration de votre équipe")
 
                         // Connexion
                         Button { onConnexion() } label: {
@@ -67,6 +69,8 @@ struct ChoixInitialView: View {
                         .buttonStyle(.plain)
                         .offset(x: animee ? 0 : 60)
                         .opacity(animee ? 1 : 0)
+                        .accessibilityLabel("Connexion à une équipe existante")
+                        .accessibilityHint("Double-tapez pour vous identifier en tant que coach, assistant ou athlète")
                     }
                     .frame(maxWidth: 480)
 

@@ -308,6 +308,7 @@ struct ModifierUtilisateurView: View {
                             )
                             .foregroundStyle(.white)
                     }
+                    .bloqueSiNonPayant(source: "user_edit")
                 }
                 .padding(.horizontal, 24)
                 .padding(.vertical, 20)

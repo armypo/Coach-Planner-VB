@@ -163,6 +163,7 @@ struct StrategiesView: View {
                     Image(systemName: "plus")
                 }
                 .siAutorise(authService.utilisateurConnecte?.role.peutModifierStrategies ?? false)
+                .bloqueSiNonPayant(source: "strategies_create")
             }
             // Rapports accessible via sidebar
             ToolbarItem(placement: .primaryAction) {
