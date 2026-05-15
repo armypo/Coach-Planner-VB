@@ -74,3 +74,10 @@ Secrets.swift
 # Documentation d'outils tiers (AI)
 GEMINI.md
 AGENTS.md
+
+# Claude Code (config locale + worktrees + skills)
+.claude/
+.mcp.json
+
+# Xcode shared data utilisateur (schemes locaux)
+Playco.xcodeproj/xcshareddata/

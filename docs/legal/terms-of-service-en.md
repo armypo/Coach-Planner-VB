@@ -1,3 +1,11 @@
+---
+layout: page
+title: Terms of Service
+lang: en
+permalink: /legal/terms-of-service-en/
+meta: "Effective date: April 15, 2026 — English translation. Governed by Québec law; exclusive jurisdiction: courts of the judicial district of Québec."
+---
+
 # Terms of Service — Playco
 
 **Effective date:** April 15, 2026
