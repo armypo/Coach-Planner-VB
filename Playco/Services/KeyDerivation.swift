@@ -18,7 +18,8 @@ private let logger = Logger(subsystem: "com.origotech.playco", category: "KeyDer
 // MARK: - Erreurs
 
 /// Erreurs possibles lors de la dérivation de clés.
-enum KeyDerivationError: LocalizedError {
+/// Conforme à `Equatable` pour permettre `#expect(throws: KeyDerivationError.X)` en tests.
+enum KeyDerivationError: LocalizedError, Equatable {
     /// Mot de passe vide transmis à la dérivation — guard-fou développeur.
     case motDePasseVide
     /// CommonCrypto a retourné un statut non-kCCSuccess — défaillance système.
