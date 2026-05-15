@@ -225,7 +225,11 @@ struct PlaycoApp: App {
                                 let sharing = sharingService
                                 let containerRef = container
                                 syncService.onReseauRestaure = { @Sendable in
-                                    await sharing.rejouerFileAttente(context: containerRef.mainContext)
+                                    // ModelContext est MainActor-isolated, hopper sur MainActor
+                                    // pour accéder à `mainContext` (Swift 6 strict concurrency).
+                                    await Task { @MainActor in
+                                        await sharing.rejouerFileAttente(context: containerRef.mainContext)
+                                    }.value
                                 }
                                 Task {
                                     await syncService.attendreSyncInitiale()

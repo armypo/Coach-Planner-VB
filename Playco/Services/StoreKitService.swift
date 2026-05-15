@@ -9,7 +9,9 @@ import Foundation
 import StoreKit
 import os
 
-private let loggerSK = Logger(subsystem: "com.origotech.playco", category: "storekit")
+/// `nonisolated` car Logger est Sendable — permet l'usage depuis `Task.detached`
+/// dans `observerTransactions()` (sinon warning Swift 6 MainActor isolation).
+nonisolated private let loggerSK = Logger(subsystem: "com.origotech.playco", category: "storekit")
 
 // MARK: - Erreurs
 
