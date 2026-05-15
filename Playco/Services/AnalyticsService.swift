@@ -47,7 +47,9 @@ final class AnalyticsService {
     func initialiser() {
         guard !estInitialise else { return }
 
-        // TODO: décommenter après ajout du package
+        // TelemetryDeck non activé pour cette version — mode logger-only.
+        // Pour activer : ajouter le package TelemetryDeck SDK, configurer l'App ID,
+        // puis décommenter les deux lignes ci-dessous.
         // let config = TelemetryDeck.Config(appID: _placeholderAppID)
         // TelemetryDeck.initialize(config: config)
         _ = _placeholderAppID // évite l'avertissement "unused" avant l'ajout du package
@@ -75,7 +77,7 @@ final class AnalyticsService {
 
         let metadonneesFiltrees = filtrerDonneesPersonnelles(metadonnees)
 
-        // TODO: décommenter après ajout du package
+        // TelemetryDeck non activé — voir initialiser() ci-dessus.
         // TelemetryDeck.signal(evenement, parameters: metadonneesFiltrees)
 
         let metaStr = metadonneesFiltrees.isEmpty ? "" : " \(metadonneesFiltrees)"
@@ -116,4 +118,14 @@ enum EvenementAnalytics {
     static let erreurCritique = "erreur_critique"
     static let configurationCompletee = "configuration_completee"
     static let exportPDFGenere = "export_pdf_genere"
+
+    // Paywall v2.0 (8 événements)
+    static let paywallAffiche     = "paywall_affiche"
+    static let paywallFerme       = "paywall_ferme"
+    static let essaiDemarre       = "essai_demarre"
+    static let essaiExpire        = "essai_expire"
+    static let achatInitie        = "achat_initie"
+    static let achatReussi        = "achat_reussi"
+    static let achatEchoue        = "achat_echoue"
+    static let restaurationTentee = "restauration_tentee"
 }

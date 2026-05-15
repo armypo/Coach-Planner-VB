@@ -1,0 +1,133 @@
+{
+  "identifier" : "5D7E4C9A-1F2B-4E3D-A8F7-B1C2D3E4F5A6",
+  "nonRenewingSubscriptions" : [],
+  "products" : [],
+  "settings" : {
+    "_applicationInternalID" : "0000000000",
+    "_developerTeamID" : "",
+    "_failTransactionsEnabled" : false,
+    "_lastSynchronizedDate" : 768614400,
+    "_locale" : "fr_CA",
+    "_storefront" : "CAN",
+    "_storeKitErrors" : []
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "0AC6F2A5-CFD7-4D1A-89BB-6C8E7D2A11B1",
+      "localizations" : [
+        {
+          "description" : "Plans pour coachs et clubs",
+          "displayName" : "Playco Pro",
+          "locale" : "fr_CA"
+        }
+      ],
+      "name" : "Playco Pro",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [],
+          "codeOffers" : [],
+          "displayPrice" : "14.99",
+          "familyShareable" : false,
+          "groupNumber" : 2,
+          "internalID" : "PRO_MONTHLY",
+          "introductoryOffer" : {
+            "internalID" : "PRO_INTRO_M",
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P2W"
+          },
+          "localizations" : [
+            {
+              "description" : "Coach + staff. Stats, exports, analytics.",
+              "displayName" : "Playco Pro · Mensuel",
+              "locale" : "fr_CA"
+            }
+          ],
+          "productID" : "ca.origotech.playco.pro.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Playco Pro Monthly",
+          "subscriptionGroupID" : "0AC6F2A5-CFD7-4D1A-89BB-6C8E7D2A11B1",
+          "type" : "RecurringSubscription"
+        },
+        {
+          "adHocOffers" : [],
+          "codeOffers" : [],
+          "displayPrice" : "149.99",
+          "familyShareable" : false,
+          "groupNumber" : 2,
+          "internalID" : "PRO_YEARLY",
+          "introductoryOffer" : {
+            "internalID" : "PRO_INTRO_Y",
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P2W"
+          },
+          "localizations" : [
+            {
+              "description" : "Coach + staff. Économie -17%.",
+              "displayName" : "Playco Pro · Annuel",
+              "locale" : "fr_CA"
+            }
+          ],
+          "productID" : "ca.origotech.playco.pro.yearly",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "Playco Pro Yearly",
+          "subscriptionGroupID" : "0AC6F2A5-CFD7-4D1A-89BB-6C8E7D2A11B1",
+          "type" : "RecurringSubscription"
+        },
+        {
+          "adHocOffers" : [],
+          "codeOffers" : [],
+          "displayPrice" : "25.00",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "CLUB_MONTHLY",
+          "introductoryOffer" : {
+            "internalID" : "CLUB_INTRO_M",
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P2W"
+          },
+          "localizations" : [
+            {
+              "description" : "Pro + accès athlètes. Messagerie complète.",
+              "displayName" : "Playco Club · Mensuel",
+              "locale" : "fr_CA"
+            }
+          ],
+          "productID" : "ca.origotech.playco.club.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Playco Club Monthly",
+          "subscriptionGroupID" : "0AC6F2A5-CFD7-4D1A-89BB-6C8E7D2A11B1",
+          "type" : "RecurringSubscription"
+        },
+        {
+          "adHocOffers" : [],
+          "codeOffers" : [],
+          "displayPrice" : "250.00",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "CLUB_YEARLY",
+          "introductoryOffer" : {
+            "internalID" : "CLUB_INTRO_Y",
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P2W"
+          },
+          "localizations" : [
+            {
+              "description" : "Pro + accès athlètes. Économie -17%.",
+              "displayName" : "Playco Club · Annuel",
+              "locale" : "fr_CA"
+            }
+          ],
+          "productID" : "ca.origotech.playco.club.yearly",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "Playco Club Yearly",
+          "subscriptionGroupID" : "0AC6F2A5-CFD7-4D1A-89BB-6C8E7D2A11B1",
+          "type" : "RecurringSubscription"
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 4,
+    "minor" : 0
+  }
+}

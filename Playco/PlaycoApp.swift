@@ -15,10 +15,19 @@ struct PlaycoApp: App {
     @State private var syncService = CloudKitSyncService()
     @State private var sharingService = CloudKitSharingService()
     @State private var analyticsService = AnalyticsService()
+    @State private var storeKitService = StoreKitService()
+    @State private var abonnementService = AbonnementService()
+    @State private var observerTransactionsTask: Task<Void, Never>? = nil
     @AppStorage("tutorielVu") private var tutorielVu = false
     @AppStorage("playco_wizard_en_cours") private var wizardEnCours = false
     @State private var afficherTutorielInitial = false
     @State private var afficherReprendreWizard = false
+    /// Message d'erreur critique affiché si aucun des 4 fallbacks ModelContainer ne réussit.
+    /// Initialisé dans `init()` via `_erreurInitialisation = State(initialValue:)`.
+    @State private var erreurInitialisation: String? = nil
+    /// Message d'erreur de la gate paywall (athlète bloqué, assistant bloqué).
+    /// Affiché en alert sur ChoixInitialView après déconnexion forcée.
+    @State private var erreurGate: String? = nil
 
     /// Liste des types @Model pour éviter la répétition
     private static let modeles: [any PersistentModel.Type] = [
@@ -32,7 +41,9 @@ struct PlaycoApp: App {
         AssistantCoach.self, CreneauRecurrent.self, MatchCalendrier.self,
         MessageEquipe.self, ScoutingReport.self, PointMatch.self, ActionRallye.self,
         PhaseSaison.self, ObjectifJoueur.self,
-        CategorieExercice.self, StaffPermissions.self
+        CategorieExercice.self, StaffPermissions.self,
+        CredentialAthlete.self,
+        Abonnement.self
     ]
 
     init() {
@@ -64,12 +75,23 @@ struct PlaycoApp: App {
                     logger.critical("ModelContainer mémoire échoué: \(error.localizedDescription)")
                     // Tentative 4 — Schéma vide en mémoire (ultime fallback)
                     do {
+                        // Tentative 4 — Schéma vide en mémoire (ultime fallback)
+                        // Si ça réussit : l'app fonctionne sans données, un écran
+                        // d'erreur sera affiché dans body via erreurInitialisation.
                         let schemaVide = Schema([])
                         let configVide = ModelConfiguration(isStoredInMemoryOnly: true)
                         container = try ModelContainer(for: schemaVide, configurations: [configVide])
+                        _erreurInitialisation = State(initialValue:
+                            "Impossible d'initialiser la base de données. " +
+                            "Redémarre l'application ou contacte le support si le problème persiste."
+                        )
+                        logger.critical("Toutes les tentatives ModelContainer ont échoué — écran d'erreur affiché")
                     } catch {
-                        logger.critical("Échec init ModelContainer en mémoire: \(error.localizedDescription)")
-                        fatalError("Impossible d'initialiser la base de données. Merci de redémarrer l'app. Si le problème persiste, contactez le support.")
+                        // Dernière tentative échouée — le runtime Swift est dans un état fatal.
+                        // fatalError acceptable ici : Schema([]) + isStoredInMemoryOnly ne peut
+                        // pas échouer en conditions normales (pas de disque, pas de réseau).
+                        logger.critical("Échec init ModelContainer schéma vide: \(error.localizedDescription)")
+                        fatalError("Impossible d'initialiser la base de données (schema vide). Erreur système critique.")
                     }
                 }
             }
@@ -85,16 +107,20 @@ struct PlaycoApp: App {
     /// Écrans du flux de lancement
     enum EcranLancement {
         case chargement
-        case choixInitial      // premier lancement : configurer ou rejoindre
+        case choixInitial      // premier lancement : configurer ou login
         case configuration     // wizard 6 étapes
-        case rejoindre         // connexion avec code équipe
-        case app               // ContentView (login + sections)
+        case login             // login unifié (Coach / Assistant / Athlète)
+        case app               // ContentView (sections)
     }
 
     var body: some Scene {
         WindowGroup {
             Group {
-                if !splashTermine {
+                // Écran d'erreur critique — affiché si TOUS les fallbacks ModelContainer ont échoué.
+                // Dans ce cas l'app ne peut pas fonctionner, on guide l'utilisateur.
+                if let erreur = erreurInitialisation {
+                    EcranErreurBaseView(message: erreur)
+                } else if !splashTermine {
                     SplashScreenView {
                         splashTermine = true
                     }
@@ -109,8 +135,8 @@ struct PlaycoApp: App {
                             onConfigurer: {
                                 withAnimation { ecranActif = .configuration }
                             },
-                            onRejoindre: {
-                                withAnimation { ecranActif = .rejoindre }
+                            onConnexion: {
+                                withAnimation { ecranActif = .login }
                             }
                         )
                         .environment(authService)
@@ -130,6 +156,14 @@ struct PlaycoApp: App {
                         } message: {
                             Text("Un wizard de configuration a été commencé mais non terminé. Voulez-vous reprendre ou recommencer ? Les saisies précédentes ne sont pas conservées.")
                         }
+                        .alert("Accès bloqué", isPresented: Binding(
+                            get: { erreurGate != nil },
+                            set: { if !$0 { erreurGate = nil } }
+                        )) {
+                            Button("OK", role: .cancel) { erreurGate = nil }
+                        } message: {
+                            Text(erreurGate ?? "")
+                        }
 
                     case .configuration:
                         ConfigurationView(
@@ -144,17 +178,24 @@ struct PlaycoApp: App {
                         )
                         .environment(authService)
                         .environment(sharingService)
+                        .environment(analyticsService)
+                        .environment(storeKitService)
+                        .environment(abonnementService)
                         .modelContainer(container)
                         .transition(.move(edge: .trailing).combined(with: .opacity))
 
-                    case .rejoindre:
-                        RejoindreEquipeView(
+                    case .login:
+                        LoginView(
                             onRetour: {
                                 withAnimation { ecranActif = .choixInitial }
                             },
                             onConnecte: {
-                                withAnimation(LiquidGlassKit.springDefaut) {
-                                    ecranActif = .app
+                                // Appliquer la gate centrale avant de passer à .app
+                                appliquerGateTier()
+                                if authService.utilisateurConnecte != nil {
+                                    withAnimation(LiquidGlassKit.springDefaut) {
+                                        ecranActif = .app
+                                    }
                                 }
                             }
                         )
@@ -170,6 +211,8 @@ struct PlaycoApp: App {
                             .environment(syncService)
                             .environment(sharingService)
                             .environment(analyticsService)
+                            .environment(storeKitService)
+                            .environment(abonnementService)
                             .modelContainer(container)
                             .onAppear {
                                 analyticsService.initialiser()
@@ -193,6 +236,20 @@ struct PlaycoApp: App {
                                             metadonnees: ["role": authService.utilisateurConnecte?.role.rawValue ?? "inconnu"]
                                         )
                                     }
+                                    // Paywall v2.0 : migration rôles + chargement produits + rafraîchir statut
+                                    abonnementService.migrerAssistantsVersNouveauRole(context: container.mainContext)
+                                    try? await storeKitService.chargerProduits()
+                                    await abonnementService.rafraichir(
+                                        utilisateur: authService.utilisateurConnecte,
+                                        context: container.mainContext,
+                                        storeKit: storeKitService
+                                    )
+                                    // Appliquer la gate (athlète bloqué si tier coach != .club)
+                                    appliquerGateTier()
+                                    // Observer transactions Apple en continu (renouvellements, refunds)
+                                    if observerTransactionsTask == nil {
+                                        observerTransactionsTask = storeKitService.observerTransactions()
+                                    }
                                 }
                                 if !tutorielVu {
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
@@ -213,6 +270,37 @@ struct PlaycoApp: App {
             }
             .animation(LiquidGlassKit.springDefaut, value: splashTermine)
             .animation(LiquidGlassKit.springDefaut, value: ecranActif)
+        }
+    }
+
+/// Gate centrale paywall : applique les règles tier sur l'utilisateur connecté.
+    /// Appelée après chaque connexion réussie + au démarrage après restaurerSession.
+    ///
+    /// Logique :
+    /// - Athlète : tier équipe doit être `.club` — sinon déconnexion immédiate
+    /// - Assistant : tier équipe doit être `.pro` ou `.club` — sinon déconnexion
+    /// - Coach/Admin : pas de gate (gérés par bannière + feature gating)
+    private func appliquerGateTier() {
+        guard let user = authService.utilisateurConnecte else { return }
+        let code = user.codeEcole
+        let desc = FetchDescriptor<Equipe>(predicate: #Predicate { $0.codeEquipe == code })
+        let tier = (try? container.mainContext.fetch(desc).first)?.tierAbonnement ?? .aucun
+
+        switch user.role {
+        case .etudiant:
+            if tier != .club {
+                authService.deconnexion()
+                erreurGate = TextesPaywall.erreurAthleteBloque
+                withAnimation { ecranActif = .choixInitial }
+            }
+        case .assistantCoach:
+            if tier == .aucun {
+                authService.deconnexion()
+                erreurGate = TextesPaywall.erreurAssistantBloque
+                withAnimation { ecranActif = .choixInitial }
+            }
+        case .coach, .admin:
+            break  // pas de gate tier pour eux
         }
     }
 

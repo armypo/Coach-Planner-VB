@@ -15,6 +15,27 @@ import os
 
 private let logger = Logger(subsystem: "com.origotech.playco", category: "KeyDerivation")
 
+// MARK: - Erreurs
+
+/// Erreurs possibles lors de la dérivation de clés.
+enum KeyDerivationError: LocalizedError {
+    /// Mot de passe vide transmis à la dérivation — guard-fou développeur.
+    case motDePasseVide
+    /// CommonCrypto a retourné un statut non-kCCSuccess — défaillance système.
+    case echecCrypto(Int32)
+
+    var errorDescription: String? {
+        switch self {
+        case .motDePasseVide:
+            return "Le mot de passe ne peut pas être vide."
+        case .echecCrypto(let statut):
+            return "Erreur cryptographique (statut CommonCrypto \(statut)). Redémarre l'application."
+        }
+    }
+}
+
+// MARK: - Namespace
+
 /// Namespace pour toutes les opérations cryptographiques liées au mot de passe.
 enum KeyDerivation {
 
@@ -35,17 +56,21 @@ enum KeyDerivation {
     /// Hash du mot de passe avec PBKDF2-HMAC-SHA256 + sel.
     /// Utilise `iterationsParDefaut` (600 000) pour tous les nouveaux comptes.
     /// Sortie : 32 bytes → 64 caractères hex.
-    static func hashPBKDF2(_ motDePasse: String, sel: String) -> String {
-        deriverCle(motDePasse: motDePasse, sel: sel, iterations: iterationsParDefaut)
+    /// - Throws: `KeyDerivationError.motDePasseVide` si le mot de passe est vide.
+    /// - Throws: `KeyDerivationError.echecCrypto` si CommonCrypto échoue.
+    static func hashPBKDF2(_ motDePasse: String, sel: String) throws -> String {
+        try deriverCle(motDePasse: motDePasse, sel: sel, iterations: iterationsParDefaut)
     }
 
     /// Dérive une clé avec PBKDF2-HMAC-SHA256. Paramètre `iterations` exposé
     /// pour la vérification des comptes legacy (migration progressive).
-    static func deriverCle(motDePasse: String, sel: String, iterations: Int) -> String {
+    /// - Throws: `KeyDerivationError.motDePasseVide` si le mot de passe est vide.
+    /// - Throws: `KeyDerivationError.echecCrypto` si CommonCrypto échoue.
+    static func deriverCle(motDePasse: String, sel: String, iterations: Int) throws -> String {
         // Garde-fou : pointeur nil + count=0 sur CCKeyDerivationPBKDF est UB.
         guard !motDePasse.isEmpty else {
             logger.error("deriverCle appelé avec motDePasse vide — refus")
-            return ""
+            throw KeyDerivationError.motDePasseVide
         }
         // Utilise Data.utf8 pour compter tous les bytes (tolère les NUL éventuels,
         // contrairement à strlen).
@@ -69,8 +94,8 @@ enum KeyDerivation {
         }
 
         guard statut == kCCSuccess else {
-            logger.critical("CCKeyDerivationPBKDF échec statut \(statut) — échec crypto, connexion refusée")
-            return ""
+            logger.critical("CCKeyDerivationPBKDF échec statut \(statut) — défaillance crypto")
+            throw KeyDerivationError.echecCrypto(statut)
         }
 
         return derivee.map { String(format: "%02x", $0) }.joined()
@@ -102,6 +127,8 @@ enum KeyDerivation {
     ///   • iterations ≥ 2       → PBKDF2 avec le nombre d'itérations stocké
     ///
     /// Comparaison constant-time via `egaliteConstante` pour éviter timing attacks.
+    /// Retourne `false` (et non un throw) si la dérivation échoue : l'échec crypto
+    /// est loggué `.critical`, et refuser l'accès est le comportement sûr par défaut.
     static func verifier(_ motDePasse: String,
                          hash: String,
                          sel: String?,
@@ -113,7 +140,12 @@ enum KeyDerivation {
         if iterations <= 1 {
             candidat = hashLegacySHA256AvecSel(motDePasse, sel: sel)
         } else {
-            candidat = deriverCle(motDePasse: motDePasse, sel: sel, iterations: iterations)
+            do {
+                candidat = try deriverCle(motDePasse: motDePasse, sel: sel, iterations: iterations)
+            } catch {
+                logger.critical("verifier: échec dérivation PBKDF2 — accès refusé: \(error.localizedDescription)")
+                return false
+            }
         }
         return egaliteConstante(candidat, hash)
     }

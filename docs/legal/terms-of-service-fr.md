@@ -1,3 +1,11 @@
+---
+layout: page
+title: Conditions d'utilisation
+lang: fr
+permalink: /legal/terms-of-service-fr/
+meta: "Entrée en vigueur : 15 avril 2026 — Contrat régi par le droit québécois, juridiction : tribunaux du district judiciaire de Québec"
+---
+
 # Conditions d'utilisation — Playco
 
 **Entrée en vigueur :** 15 avril 2026

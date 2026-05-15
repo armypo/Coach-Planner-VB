@@ -1,3 +1,11 @@
+---
+layout: page
+title: Privacy Policy
+lang: en
+permalink: /legal/privacy-policy-en/
+meta: "Effective date: April 15, 2026 — English translation of our Québec (Loi 25) compliant policy. The French version prevails in case of discrepancy."
+---
+
 # Privacy Policy — Playco
 
 **Effective date:** April 15, 2026

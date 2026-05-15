@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="{{ page.lang | default: site.lang | default: 'fr' }}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ page.title }} — Playco</title>
+  <meta name="description" content="{% if page.description %}{{ page.description }}{% else %}Playco — application iPadOS de coaching volleyball conçue au Québec. Conforme Loi 25 et Loi 96.{% endif %}">
+  <link rel="canonical" href="{{ page.url | absolute_url }}">
+  {% seo %}
+  <style>
+    :root {
+      --orange: #E8734A;
+      --bleu: #4A8AF4;
+      --vert: #34C785;
+      --violet: #9B7AE8;
+      --texte: #1a1a1a;
+      --texte-secondaire: #666;
+      --fond: #fff;
+      --fond-code: #f5f5f7;
+      --bordure: #e5e5e7;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --texte: #e5e5e7;
+        --texte-secondaire: #a1a1a6;
+        --fond: #000;
+        --fond-code: #1c1c1e;
+        --bordure: #38383a;
+      }
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+      color: var(--texte);
+      background: var(--fond);
+      line-height: 1.65;
+      margin: 0;
+      padding: 0;
+    }
+    header.playco-header {
+      background: var(--fond);
+      border-bottom: 1px solid var(--bordure);
+      padding: 16px 24px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    header.playco-header .container {
+      max-width: 820px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    header .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      color: var(--texte);
+    }
+    header .logo strong {
+      font-size: 1.2em;
+      font-weight: 700;
+    }
+    header .logo .badge-qc {
+      font-size: 0.7em;
+      font-weight: 600;
+      color: var(--orange);
+      padding: 2px 8px;
+      border: 1px solid var(--orange);
+      border-radius: 999px;
+      letter-spacing: 0.02em;
+    }
+    main {
+      max-width: 820px;
+      margin: 0 auto;
+      padding: 48px 24px 96px;
+    }
+    main h1 {
+      font-size: 2.2em;
+      line-height: 1.2;
+      margin: 0 0 16px;
+    }
+    main h2 {
+      font-size: 1.4em;
+      margin: 48px 0 16px;
+      padding-top: 24px;
+      border-top: 1px solid var(--bordure);
+    }
+    main h3 {
+      font-size: 1.1em;
+      margin: 32px 0 12px;
+    }
+    main p, main li { font-size: 1.02em; }
+    main a {
+      color: var(--bleu);
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+    main blockquote {
+      border-left: 3px solid var(--orange);
+      padding: 12px 20px;
+      margin: 24px 0;
+      background: var(--fond-code);
+      border-radius: 0 8px 8px 0;
+    }
+    main code {
+      font-family: ui-monospace, "SF Mono", Monaco, monospace;
+      font-size: 0.92em;
+      background: var(--fond-code);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    main pre code { display: block; padding: 16px; overflow-x: auto; }
+    main table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 24px 0;
+      font-size: 0.95em;
+    }
+    main th, main td {
+      padding: 10px 14px;
+      text-align: left;
+      border-bottom: 1px solid var(--bordure);
+    }
+    main th { font-weight: 600; background: var(--fond-code); }
+    .meta {
+      color: var(--texte-secondaire);
+      font-size: 0.92em;
+      margin: 4px 0 32px;
+    }
+    footer.playco-footer {
+      border-top: 1px solid var(--bordure);
+      padding: 32px 24px;
+      background: var(--fond-code);
+      color: var(--texte-secondaire);
+      font-size: 0.88em;
+    }
+    footer.playco-footer .container {
+      max-width: 820px;
+      margin: 0 auto;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 24px;
+      justify-content: space-between;
+    }
+    footer.playco-footer .identite strong {
+      display: block;
+      color: var(--texte);
+      margin-bottom: 4px;
+    }
+    footer.playco-footer .liens a {
+      color: var(--bleu);
+      text-decoration: none;
+      margin-right: 16px;
+    }
+    footer.playco-footer .liens a:hover { text-decoration: underline; }
+    footer.playco-footer .conformite {
+      margin-top: 12px;
+      font-size: 0.85em;
+    }
+    @media (max-width: 600px) {
+      main h1 { font-size: 1.8em; }
+      header.playco-header { padding: 12px 16px; }
+      main { padding: 32px 16px 64px; }
+      footer.playco-footer .container { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <header class="playco-header">
+    <div class="container">
+      <a class="logo" href="{{ '/' | relative_url }}">
+        <strong>Playco</strong>
+        <span class="badge-qc">QC · fr</span>
+      </a>
+      <nav>
+        <a href="{{ '/legal/privacy-policy-fr' | relative_url }}" style="text-decoration: none; color: var(--texte-secondaire); font-size: 0.9em; margin-right: 16px;">Confidentialité</a>
+        <a href="{{ '/legal/terms-of-service-fr' | relative_url }}" style="text-decoration: none; color: var(--texte-secondaire); font-size: 0.9em;">Conditions</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    {% if page.title %}<h1>{{ page.title }}</h1>{% endif %}
+    {% if page.meta %}<p class="meta">{{ page.meta }}</p>{% endif %}
+    {{ content }}
+  </main>
+
+  <footer class="playco-footer">
+    <div class="container">
+      <div class="identite">
+        <strong>Origo Technologies</strong>
+        Québec, Canada<br>
+        <a href="mailto:support@playco.ca">support@playco.ca</a>
+      </div>
+      <div class="liens">
+        <a href="{{ '/legal/privacy-policy-fr' | relative_url }}">Confidentialité (FR)</a>
+        <a href="{{ '/legal/privacy-policy-en' | relative_url }}">Privacy (EN)</a>
+        <a href="{{ '/legal/terms-of-service-fr' | relative_url }}">Conditions (FR)</a>
+        <a href="{{ '/legal/terms-of-service-en' | relative_url }}">Terms (EN)</a>
+        <div class="conformite">
+          Conforme <a href="https://www.cai.gouv.qc.ca/">Loi 25 (Québec)</a> · Loi 96 (français langue commune) · LPRPDE fédérale. Juridiction : tribunaux du Québec.
+        </div>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

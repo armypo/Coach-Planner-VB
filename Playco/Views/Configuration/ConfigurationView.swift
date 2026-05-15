@@ -66,6 +66,12 @@ struct ConfigurationView: View {
     @State var matchsTemp: [MatchTemp] = []
     @State var dateFinSaison: Date = Calendar.current.date(byAdding: .month, value: 4, to: Date()) ?? Date()
 
+    // Sheet récap des identifiants créés à la finalisation
+    @State private var afficherRecap = false
+    @State private var credsRecap: [CredentialRecap] = []
+    // Sheet de bienvenue paywall (après le récap)
+    @State private var afficherBienvenuePaywall = false
+
     // MARK: - Validation
 
     private var etapeValide: Bool {
@@ -119,6 +125,21 @@ struct ConfigurationView: View {
         .onAppear {
             // Marque le wizard comme en cours dès l'entrée — sera effacé par finaliser() ou onRetour
             wizardEnCours = true
+        }
+        .sheet(isPresented: $afficherRecap) {
+            IdentifiantsRecapSheet(creds: credsRecap) {
+                afficherRecap = false
+                // Après les identifiants → présenter le paywall de bienvenue
+                afficherBienvenuePaywall = true
+            }
+            .interactiveDismissDisabled(true)
+        }
+        .fullScreenCover(isPresented: $afficherBienvenuePaywall) {
+            BienvenuePaywallView {
+                afficherBienvenuePaywall = false
+                onTermine()
+            }
+            .interactiveDismissDisabled(true)
         }
     }
 
@@ -318,7 +339,10 @@ struct ConfigurationView: View {
         // car SwiftData ne voit pas les insertions non-committées)
         var idsCreesEnMemoire = Set<String>()
 
-        // 4. Assistants → Utilisateur
+        // Accumulateur pour le sheet récap final
+        var recaps: [CredentialRecap] = []
+
+        // 4. Assistants → Utilisateur + CredentialAthlete
         for a in assistants {
             let sel = authService.genererSel()
             let hash = authService.hashMotDePasse(a.motDePasse, sel: sel)
@@ -334,7 +358,7 @@ struct ConfigurationView: View {
                 motDePasseHash: hash,
                 prenom: a.prenom,
                 nom: a.nom,
-                role: .coach,
+                role: .assistantCoach,
                 codeEcole: codeEquipe
             )
             utilisateur.sel = sel
@@ -345,26 +369,38 @@ struct ConfigurationView: View {
             let assistant = AssistantCoach(prenom: a.prenom, nom: a.nom)
             assistant.courriel = a.courriel
             assistant.roleAssistant = a.role
-            assistant.identifiant = a.identifiant
+            assistant.identifiant = idUnique
             assistant.motDePasseHash = hash
             assistant.sel = sel
             assistant.equipe = equipe
             assistant.codeEquipe = codeEquipe
             modelContext.insert(assistant)
+
+            // CredentialAthlete privé (mdp en clair pour récupération coach)
+            let cred = CredentialAthlete(
+                utilisateurID: utilisateur.id,
+                joueurEquipeID: nil,
+                identifiant: idUnique,
+                motDePasseClair: a.motDePasse,
+                codeEquipe: codeEquipe
+            )
+            modelContext.insert(cred)
+
+            recaps.append(CredentialRecap(
+                nomComplet: "\(a.prenom) \(a.nom)",
+                identifiant: idUnique,
+                motDePasse: a.motDePasse,
+                role: "Assistant"
+            ))
         }
 
-        // 5. Joueurs → JoueurEquipe + Utilisateur
+        // 5. Joueurs → JoueurEquipe + Utilisateur + CredentialAthlete
         for j in joueursTemp {
             let joueur = JoueurEquipe(nom: j.nom, prenom: j.prenom, numero: j.numero, poste: j.poste)
             joueur.codeEquipe = codeEquipe
             joueur.equipe = equipe
             let sel = authService.genererSel()
             let hash = authService.hashMotDePasse(j.motDePasse, sel: sel)
-            joueur.identifiant = j.identifiant
-            joueur.motDePasseHash = hash
-            joueur.sel = sel
-            modelContext.insert(joueur)
-
             let idJoueur = Utilisateur.genererIdentifiantUnique(
                 prenom: j.prenom,
                 nom: j.nom,
@@ -372,6 +408,11 @@ struct ConfigurationView: View {
                 exclusions: idsCreesEnMemoire
             )
             idsCreesEnMemoire.insert(idJoueur)
+            joueur.identifiant = idJoueur
+            joueur.motDePasseHash = hash
+            joueur.sel = sel
+            modelContext.insert(joueur)
+
             let utilisateur = Utilisateur(
                 identifiant: idJoueur,
                 motDePasseHash: hash,
@@ -389,6 +430,23 @@ struct ConfigurationView: View {
             modelContext.insert(utilisateur)
 
             joueur.utilisateurID = utilisateur.id
+
+            // CredentialAthlete privé
+            let cred = CredentialAthlete(
+                utilisateurID: utilisateur.id,
+                joueurEquipeID: joueur.id,
+                identifiant: idJoueur,
+                motDePasseClair: j.motDePasse,
+                codeEquipe: codeEquipe
+            )
+            modelContext.insert(cred)
+
+            recaps.append(CredentialRecap(
+                nomComplet: "\(j.prenom) \(j.nom)",
+                identifiant: idJoueur,
+                motDePasse: j.motDePasse,
+                role: "Athlète"
+            ))
         }
 
         // 6. Créneaux récurrents → Séances pour 4 semaines
@@ -495,7 +553,14 @@ struct ConfigurationView: View {
         // Wizard finalisé : lever le flag "en cours"
         wizardEnCours = false
 
-        onTermine()
+        // Présenter le sheet récap si au moins un credential a été créé,
+        // sinon aller directement au paywall de bienvenue.
+        if !recaps.isEmpty {
+            credsRecap = recaps
+            afficherRecap = true
+        } else {
+            afficherBienvenuePaywall = true
+        }
     }
 
     // MARK: - Helpers
@@ -521,7 +586,8 @@ struct AssistantTemp: Identifiable {
     var courriel = ""
     var role: RoleAssistant = .assistantCoach
     var identifiant = ""
-    var motDePasse = ""
+    // Mdp auto-généré dès la création — pas saisi par le coach.
+    var motDePasse = Utilisateur.genererMotDePasseAthlete()
 }
 
 struct JoueurTemp: Identifiable {
@@ -531,7 +597,8 @@ struct JoueurTemp: Identifiable {
     var numero: Int = 1
     var poste: PosteJoueur = .recepteur
     var identifiant = ""
-    var motDePasse = ""
+    // Mdp auto-généré dès la création — pas saisi par le coach.
+    var motDePasse = Utilisateur.genererMotDePasseAthlete()
 }
 
 struct CreneauTemp: Identifiable {

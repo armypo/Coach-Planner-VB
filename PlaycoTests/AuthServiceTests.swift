@@ -149,54 +149,8 @@ struct AuthServiceTests {
         #expect(sel1.count == 32, "Sel = 16 bytes = 32 hex chars")
     }
 
-    // MARK: - Politique mot de passe NIST 800-63B
-
-    @Test("Politique mdp : refuse < 12 caractères")
-    func mdpTropCourt() {
-        let erreur = PasswordPolicy.valider("court12345",
-                                                    identifiant: "user",
-                                                    prenom: "Jean",
-                                                    nom: "Tremblay")
-        #expect(erreur?.contains("12 caractères") == true)
-    }
-
-    @Test("Politique mdp : refuse mdp commun (blacklist)")
-    func mdpCommunRefuse() {
-        let erreur = PasswordPolicy.valider("motdepasse12",
-                                                    identifiant: "user",
-                                                    prenom: "Jean",
-                                                    nom: "Tremblay")
-        #expect(erreur?.contains("trop commun") == true)
-    }
-
-    @Test("Politique mdp : refuse contournement par suffixe")
-    func mdpBlacklistContournementRefuse() {
-        let erreur = PasswordPolicy.valider("volleyball123!",
-                                                    identifiant: "user",
-                                                    prenom: "Jean",
-                                                    nom: "Tremblay")
-        #expect(erreur?.contains("trop commun") == true)
-    }
-
-    @Test("Politique mdp : refuse si contient identifiant/prénom/nom")
-    func mdpContientPII() {
-        let erreur = PasswordPolicy.valider("SuperTremblay9!",
-                                                    identifiant: "jean.tremblay",
-                                                    prenom: "Jean",
-                                                    nom: "Tremblay")
-        #expect(erreur?.contains("identifiant") == true)
-    }
-
-    @Test("Politique mdp : accepte mdp valide unique")
-    func mdpValideAccepte() {
-        let erreur = PasswordPolicy.valider("Cheval-Sauvage-2026!",
-                                                    identifiant: "jean.tremblay",
-                                                    prenom: "Jean",
-                                                    nom: "Tremblay")
-        #expect(erreur == nil)
-    }
-
     // MARK: - Lockout
+    // NB: tests de politique mdp NIST 800-63B déplacés vers PasswordPolicyTests
 
     @Test("Verrouillage après 5 tentatives")
     func lockoutApres5Tentatives() {
