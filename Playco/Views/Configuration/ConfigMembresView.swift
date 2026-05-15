@@ -3,11 +3,16 @@
 //
 
 import SwiftUI
+import SwiftData
 
-/// Étape 5 — Ajouter assistants et joueurs
+/// Étape 5 — Ajouter assistants et joueurs.
+/// Mdp athlètes/assistants auto-générés à la création (format `LLLLL_DD`).
+/// Identifiants auto-générés au format `prenom.nom.XXXX`.
 struct ConfigMembresView: View {
     @Binding var assistants: [AssistantTemp]
     @Binding var joueurs: [JoueurTemp]
+
+    @Environment(\.modelContext) private var modelContext
 
     @State private var onglet: Int = 0 // 0 = joueurs, 1 = assistants
 
@@ -15,7 +20,7 @@ struct ConfigMembresView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 titreEtape(numero: 5, titre: "Membres de l'équipe",
-                           description: "Ajoutez vos joueurs et assistants. Chacun recevra un identifiant de connexion. Vous pourrez aussi en ajouter plus tard.")
+                           description: "Identifiants et mots de passe sont générés automatiquement. Tu pourras les copier ou partager à la fin du wizard.")
 
                 // Onglets
                 Picker("Section", selection: $onglet) {
@@ -46,8 +51,7 @@ struct ConfigMembresView: View {
             .onDelete { joueurs.remove(atOffsets: $0) }
 
             Button {
-                let j = JoueurTemp()
-                joueurs.append(j)
+                joueurs.append(JoueurTemp())
             } label: {
                 Label("Ajouter un joueur", systemImage: "plus.circle.fill")
                     .font(.subheadline.weight(.medium))
@@ -80,9 +84,11 @@ struct ConfigMembresView: View {
                 TextField("Prénom", text: joueur.prenom)
                     .padding(10)
                     .background(Color(.tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8))
+                    .onChange(of: joueur.wrappedValue.prenom) { autoIdJoueur(joueur: joueur) }
                 TextField("Nom", text: joueur.nom)
                     .padding(10)
                     .background(Color(.tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8))
+                    .onChange(of: joueur.wrappedValue.nom) { autoIdJoueur(joueur: joueur) }
             }
 
             HStack(spacing: 12) {
@@ -97,41 +103,28 @@ struct ConfigMembresView: View {
                 .pickerStyle(.segmented)
             }
 
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Identifiant")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                    TextField("auto", text: joueur.identifiant)
-                        .font(.caption)
-                        .padding(8)
-                        .background(Color(.tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8))
-                        .onChange(of: joueur.wrappedValue.prenom) { autoId(joueur: joueur) }
-                        .onChange(of: joueur.wrappedValue.nom) { autoId(joueur: joueur) }
+            credentialAffichage(
+                identifiant: joueur.wrappedValue.identifiant,
+                motDePasse: joueur.wrappedValue.motDePasse,
+                onRegenerer: {
+                    joueur.wrappedValue.motDePasse = Utilisateur.genererMotDePasseAthlete()
                 }
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Mot de passe (min 6 car.)")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                    SecureField("••••••", text: joueur.motDePasse)
-                        .font(.caption)
-                        .padding(8)
-                        .background(Color(.tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8))
-                }
-            }
+            )
         }
         .padding(14)
         .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14))
     }
 
-    private func autoId(joueur: Binding<JoueurTemp>) {
-        if joueur.wrappedValue.identifiant.isEmpty ||
-           joueur.wrappedValue.identifiant == genererIdentifiant(prenom: "", nom: "") {
-            joueur.wrappedValue.identifiant = genererIdentifiant(
-                prenom: joueur.wrappedValue.prenom,
-                nom: joueur.wrappedValue.nom
-            )
-        }
+    /// Met à jour l'identifiant via `Utilisateur.genererIdentifiantUnique`
+    /// dès que prénom+nom sont renseignés.
+    private func autoIdJoueur(joueur: Binding<JoueurTemp>) {
+        let p = joueur.wrappedValue.prenom
+        let n = joueur.wrappedValue.nom
+        guard !p.isEmpty, !n.isEmpty else { return }
+        let exclusions = Set(joueurs.map { $0.identifiant } + assistants.map { $0.identifiant })
+        joueur.wrappedValue.identifiant = Utilisateur.genererIdentifiantUnique(
+            prenom: p, nom: n, context: modelContext, exclusions: exclusions
+        )
     }
 
     // MARK: - Assistants
@@ -176,9 +169,11 @@ struct ConfigMembresView: View {
                 TextField("Prénom", text: assistant.prenom)
                     .padding(10)
                     .background(Color(.tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8))
+                    .onChange(of: assistant.wrappedValue.prenom) { autoIdAssistant(assistant: assistant) }
                 TextField("Nom", text: assistant.nom)
                     .padding(10)
                     .background(Color(.tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8))
+                    .onChange(of: assistant.wrappedValue.nom) { autoIdAssistant(assistant: assistant) }
             }
 
             HStack(spacing: 12) {
@@ -196,44 +191,66 @@ struct ConfigMembresView: View {
                 .tint(PaletteMat.bleu)
             }
 
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Identifiant")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                    TextField("auto", text: assistant.identifiant)
-                        .font(.caption)
-                        .padding(8)
-                        .background(Color(.tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8))
-                        .onChange(of: assistant.wrappedValue.prenom) {
-                            if assistant.wrappedValue.identifiant.isEmpty {
-                                assistant.wrappedValue.identifiant = genererIdentifiant(
-                                    prenom: assistant.wrappedValue.prenom,
-                                    nom: assistant.wrappedValue.nom
-                                )
-                            }
-                        }
-                        .onChange(of: assistant.wrappedValue.nom) {
-                            if assistant.wrappedValue.identifiant.isEmpty {
-                                assistant.wrappedValue.identifiant = genererIdentifiant(
-                                    prenom: assistant.wrappedValue.prenom,
-                                    nom: assistant.wrappedValue.nom
-                                )
-                            }
-                        }
+            credentialAffichage(
+                identifiant: assistant.wrappedValue.identifiant,
+                motDePasse: assistant.wrappedValue.motDePasse,
+                onRegenerer: {
+                    assistant.wrappedValue.motDePasse = Utilisateur.genererMotDePasseAthlete()
                 }
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Mot de passe (min 6 car.)")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                    SecureField("••••••", text: assistant.motDePasse)
-                        .font(.caption)
-                        .padding(8)
-                        .background(Color(.tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8))
-                }
-            }
+            )
         }
         .padding(14)
         .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14))
+    }
+
+    private func autoIdAssistant(assistant: Binding<AssistantTemp>) {
+        let p = assistant.wrappedValue.prenom
+        let n = assistant.wrappedValue.nom
+        guard !p.isEmpty, !n.isEmpty else { return }
+        let exclusions = Set(joueurs.map { $0.identifiant } + assistants.map { $0.identifiant })
+        assistant.wrappedValue.identifiant = Utilisateur.genererIdentifiantUnique(
+            prenom: p, nom: n, context: modelContext, exclusions: exclusions
+        )
+    }
+
+    // MARK: - Affichage des credentials générés
+
+    /// Affichage monospace (read-only) de l'identifiant et du mdp auto-générés.
+    /// Le coach peut régénérer le mdp via le bouton dice.
+    private func credentialAffichage(
+        identifiant: String,
+        motDePasse: String,
+        onRegenerer: @escaping () -> Void
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Image(systemName: "person.text.rectangle")
+                    .foregroundStyle(.secondary)
+                    .font(.caption)
+                Text(identifiant.isEmpty ? "identifiant — auto" : identifiant)
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundStyle(identifiant.isEmpty ? .tertiary : .secondary)
+                Spacer()
+            }
+            HStack(spacing: 8) {
+                Image(systemName: "key.fill")
+                    .foregroundStyle(.secondary)
+                    .font(.caption)
+                Text(motDePasse)
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button {
+                    onRegenerer()
+                } label: {
+                    Image(systemName: "dice")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(10)
+        .background(Color(.tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8))
     }
 }

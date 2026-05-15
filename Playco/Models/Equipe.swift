@@ -40,6 +40,17 @@ final class Equipe {
     var codeEquipe: String = ""
     var dateModification: Date = Date()
 
+    /// Tier d'abonnement propagé depuis le coach propriétaire. Public via CloudKit
+    /// pour que les athlètes (potentiellement sur un autre Apple ID) puissent
+    /// vérifier l'éligibilité Club avant de se connecter.
+    var tierAbonnementRaw: String = Tier.aucun.rawValue
+
+    /// Tier typé (accesseur computed).
+    var tierAbonnement: Tier {
+        get { Tier(rawValue: tierAbonnementRaw) ?? .aucun }
+        set { tierAbonnementRaw = newValue.rawValue }
+    }
+
     // Relations
     @Relationship(inverse: \Etablissement.equipes)
     var etablissement: Etablissement? = nil

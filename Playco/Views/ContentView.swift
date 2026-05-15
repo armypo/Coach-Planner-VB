@@ -18,6 +18,7 @@ enum SectionApp: Hashable {
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(AuthService.self) private var authService
+    @Environment(AbonnementService.self) private var abonnementService
     @Environment(\.scenePhase) private var scenePhase
     @State private var sectionActive: SectionApp?
     @State private var afficherProfil: Bool = false
@@ -82,6 +83,15 @@ struct ContentView: View {
                         // Auto-sélection si 1 seule équipe
                         if equipes.count <= 1 { selectionEquipeFaite = true }
                     }
+            }
+        }
+        .safeAreaInset(edge: .top) {
+            // Bannière paywall : visible uniquement pour les coachs en essai/grace/expiré
+            if authService.estConnecte,
+               let user = authService.utilisateurConnecte,
+               user.role == .coach || user.role == .admin {
+                BanniereAbonnementView()
+                    .animation(LiquidGlassKit.springDefaut, value: abonnementService.statut)
             }
         }
         .animation(.spring(response: 0.45, dampingFraction: 0.85), value: authService.estConnecte)

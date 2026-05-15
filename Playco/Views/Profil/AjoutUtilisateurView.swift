@@ -23,6 +23,16 @@ struct AjoutUtilisateurView: View {
     @State private var erreur: String?
     @State private var succes = false
 
+    // Sheet récap (athlètes/assistants uniquement)
+    @State private var afficherRecap = false
+    @State private var credACopier: [CredentialRecap] = []
+
+    /// Vrai si le rôle utilise les identifiants/mdp auto-générés (athlète, assistant).
+    /// Les coachs/admins gardent la saisie manuelle classique.
+    private var estRoleAutoGen: Bool {
+        roleChoisi == .etudiant || roleChoisi == .assistantCoach
+    }
+
     // Données physiques (pour élèves)
     @State private var numero = ""
     @State private var posteChoisi: PosteJoueur = .recepteur
@@ -69,9 +79,18 @@ struct AjoutUtilisateurView: View {
 
                             Picker("Rôle", selection: $roleChoisi) {
                                 Text("Athlète").tag(RoleUtilisateur.etudiant)
+                                Text("Assistant").tag(RoleUtilisateur.assistantCoach)
                                 Text("Coach").tag(RoleUtilisateur.coach)
                             }
                             .pickerStyle(.segmented)
+                            .onChange(of: roleChoisi) { _, newRole in
+                                // Régénère mdp si on bascule vers un rôle auto-gen
+                                if newRole == .etudiant || newRole == .assistantCoach {
+                                    if motDePasse.isEmpty || !motDePasse.contains("_") {
+                                        motDePasse = Utilisateur.genererMotDePasseAthlete()
+                                    }
+                                }
+                            }
                     }
 
                     // Formulaire
@@ -309,6 +328,19 @@ struct AjoutUtilisateurView: View {
             }
             .onAppear {
                 roleChoisi = roleParDefaut
+                // Pré-remplir mdp pour les rôles auto-gen
+                if (roleChoisi == .etudiant || roleChoisi == .assistantCoach) && motDePasse.isEmpty {
+                    motDePasse = Utilisateur.genererMotDePasseAthlete()
+                }
+            }
+            .onChange(of: prenom) { autoRefreshIdentifiant() }
+            .onChange(of: nom) { autoRefreshIdentifiant() }
+            .sheet(isPresented: $afficherRecap) {
+                IdentifiantsRecapSheet(creds: credACopier) {
+                    afficherRecap = false
+                    dismiss()
+                }
+                .interactiveDismissDisabled(true)
             }
         }
     }
@@ -331,6 +363,18 @@ struct AjoutUtilisateurView: View {
             .padding(14)
             .background(RoundedRectangle(cornerRadius: 12).fill(Color(.systemGray6)))
         }
+    }
+
+    /// Auto-régénère l'identifiant au format `prenom.nom.XXXX` pour les rôles
+    /// auto-gen dès que prénom+nom sont saisis.
+    private func autoRefreshIdentifiant() {
+        guard estRoleAutoGen,
+              !prenom.trimmingCharacters(in: .whitespaces).isEmpty,
+              !nom.trimmingCharacters(in: .whitespaces).isEmpty
+        else { return }
+        identifiant = Utilisateur.genererIdentifiantUnique(
+            prenom: prenom, nom: nom, context: modelContext
+        )
     }
 
     private func creerCompte() {
@@ -409,7 +453,36 @@ struct AjoutUtilisateurView: View {
             }
 
             succes = true
-            // Reset le formulaire
+
+            // Pour les rôles auto-gen : créer un CredentialAthlete + afficher
+            // le sheet récap pour que le coach puisse copier/partager les accès.
+            if estRoleAutoGen {
+                let descCred = FetchDescriptor<Utilisateur>(
+                    predicate: #Predicate { $0.identifiant == idFinal }
+                )
+                if let utilisateur = try? modelContext.fetch(descCred).first {
+                    let cred = CredentialAthlete(
+                        utilisateurID: utilisateur.id,
+                        joueurEquipeID: utilisateur.joueurEquipeID,
+                        identifiant: idFinal,
+                        motDePasseClair: motDePasse,
+                        codeEquipe: codeEcole
+                    )
+                    modelContext.insert(cred)
+                    try? modelContext.save()
+                }
+
+                credACopier = [CredentialRecap(
+                    nomComplet: "\(prenom) \(nom)",
+                    identifiant: idFinal,
+                    motDePasse: motDePasse,
+                    role: roleChoisi == .etudiant ? "Athlète" : "Assistant"
+                )]
+                afficherRecap = true
+                return  // dismiss() viendra après fermeture du sheet
+            }
+
+            // Reset le formulaire (chemin coach/admin sans sheet)
             prenom = ""
             nom = ""
             identifiant = ""

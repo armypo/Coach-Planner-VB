@@ -73,9 +73,17 @@ final class AuthService {
     }
 
     /// Wrapper délégant à `KeyDerivation.hashPBKDF2(_:sel:)`.
-    /// Maintenu en API publique pour compat avec les 7 call sites.
+    /// Maintenu en API publique non-throwing pour compat avec les call sites.
+    /// En cas d'échec crypto (extrêmement improbable — défaillance CommonCrypto OS),
+    /// log `.critical` et retourne `""`. Un compte avec hash vide ne peut pas être
+    /// authentifié (egaliteConstante garantit longueur ≠ → false).
     func hashMotDePasse(_ motDePasse: String, sel: String) -> String {
-        KeyDerivation.hashPBKDF2(motDePasse, sel: sel)
+        do {
+            return try KeyDerivation.hashPBKDF2(motDePasse, sel: sel)
+        } catch {
+            Self.logger.critical("hashMotDePasse échoué — défaillance crypto système: \(error.localizedDescription)")
+            return ""
+        }
     }
 
     // MARK: - Restauration de session
@@ -312,7 +320,8 @@ final class AuthService {
             try context.save()
             return nil
         } catch {
-            return "Erreur lors de la création : \(error.localizedDescription)"
+            Self.logger.error("creerCompte: échec sauvegarde SwiftData: \(error.localizedDescription)")
+            return "Erreur lors de la création du compte. Veuillez réessayer."
         }
     }
 

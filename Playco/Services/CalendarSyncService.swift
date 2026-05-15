@@ -23,8 +23,16 @@ final class CalendarSyncService {
 
     /// Ajoute une séance au calendrier Apple
     func ajouterAuCalendrier(nom: String, date: Date, dureeMinutes: Int, lieu: String = "", notes: String = "") async -> Bool {
-        if !estAutorise {
+        // Demande l'accès seulement si non encore déterminé ; si refusé/restreint,
+        // ne pas relancer la popup — l'utilisateur doit aller dans Réglages iOS.
+        let status = EKEventStore.authorizationStatus(for: .event)
+        if status == .notDetermined {
             await demanderAcces()
+        } else if status == .denied || status == .restricted {
+            await MainActor.run {
+                erreur = "Accès au calendrier refusé. Active-le dans Réglages > Playco > Calendrier."
+            }
+            return false
         }
         guard estAutorise else { return false }
 

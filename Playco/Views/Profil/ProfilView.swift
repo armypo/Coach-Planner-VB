@@ -8,6 +8,7 @@ import SwiftData
 /// Vue profil / paramètres — adaptée selon le rôle (Coach, Élève, Admin)
 struct ProfilView: View {
     @Environment(AuthService.self) private var authService
+    @Environment(AbonnementService.self) private var abonnementService
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @Environment(\.codeEquipeActif) private var codeEquipeActif
@@ -29,6 +30,9 @@ struct ProfilView: View {
                         carteProfilHeader(utilisateur)
 
                         if estCoach {
+                            // Mon abonnement (Pro / Club / essai / expiré)
+                            sectionAbonnement
+
                             // Code d'équipe
                             sectionCodeEquipe
 
@@ -179,6 +183,7 @@ struct ProfilView: View {
     @State private var afficherAjoutCoach = false
     @State private var afficherGestionStaff = false
     @State private var afficherJournalSync = false
+    @State private var afficherIdentifiantsEquipe = false
 
     private func sectionOrganisation(_ utilisateur: Utilisateur) -> some View {
         let codeEcole = utilisateur.codeEcole
@@ -200,10 +205,25 @@ struct ProfilView: View {
                              couleur: PaletteMat.vert) {
                     afficherGestionStaff = true
                 }
+                boutonAction(icone: "key.fill", titre: "Identifiants de l'équipe",
+                             couleur: PaletteMat.violet) {
+                    afficherIdentifiantsEquipe = true
+                }
             }
         }
         .padding(20)
         .glassCard()
+        .sheet(isPresented: $afficherIdentifiantsEquipe) {
+            NavigationStack {
+                IdentifiantsEquipeView()
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("Fermer") { afficherIdentifiantsEquipe = false }
+                        }
+                    }
+            }
+            .environment(authService)
+        }
         .sheet(isPresented: $afficherAjoutEleve) {
             AjoutUtilisateurView(codeEcole: codeEcole, roleParDefaut: .etudiant)
         }
@@ -384,16 +404,10 @@ struct ProfilView: View {
     }
 
     // MARK: - Légal
-
-    // TODO(lancement) : héberger les pages légales avant le lancement App Store.
-    // Sources Markdown : docs/legal/privacy-policy-{fr,en}.md + terms-of-service-{fr,en}.md
-    // Options d'hébergement :
-    //   1. GitHub Pages depuis docs/
-    //   2. Site Origo (sous-domaine playco.origotech.com)
-    //   3. Page statique Vercel / Netlify
-    // Une fois hébergé : remplacer les URLs ci-dessous puis valider dans App Store Connect.
-    private let urlPolitiqueConfidentialite = URL(string: "https://origotech.com/playco/privacy")!
-    private let urlConditionsUtilisation = URL(string: "https://origotech.com/playco/terms")!
+    //
+    // URLs centralisées dans AppConstants.swift (marquées PLACEHOLDER_LAUNCH).
+    // ⚠️ Avant App Store : vérifier que AppConstants.urlConditionsUtilisation
+    // et AppConstants.urlPolitiqueConfidentialite pointent vers les pages finales.
 
     private var sectionLegal: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -401,7 +415,7 @@ struct ProfilView: View {
                 .font(.headline)
                 .foregroundStyle(PaletteMat.violet)
 
-            Link(destination: urlPolitiqueConfidentialite) {
+            Link(destination: AppConstants.urlPolitiqueConfidentialite) {
                 HStack(spacing: 12) {
                     Image(systemName: "hand.raised.fill")
                         .font(.body)
@@ -420,7 +434,7 @@ struct ProfilView: View {
                 .background(PaletteMat.violet.opacity(0.06), in: RoundedRectangle(cornerRadius: LiquidGlassKit.rayonMoyen))
             }
 
-            Link(destination: urlConditionsUtilisation) {
+            Link(destination: AppConstants.urlConditionsUtilisation) {
                 HStack(spacing: 12) {
                     Image(systemName: "doc.plaintext.fill")
                         .font(.body)
@@ -579,4 +593,34 @@ struct ProfilView: View {
 extension Notification.Name {
     static let changerEquipe = Notification.Name("changerEquipe")
     static let allerChoixInitial = Notification.Name("allerChoixInitial")
+}
+
+// MARK: - Section abonnement (paywall v2.0)
+
+extension ProfilView {
+    var sectionAbonnement: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Mon abonnement", systemImage: "creditcard.fill")
+                .font(.headline)
+                .foregroundStyle(PaletteMat.orange)
+
+            HStack {
+                BadgeStatut(statut: abonnementService.statut)
+                Spacer()
+                NavigationLink {
+                    GestionAbonnementView()
+                } label: {
+                    HStack(spacing: 6) {
+                        Text("Gérer")
+                            .font(.subheadline.weight(.medium))
+                        Image(systemName: "chevron.right")
+                            .font(.caption2)
+                    }
+                    .foregroundStyle(PaletteMat.orange)
+                }
+            }
+        }
+        .padding(20)
+        .glassCard()
+    }
 }

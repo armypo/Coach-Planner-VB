@@ -258,7 +258,12 @@ final class CloudKitSharingService {
             importerJoueur(from: record, context: context)
         }
 
-        try context.save()
+        do {
+            try context.save()
+        } catch {
+            logger.error("importerEquipeDepuisPublic: échec sauvegarde SwiftData: \(error.localizedDescription)")
+            throw SharingError.sauvegardeEchouee
+        }
 
         logger.info("Équipe \(codeEquipe, privacy: .private) importée: \(utilisateurRecords.count) utilisateurs, \(joueurRecords.count) joueurs")
     }
@@ -279,8 +284,13 @@ final class CloudKitSharingService {
                 importerJoueur(from: record, context: context)
             }
 
-            try? context.save()
-            logger.info("Sync incrémentale terminée pour \(codeEquipe, privacy: .private)")
+            do {
+                try context.save()
+                logger.info("Sync incrémentale terminée pour \(codeEquipe, privacy: .private)")
+            } catch {
+                logger.error("syncDepuisPublic: échec sauvegarde SwiftData: \(error.localizedDescription)")
+                // Ne pas relancer — la sync échouée sera retentée au prochain cycle
+            }
         } catch {
             logger.error("Erreur sync incrémentale: \(error.localizedDescription)")
         }
@@ -532,11 +542,13 @@ final class CloudKitSharingService {
     enum SharingError: LocalizedError {
         case equipeNonTrouvee
         case importEchoue
+        case sauvegardeEchouee
 
         var errorDescription: String? {
             switch self {
             case .equipeNonTrouvee: return "Aucune équipe trouvée avec ce code."
             case .importEchoue: return "Impossible d'importer les données de l'équipe."
+            case .sauvegardeEchouee: return "Impossible de sauvegarder les données importées."
             }
         }
     }
