@@ -44,7 +44,7 @@ struct ScoutingReportView: View {
                 sectionStrategies
                 sectionNotes
             }
-            .padding(24)
+            .padding(LiquidGlassKit.espaceLG)
         }
         .background(Color(.systemGroupedBackground))
         .navigationTitle("Rapport")

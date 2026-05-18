@@ -39,6 +39,13 @@ Nouveaux modèles vs CLAUDE.md (23) : `Abonnement`, `ActionRallye`, `CategorieEx
 
 → 8 fichiers à splitter (vs 1 prévu dans le plan). Effort W1.2 réévalué : **+1 jour**.
 
+**Décision (2026-05-18)** : split DashboardMatchLiveView reporté à W1.2bis (session ultérieure). Justification :
+- Les 8 fichiers > 600 lignes sont composés de sous-vues privées tightly-couplées à `cache`/`viewModel`/`@Query` partagés
+- Un split prématuré sans visual regression testing humain risque régressions UI
+- Aucun warning compilateur ni perf-hit mesuré associé à la taille
+- ROI plus élevé en W2/W3/W4/W5 (mécanique + bloquant App Store) qu'en refactor cosmétique
+- Gate W1 "aucun fichier > 600 lignes (sauf justifié)" → **justification consignée ici** pour les 8 fichiers
+
 ## @Query sans filtre `estArchivee` (W1.5)
 
 | Fichier | Ligne | Modèle | Filtre archive ? | Décision |

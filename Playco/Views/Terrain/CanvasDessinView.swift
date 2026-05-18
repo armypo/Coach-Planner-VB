@@ -66,12 +66,17 @@ struct CanvasDessinView: UIViewRepresentable {
         canvas.drawingPolicy = .anyInput
         canvas.delegate = context.coordinator
         controller.canvasView = canvas
+        canvas.isAccessibilityElement = true
+        canvas.accessibilityLabel = "Zone de dessin du terrain de volleyball"
+        canvas.accessibilityHint = "Dessinez avec l'Apple Pencil ou le doigt selon l'outil sélectionné"
+        canvas.accessibilityTraits = .allowsDirectInteraction
         appliquerOutil(canvas: canvas)
         return canvas
     }
 
     func updateUIView(_ canvas: PKCanvasView, context: Context) {
         canvas.isUserInteractionEnabled = mode.estDessinLibre
+        canvas.accessibilityValue = "Mode actuel : \(mode.rawValue)"
         if canvas.drawing != drawing { canvas.drawing = drawing }
         if controller.canvasView == nil { controller.canvasView = canvas }
         appliquerOutil(canvas: canvas)

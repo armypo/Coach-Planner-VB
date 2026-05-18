@@ -350,6 +350,8 @@ struct BarreOutilsDessin: View {
                 .foregroundStyle(couleurIcone)
         }
         .help(aide)
+        .accessibilityLabel(aide)
+        .accessibilityHint("Ouvre le menu de sélection de formation")
     }
 
     // MARK: - Menu joueurs base de données
@@ -370,6 +372,8 @@ struct BarreOutilsDessin: View {
                 .foregroundStyle(.mint.opacity(0.9))
         }
         .help("Placer un joueur (BD)")
+        .accessibilityLabel("Placer un joueur depuis l'équipe")
+        .accessibilityHint("Ouvre la liste des joueurs à placer sur le terrain")
     }
 
     // MARK: - Menu formation attaque (stratégies offensives)
@@ -427,6 +431,9 @@ struct BarreOutilsDessin: View {
                 .foregroundStyle(modeActif == mode ? accent : .primary)
         }
         .help(label)
+        .accessibilityLabel(label)
+        .accessibilityValue(modeActif == mode ? "Sélectionné" : "")
+        .accessibilityHint("Active l'outil \(label)")
     }
 
     private var sep: some View {

@@ -163,5 +163,14 @@ struct DockBarView: View {
         }
         .buttonStyle(.plain)
         .contentShape(Rectangle())
+        .accessibilityLabel(item.label)
+        .accessibilityValue(badgeAccessibilityValue(for: item))
+        .accessibilityHint(item.id == "messages" ? "Ouvre la messagerie d'équipe" : (item.id == "profil" ? "Ouvre le profil utilisateur" : "Ouvre la recherche globale"))
+    }
+
+    private func badgeAccessibilityValue(for item: DockItem) -> String {
+        if item.id == "messages" && badgeMessages { return "Nouveaux messages non lus" }
+        if item.id == "profil" && badgeSeanceAujourdhui { return "Séance prévue aujourd'hui" }
+        return ""
     }
 }

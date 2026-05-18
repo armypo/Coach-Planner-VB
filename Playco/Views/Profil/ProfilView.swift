@@ -99,7 +99,7 @@ struct ProfilView: View {
             }
             .font(.footnote)
         }
-        .padding(24)
+        .padding(LiquidGlassKit.espaceLG)
         .frame(maxWidth: .infinity)
         .glassCard()
     }

@@ -45,7 +45,7 @@ struct NouvelleSeanceView: View {
                             .tint(.orange)
                     }
                 }
-                .padding(24)
+                .padding(LiquidGlassKit.espaceLG)
 
                 Spacer()
             }

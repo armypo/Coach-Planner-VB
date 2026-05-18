@@ -176,7 +176,7 @@ struct IdentifiantsEquipeView: View {
                 .buttonStyle(.bordered)
             }
         }
-        .padding(24)
+        .padding(LiquidGlassKit.espaceLG)
         .presentationDetents([.medium])
     }
 

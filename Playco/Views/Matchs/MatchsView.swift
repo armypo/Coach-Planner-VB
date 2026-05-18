@@ -410,7 +410,7 @@ struct NouvelMatchSheet: View {
 
                 Spacer()
             }
-            .padding(24)
+            .padding(LiquidGlassKit.espaceLG)
             .navigationTitle("Nouveau match")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
