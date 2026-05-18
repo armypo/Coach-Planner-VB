@@ -1,6 +1,6 @@
 # Déploiement du schéma CloudKit — Production
 
-**Dernière mise à jour :** 15 avril 2026
+**Dernière mise à jour :** 18 mai 2026 (audit pré-lancement — 27→30 @Model)
 **Container :** `iCloud.Origo.Playco`
 **Environnement source :** Development
 **Environnement cible :** Production
@@ -21,13 +21,13 @@ Playco utilise SwiftData avec `ModelConfiguration(cloudKitDatabase: .automatic)`
 
 - [ ] Compte Apple Developer actif avec accès au container `iCloud.Origo.Playco`
 - [ ] Build TestFlight v1.9.x déjà validé localement
-- [ ] Les 27 @Model SwiftData fonctionnels en Development CloudKit (vérifié via 2 devices)
+- [ ] Les 30 @Model SwiftData fonctionnels en Development CloudKit (vérifié via 2 devices)
 - [ ] `project.pbxproj` : `MARKETING_VERSION = 1.9.0`, `CURRENT_PROJECT_VERSION >= 2`
 - [ ] `Playco.entitlements` : `aps-environment = production`
 
 ---
 
-## Liste des 27 types de record attendus
+## Liste des 30 types de record attendus
 
 SwiftData préfixe automatiquement chaque `@Model` par `CD_` lors de la génération CloudKit.
 
@@ -61,8 +61,10 @@ SwiftData préfixe automatiquement chaque `@Model` par `CD_` lors de la généra
 | 26 | `CD_ObjectifJoueur` | ObjectifJoueur |
 | 27 | `CD_CategorieExercice` | CategorieExercice |
 | 28 | `CD_StaffPermissions` | StaffPermissions |
+| 29 | `CD_Abonnement` | Abonnement (StoreKit 2 — ajouté v2.0.0) |
+| 30 | `CD_CredentialAthlete` | CredentialAthlete (identifiants athlète scopés équipe) |
 
-*Note : `EvenementSync` est un `struct Codable` (pas un @Model), stocké en UserDefaults → pas dans CloudKit.*
+*Note : `EvenementSync` est un `struct Codable` (pas un @Model), stocké en UserDefaults → pas dans CloudKit. `MatchLiveModels` (JoueurSurTerrain, SetScore, Substitution, ConfigMatch, DonneesHeatmap) sont aussi des structs hors CloudKit.*
 
 ---
 

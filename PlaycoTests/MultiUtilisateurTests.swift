@@ -10,11 +10,14 @@ import CryptoKit
 
 /// Tests sérialisés : partage de Keychain global iOS.
 @Suite("Multi-utilisateur — Coach / Athlète", .serialized)
+@MainActor
 struct MultiUtilisateurTests {
 
-    @MainActor
     private func creerAuthIsole() -> AuthService {
+        // Purger TOUS les Keychain partagés iOS (session + lockout) pour garantir l'isolation
+        // entre tests sérialisés — sinon un lockout résiduel bloque les connexions suivantes.
         KeychainService.supprimer(cle: SessionManager.cleKeychain)
+        KeychainService.supprimer(cle: LockoutManager.cleKeychain)
         let suite = UserDefaults(suiteName: "playco-test-\(UUID().uuidString)")!
         return AuthService(userDefaults: suite)
     }
@@ -55,6 +58,7 @@ struct MultiUtilisateurTests {
         )
         coach.sel = selCoach
         coach.codeEcole = "ELANS01"
+        coach.iterations = AuthService.iterationsParDefaut
         context.insert(coach)
 
         // ── 2. Coach crée l'équipe ──
@@ -79,6 +83,7 @@ struct MultiUtilisateurTests {
             codeEcole: "ELANS01"
         )
         athlete.sel = selAthlete
+        athlete.iterations = AuthService.iterationsParDefaut
         athlete.joueurEquipeID = joueur.id
         joueur.utilisateurID = athlete.id
         context.insert(athlete)
@@ -116,22 +121,23 @@ struct MultiUtilisateurTests {
 
     // MARK: - Identifiants uniques
 
-    @Test("Génération identifiants uniques — doublons gérés")
+    @Test("Génération identifiants uniques — format prenom.nom.XXXX")
     func identifiantsUniques() throws {
         let context = try creerContexteEnMemoire()
 
         let id1 = Utilisateur.genererIdentifiantUnique(prenom: "Jean", nom: "Tremblay", context: context)
-        #expect(id1 == "jean.tremblay")
+        #expect(id1.hasPrefix("jean.tremblay."), "Format attendu : prenom.nom.XXXX")
+        #expect(id1.count == "jean.tremblay.".count + 4, "Suffixe 4 chiffres")
 
         // Créer un utilisateur avec cet identifiant
         let user = Utilisateur(identifiant: id1, motDePasseHash: "", prenom: "Jean", nom: "Tremblay", role: .etudiant)
         context.insert(user)
         try context.save()
 
-        // Le deuxième doit avoir un suffixe
+        // Le deuxième doit avoir un suffixe différent
         let id2 = Utilisateur.genererIdentifiantUnique(prenom: "Jean", nom: "Tremblay", context: context)
-        #expect(id2 == "jean.tremblay2", "Doublon doit recevoir un suffixe numérique")
-        #expect(id1 != id2, "Les identifiants doivent être différents")
+        #expect(id2.hasPrefix("jean.tremblay."))
+        #expect(id1 != id2, "Les identifiants doivent être différents (entropie 10⁴)")
     }
 
     @Test("Identifiant sans accents et espaces")
@@ -139,7 +145,7 @@ struct MultiUtilisateurTests {
         let context = try creerContexteEnMemoire()
 
         let id = Utilisateur.genererIdentifiantUnique(prenom: "José María", nom: "Côté", context: context)
-        #expect(id == "jose-maria.cote", "Accents retirés, espaces remplacés par tirets")
+        #expect(id.hasPrefix("jose-maria.cote."), "Accents retirés, espaces → tirets, format prenom.nom.XXXX")
     }
 
     // MARK: - Scoping données par équipe
@@ -214,6 +220,7 @@ struct MultiUtilisateurTests {
         let hash = auth.hashMotDePasse("pass", sel: sel)
         let coach = Utilisateur(identifiant: "coach.multi", motDePasseHash: hash, prenom: "Coach", nom: "Multi", role: .admin, codeEcole: "EQ1")
         coach.sel = sel
+        coach.iterations = AuthService.iterationsParDefaut
         context.insert(coach)
 
         // Deux équipes
@@ -260,6 +267,7 @@ struct MultiUtilisateurTests {
         let hash = auth.hashMotDePasse("correct", sel: sel)
         let user = Utilisateur(identifiant: "lock.test", motDePasseHash: hash, prenom: "L", nom: "T", role: .etudiant)
         user.sel = sel
+        user.iterations = AuthService.iterationsParDefaut
         context.insert(user)
         try context.save()
 
@@ -286,30 +294,31 @@ struct MultiUtilisateurTests {
         let auth = creerAuthIsole()
         let context = try creerContexteEnMemoire()
 
-        // Politique : identifiant ≥ 3 chars, mot de passe ≥ 8 chars + 1 chiffre
+        // Politique (PasswordPolicy) : identifiant ≥ 3 chars, mot de passe ≥ 12 chars + 1 chiffre + pas commun
+        let motDePasseValide = "Xq7-volley-2026!"  // 16 chars, complexe + non-commun
 
         // Identifiant trop court
-        let err1 = auth.creerCompte(identifiant: "ab", motDePasse: "motdepasse1", prenom: "A", nom: "B", role: .etudiant, context: context)
+        let err1 = auth.creerCompte(identifiant: "ab", motDePasse: motDePasseValide, prenom: "A", nom: "B", role: .etudiant, context: context)
         #expect(err1 != nil)
 
-        // Mot de passe trop court (<8 chars)
+        // Mot de passe trop court (<12 chars)
         let err2 = auth.creerCompte(identifiant: "abc.def", motDePasse: "pass1", prenom: "A", nom: "B", role: .etudiant, context: context)
         #expect(err2 != nil)
 
-        // Mot de passe sans chiffre (8+ chars mais pas de chiffre)
-        let errSansChiffre = auth.creerCompte(identifiant: "abc.def", motDePasse: "motdepasse", prenom: "A", nom: "B", role: .etudiant, context: context)
+        // Mot de passe sans chiffre (12+ chars mais pas de chiffre)
+        let errSansChiffre = auth.creerCompte(identifiant: "abc.def", motDePasse: "motdepasselong", prenom: "A", nom: "B", role: .etudiant, context: context)
         #expect(errSansChiffre != nil, "Un mot de passe sans chiffre doit être refusé")
 
         // Prénom vide
-        let err3 = auth.creerCompte(identifiant: "abc.def", motDePasse: "motdepasse1", prenom: "", nom: "B", role: .etudiant, context: context)
+        let err3 = auth.creerCompte(identifiant: "abc.def", motDePasse: motDePasseValide, prenom: "", nom: "B", role: .etudiant, context: context)
         #expect(err3 != nil)
 
         // Succès
-        let err4 = auth.creerCompte(identifiant: "abc.def", motDePasse: "motdepasse1", prenom: "Abc", nom: "Def", role: .etudiant, context: context)
-        #expect(err4 == nil, "La création doit réussir avec un mot de passe valide")
+        let err4 = auth.creerCompte(identifiant: "abc.def", motDePasse: motDePasseValide, prenom: "Abc", nom: "Def", role: .etudiant, context: context)
+        #expect(err4 == nil, "La création doit réussir avec un mot de passe valide (≥12 chars + chiffre)")
 
         // Doublon
-        let err5 = auth.creerCompte(identifiant: "abc.def", motDePasse: "motdepasse1", prenom: "Abc", nom: "Def", role: .etudiant, context: context)
+        let err5 = auth.creerCompte(identifiant: "abc.def", motDePasse: motDePasseValide, prenom: "Abc", nom: "Def", role: .etudiant, context: context)
         #expect(err5 != nil, "L'identifiant en doublon doit échouer")
     }
 

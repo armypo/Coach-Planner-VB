@@ -44,7 +44,7 @@ struct NouvelExerciceView: View {
                         .pickerStyle(.segmented)
                     }
                 }
-                .padding(24)
+                .padding(LiquidGlassKit.espaceLG)
 
                 Spacer()
             }

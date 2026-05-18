@@ -1,5 +1,7 @@
 # Plan de lancement Playco v2.1.0 — App Store
 
+> ⚠️ **Document partiellement superseded (2026-05-18)** : les volets technique/code de ce plan sont absorbés par l'audit pré-lancement de mai — voir [`Audit_Synthese_Pre_Launch_Mai_2026.md`](Audit_Synthese_Pre_Launch_Mai_2026.md) pour l'état actuel (123/123 tests verts, 30 @Model documentés, gates W1-W5 atteints). Les volets marketing/beta/ASC/App Review restent valides et sont à exécuter par 👤 toi seul ou 🤝 conjointement.
+
 **Date de rédaction** : 17 avril 2026
 **État de départ** : branche `claude/admiring-bohr-4a25b3` sur `179fc66` (login v2.0 + paywall v2.0 pushés)
 **Cible** : soumission App Store après beta TestFlight validée
