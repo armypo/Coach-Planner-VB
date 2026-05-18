@@ -16,7 +16,5 @@
 	<array>
 		<string>CloudKit</string>
 	</array>
-	<key>com.apple.developer.in-app-purchase</key>
-	<array/>
 </dict>
 </plist>
