@@ -10,9 +10,9 @@ import CryptoKit
 
 /// Tests sérialisés : partage de Keychain global iOS.
 @Suite("Multi-utilisateur — Coach / Athlète", .serialized)
+@MainActor
 struct MultiUtilisateurTests {
 
-    @MainActor
     private func creerAuthIsole() -> AuthService {
         KeychainService.supprimer(cle: SessionManager.cleKeychain)
         let suite = UserDefaults(suiteName: "playco-test-\(UUID().uuidString)")!
