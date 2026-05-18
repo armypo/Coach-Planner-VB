@@ -11,8 +11,6 @@
 import Foundation
 import os
 
-private let logger = Logger(subsystem: "com.origotech.playco", category: "FileReplication")
-
 /// Entrée en attente de re-publication. `prochainEssai` permet le backoff exponentiel.
 struct UtilisateurEnAttente: Codable {
     let utilisateurID: UUID
@@ -22,13 +20,6 @@ struct UtilisateurEnAttente: Codable {
 
 /// Politique de retry : délais successifs, puis cap au dernier.
 enum PolitiqueRetry {
-    static let delais: [TimeInterval] = [
-        30,          // 30 secondes
-        2 * 60,      // 2 minutes
-        10 * 60,     // 10 minutes
-        60 * 60      // 1 heure
-    ]
-
     /// Nombre max de tentatives avant abandon (NEW-SEC-04).
     /// 10 tentatives ≈ 10h cumulés avec le backoff plafonné à 1h.
     static let tentativesMax = 10
@@ -36,14 +27,11 @@ enum PolitiqueRetry {
     /// Délai à appliquer APRÈS `numeroTentative` tentatives infructueuses.
     /// numeroTentative=1 → 30s, 2 → 120s, 3 → 600s, 4+ → 3600s.
     static func delaiApresTentative(_ numeroTentative: Int) -> TimeInterval {
+        let delais: [TimeInterval] = [30, 2 * 60, 10 * 60, 60 * 60]
         let index = min(max(numeroTentative - 1, 0), delais.count - 1)
         return delais[index]
     }
 }
-
-/// Nombre max d'utilisateurs republiés par appel à `rejouerFileAttente`.
-/// Évite de monopoliser le réseau/batterie au retour en ligne.
-private let tailleBatchRejeu = 20
 
 /// Actor responsable de la file d'attente des utilisateurs non-publiés.
 /// Isolation actor = accès thread-safe sans locks explicites.
@@ -56,6 +44,13 @@ actor FileReplicationUtilisateur {
 
     /// Clé UserDefaults legacy (v1.10). Lue une fois pour migration.
     private static let cleUserDefaultsLegacy = "playco.pending_publish"
+
+    /// Logger isolé à l'actor pour éviter les warnings de concurrence Swift 6.
+    private let logger = Logger(subsystem: "com.origotech.playco", category: "FileReplication")
+
+    /// Nombre max d'utilisateurs republiés par appel à `rejouerFileAttente`.
+    /// Évite de monopoliser le réseau/batterie au retour en ligne.
+    private let tailleBatchRejeu = 20
 
     /// Dictionnaire indexé par utilisateurID — garantit une entrée unique par user.
     private var pending: [UUID: UtilisateurEnAttente] = [:]
