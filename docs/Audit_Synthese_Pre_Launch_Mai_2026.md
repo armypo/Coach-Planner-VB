@@ -25,7 +25,7 @@
 |---|---|---|
 | Warnings build | 0 | 0 (était 8 → corrigé `4887b10` avant audit) |
 | Tests totaux | 92 | **124** (+32 nouveaux) |
-| Tests passants | 85¹ | 117¹ |
+| Tests passants | 85¹ | **123/123 (100%)** après fix `7fb4dd9` |
 | `@Query` non-filtrés audités | 0 | 19 documentés (0 réellement problématiques) |
 | `JSONDecoder()` non cachés | 0 | 0 (déjà OK) |
 | `.padding(24)` magic numbers | 6 | 0 (→`LiquidGlassKit.espaceLG`) |
@@ -33,7 +33,10 @@
 | `accessibilityLabel` sur Canvas/DockBar | 0 | OK Canvas + DockBar (badge value) + BarreOutilsDessin helpers |
 | @Model documentés (CLAUDE.md vs réel) | 23 vs 30 (-7 manquants doc) | 30 documentés dans audit |
 
-¹ 7 tests `MultiUtilisateurTests` étaient **déjà en échec sur main** (pre-existing — pas introduit par l'audit) : `fluxCompletCoachAthlete`, `identifiantsUniques`, `identifiantSansAccents`, `coachMultiEquipes`, `verrouillageEtReset`, `creationCompteValidations`, `migrationHashSansSel`. Investigation nécessaire (probables problèmes d'isolation Keychain entre tests Swift Testing).
+¹ **MISE À JOUR 2026-05-18** : les 7 tests `MultiUtilisateurTests` pré-existants ont été investigués et corrigés dans le commit `7fb4dd9`. **Tests : 123/123 ✅ (100%)**. 3 causes racines :
+1. **Isolation Keychain incomplète** entre tests sérialisés — `creerAuthIsole()` purgeait `SessionManager.cleKeychain` mais pas `LockoutManager.cleKeychain` (état verrouillage persistant) ⇒ 4 tests
+2. **PBKDF2 iterations** — tests créaient `Utilisateur` avec `iterations` par défaut (1) mais hash généré par `AuthService.hashMotDePasse()` utilise PBKDF2 600k. Verifier choisissait branche legacy SHA256+sel → mismatch hash ⇒ 3 tests
+3. **PasswordPolicy v2** — `longueurMinimale` passée de 8 à 12 + check mots de passe communs ⇒ 1 test (mdp `motdepasse1` rejeté)
 
 ## Gates plan vs état réel
 
@@ -41,13 +44,13 @@
 |---|---|---|---|
 | W1 Build 0/0 | Oui | ✅ | PASS |
 | W1 Aucun fichier > 600 | Oui | ❌ (8 fichiers — justifié docs) | PASS justifié |
-| W1 Tests 92/92 | Oui | ❌ (85/92 — pré-existant) | **FAIL pré-existant** |
+| W1 Tests 92/92 | Oui | ✅ 123/123 après fix `7fb4dd9` | PASS |
 | W2 JSON cache | grep=0 | ✅ | PASS |
 | W3 Design grep clean | Oui | ✅ | PASS |
 | W4 >80 a11y annotations | 80 | ~30 (vs ~21 avant) | **PARTIAL** — humain requis |
 | W4 VoiceOver flow OK | Humain | ⏸️ | À faire humain |
 | W5 Coverage ≥80% | 80% | ⏸️ Non mesuré (besoin `xcrun llvm-cov report`) | À vérifier |
-| W5 Tests 100% pass | Oui | 117/124 (7 pré-existants) | **FAIL pré-existant** |
+| W5 Tests 100% pass | Oui | **123/123 ✅** | PASS |
 
 ## Findings W5 — Tests pré-existants en échec
 
