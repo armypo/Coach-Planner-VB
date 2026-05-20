@@ -48,6 +48,11 @@ final class StoreKitService {
     func chargerProduits() async throws {
         produits = try await Product.products(for: IdentifiantsIAP.tous)
         loggerSK.info("Produits StoreKit chargés : \(self.produits.count)")
+        if produits.count < IdentifiantsIAP.tous.count {
+            let livres = Set(produits.map(\.id))
+            let manquants = Set(IdentifiantsIAP.tous).subtracting(livres).sorted()
+            loggerSK.warning("Produits manquants côté ASC : \(manquants.joined(separator: ", "))")
+        }
     }
 
     /// Lance l'achat d'un produit. Sur succès, `await tx.finish()` puis retourne

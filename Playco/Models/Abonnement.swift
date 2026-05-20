@@ -43,6 +43,10 @@ enum TypeAbonnement: String, Codable, CaseIterable {
 final class Abonnement {
     var id: UUID = UUID()
     var utilisateurID: UUID = UUID()
+    /// Code de l'équipe active au moment de l'achat. Permet le fallback CloudKit
+    /// Public DB quand le coach se reconnecte avec un Apple ID différent.
+    /// Empty string = aucune équipe scopée (legacy ou achat hors-équipe).
+    var codeEquipe: String = ""
     var tierRaw: String = Tier.aucun.rawValue
     var typeAbonnementRaw: String = TypeAbonnement.aucun.rawValue
     var produitIAPID: String = ""
@@ -61,6 +65,7 @@ final class Abonnement {
     }
 
     init(utilisateurID: UUID,
+         codeEquipe: String = "",
          tier: Tier = .aucun,
          type: TypeAbonnement = .aucun,
          produitIAPID: String = "",
@@ -68,6 +73,7 @@ final class Abonnement {
          dateExpiration: Date? = nil) {
         self.id = UUID()
         self.utilisateurID = utilisateurID
+        self.codeEquipe = codeEquipe
         self.tierRaw = tier.rawValue
         self.typeAbonnementRaw = type.rawValue
         self.produitIAPID = produitIAPID

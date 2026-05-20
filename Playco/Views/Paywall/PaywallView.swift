@@ -2,8 +2,8 @@
 //  Copyright © 2025 Christopher Dionne. Tous droits réservés.
 //
 //  PaywallView — vue canonique du paywall. 3 modes (welcome, bloquant, gestion)
-//  partagent le même layout. 2 PricingCard (Pro / Club), toggle mensuel/annuel,
-//  CTA dynamique (essai gratuit si éligible, sinon achat direct).
+//  partagent le même layout. Délègue toute la logique d'état à `PaywallViewModel`
+//  (états chargement/pret/erreur, achat, restauration). Empty state + retry inclus.
 //
 
 import SwiftUI
@@ -24,28 +24,7 @@ struct PaywallView: View {
     @Environment(AnalyticsService.self) private var analytics
     @Environment(\.dismiss) private var dismiss
 
-    @State private var periode: PeriodePaywall = .annuel
-    @State private var produitSelectionneID: String? = nil
-    @State private var eligibiliteParProduit: [String: Bool] = [:]
-    @State private var enCours = false
-    @State private var erreur: String? = nil
-
-    // MARK: - Produits filtrés selon période
-
-    private var produitPro: Product? {
-        let id = periode == .annuel ? IdentifiantsIAP.proAnnuel : IdentifiantsIAP.proMensuel
-        return storeKit.produits.first { $0.id == id }
-    }
-
-    private var produitClub: Product? {
-        let id = periode == .annuel ? IdentifiantsIAP.clubAnnuel : IdentifiantsIAP.clubMensuel
-        return storeKit.produits.first { $0.id == id }
-    }
-
-    private var produitSelectionne: Product? {
-        guard let id = produitSelectionneID else { return produitPro }
-        return storeKit.produits.first { $0.id == id }
-    }
+    @State private var viewModel: PaywallViewModel?
 
     // MARK: - Titre selon mode
 
@@ -69,7 +48,6 @@ struct PaywallView: View {
 
     var body: some View {
         ZStack {
-            // Fond dégradé sombre
             LinearGradient(
                 colors: [Color.black, Color(red: 0.08, green: 0.04, blue: 0.02)],
                 startPoint: .top,
@@ -80,12 +58,15 @@ struct PaywallView: View {
             ScrollView {
                 VStack(spacing: LiquidGlassKit.espaceLG) {
                     entete
-                    SelecteurPeriode(selection: $periode)
-                        .padding(.horizontal, LiquidGlassKit.espaceMD)
+
+                    if viewModel?.etat == .pret {
+                        SelecteurPeriode(selection: bindingPeriode)
+                            .padding(.horizontal, LiquidGlassKit.espaceMD)
+                    }
 
                     cartesPricing
 
-                    if let erreur {
+                    if let erreur = viewModel?.erreur {
                         Text(erreur)
                             .font(.caption)
                             .foregroundStyle(.red)
@@ -110,7 +91,7 @@ struct PaywallView: View {
                         Spacer()
                         Button {
                             analytics.suivre(evenement: EvenementAnalytics.paywallFerme)
-                            onTermine?() ?? dismiss()
+                            if let onTermine { onTermine() } else { dismiss() }
                         } label: {
                             Image(systemName: "xmark.circle.fill")
                                 .font(.title2)
@@ -122,15 +103,23 @@ struct PaywallView: View {
                 }
             }
         }
-        .onAppear {
+        .task {
+            if viewModel == nil {
+                viewModel = PaywallViewModel(storeKit: storeKit, analytics: analytics)
+            }
             analytics.suivre(evenement: EvenementAnalytics.paywallAffiche,
                              metadonnees: ["mode": "\(mode)"])
-            // Pré-sélection Pro annuel par défaut
-            if produitSelectionneID == nil {
-                produitSelectionneID = IdentifiantsIAP.proAnnuel
-            }
-            Task { await chargerEligibilite() }
+            await viewModel?.chargerSiNecessaire()
         }
+    }
+
+    // MARK: - Bindings
+
+    private var bindingPeriode: Binding<PeriodePaywall> {
+        Binding(
+            get: { viewModel?.periode ?? .annuel },
+            set: { viewModel?.periode = $0 }
+        )
     }
 
     // MARK: - En-tête
@@ -159,27 +148,68 @@ struct PaywallView: View {
         }
     }
 
-    // MARK: - Cartes Pricing
+    // MARK: - Cartes Pricing (avec empty state + erreur)
 
     @ViewBuilder
     private var cartesPricing: some View {
+        if let vm = viewModel {
+            switch vm.etat {
+            case .initial, .chargement:
+                cartesChargement
+            case .erreur(let message):
+                cartesErreur(message: message)
+            case .pret:
+                cartesProduits(vm: vm)
+            }
+        } else {
+            cartesChargement
+        }
+    }
+
+    private var cartesChargement: some View {
+        VStack(spacing: 12) {
+            ProgressView()
+                .tint(.white)
+                .controlSize(.large)
+            Text(TextesPaywall.chargementProduits)
+                .font(.subheadline)
+                .foregroundStyle(.white.opacity(0.7))
+        }
+        .frame(maxWidth: .infinity, minHeight: 240)
+    }
+
+    private func cartesErreur(message: String) -> some View {
+        VStack(spacing: 12) {
+            Image(systemName: "wifi.exclamationmark")
+                .font(.largeTitle)
+                .foregroundStyle(.white.opacity(0.8))
+            Text(message)
+                .font(.subheadline)
+                .foregroundStyle(.white.opacity(0.85))
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
+        }
+        .frame(maxWidth: .infinity, minHeight: 240)
+    }
+
+    private func cartesProduits(vm: PaywallViewModel) -> some View {
         VStack(spacing: LiquidGlassKit.espaceMD) {
-            if let pro = produitPro {
+            if let pro = vm.produitPro {
                 PricingCard(
                     produit: pro,
                     tier: .pro,
-                    estSelectionne: produitSelectionneID == pro.id,
-                    estEligibleEssai: eligibiliteParProduit[pro.id] ?? false,
-                    onTap: { produitSelectionneID = pro.id }
+                    estSelectionne: vm.produitSelectionneID == pro.id,
+                    estEligibleEssai: vm.eligibiliteParProduit[pro.id] ?? false,
+                    onTap: { vm.produitSelectionneID = pro.id }
                 )
             }
-            if let club = produitClub {
+            if let club = vm.produitClub {
                 PricingCard(
                     produit: club,
                     tier: .club,
-                    estSelectionne: produitSelectionneID == club.id,
-                    estEligibleEssai: eligibiliteParProduit[club.id] ?? false,
-                    onTap: { produitSelectionneID = club.id }
+                    estSelectionne: vm.produitSelectionneID == club.id,
+                    estEligibleEssai: vm.eligibiliteParProduit[club.id] ?? false,
+                    onTap: { vm.produitSelectionneID = club.id }
                 )
             }
         }
@@ -189,13 +219,13 @@ struct PaywallView: View {
 
     private var boutonCTA: some View {
         Button {
-            Task { await acheter() }
+            Task { await tapCTA() }
         } label: {
             HStack {
-                if enCours {
+                if viewModel?.enCours == true {
                     ProgressView().tint(.white)
                 } else {
-                    Text(ctaLabel)
+                    Text(viewModel?.ctaLabel ?? TextesPaywall.ctaChargement)
                         .font(.headline)
                         .foregroundStyle(.white)
                 }
@@ -210,26 +240,38 @@ struct PaywallView: View {
                 ),
                 in: RoundedRectangle(cornerRadius: LiquidGlassKit.rayonGrand)
             )
+            .opacity(viewModel?.ctaEstActif == true ? 1.0 : 0.45)
         }
-        .disabled(produitSelectionne == nil || enCours)
+        .disabled(viewModel?.ctaEstActif != true)
+        .animation(LiquidGlassKit.springDefaut, value: viewModel?.produitSelectionneID)
+        .animation(LiquidGlassKit.springDefaut, value: viewModel?.ctaEstActif)
     }
 
-    private var ctaLabel: String {
-        guard let p = produitSelectionne else { return TextesPaywall.ctaAchatDirect }
-        if eligibiliteParProduit[p.id] == true {
-            return TextesPaywall.ctaEssaiEligible
+    private func tapCTA() async {
+        guard let vm = viewModel else { return }
+        if case .erreur = vm.etat {
+            await vm.chargerSiNecessaire()
+            return
         }
-        return TextesPaywall.ctaAchatDirect + p.displayPrice
+        if await vm.acheter() {
+            if let onTermine { onTermine() } else { dismiss() }
+        }
     }
 
     private var boutonRestaurer: some View {
         Button {
-            Task { await restaurer() }
+            Task {
+                guard let vm = viewModel else { return }
+                if await vm.restaurer() {
+                    if let onTermine { onTermine() } else { dismiss() }
+                }
+            }
         } label: {
             Text(TextesPaywall.ctaRestaurer)
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(.white.opacity(0.8))
         }
+        .disabled(viewModel?.enCours == true)
     }
 
     private var mentionsLegales: some View {
@@ -246,50 +288,5 @@ struct PaywallView: View {
             .font(.caption2.weight(.medium))
             .foregroundStyle(.white.opacity(0.7))
         }
-    }
-
-    // MARK: - Actions
-
-    private func chargerEligibilite() async {
-        var resultats: [String: Bool] = [:]
-        for produit in storeKit.produits {
-            let eligible = await produit.subscription?.isEligibleForIntroOffer ?? false
-            resultats[produit.id] = eligible
-        }
-        eligibiliteParProduit = resultats
-    }
-
-    private func acheter() async {
-        guard let produit = produitSelectionne else { return }
-        enCours = true
-        erreur = nil
-        analytics.suivre(evenement: EvenementAnalytics.achatInitie,
-                         metadonnees: ["produit": produit.id, "tier": IdentifiantsIAP.tier(pour: produit.id).rawValue])
-        do {
-            _ = try await storeKit.acheter(produit)
-            analytics.suivre(evenement: EvenementAnalytics.achatReussi,
-                             metadonnees: ["produit": produit.id])
-            onTermine?() ?? dismiss()
-        } catch StoreKitError.userCancelled {
-            // Pas d'erreur affichée — l'utilisateur a juste annulé
-            analytics.suivre(evenement: EvenementAnalytics.achatEchoue,
-                             metadonnees: ["raison": "annule"])
-        } catch {
-            erreur = (error as? LocalizedError)?.errorDescription ?? "L'achat a échoué. Réessaie."
-            analytics.suivre(evenement: EvenementAnalytics.achatEchoue,
-                             metadonnees: ["raison": "\(error)"])
-        }
-        enCours = false
-    }
-
-    private func restaurer() async {
-        enCours = true
-        analytics.suivre(evenement: EvenementAnalytics.restaurationTentee)
-        do {
-            try await storeKit.restaurer()
-        } catch {
-            erreur = "La restauration a échoué. Réessaie."
-        }
-        enCours = false
     }
 }

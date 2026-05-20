@@ -40,10 +40,21 @@ enum TextesPaywall {
 
     static let ctaEssaiEligible = "Commencer l'essai 14 jours"
     /// Préfixe — concaténer avec `produit.displayPrice` (ex: "S'abonner · 14,99 $ CAD")
-    static let ctaAchatDirect = "S'abonner · "
+    static let ctaAchatPrefixe = "S'abonner · "
+    static let ctaChoisirPlan = "Choisis un plan"
+    static let ctaChargement = "Chargement…"
+    static let ctaReessayer = "Réessayer"
     static let ctaRestaurer = "Restaurer mes achats"
     static let ctaGererApple = "Gérer mon abonnement Apple"
     static let ctaPasserClub = "Passer à Playco Club"
+
+    // MARK: - Messages d'état paywall
+
+    static let chargementProduits = "Chargement des abonnements…"
+    static let erreurChargementProduits = "Impossible de charger les abonnements. Vérifie ta connexion et réessaie."
+    static let erreurAucunAchatARestaurer = "Aucun achat à restaurer sur cet identifiant Apple."
+    static let erreurRestaurationReseau = "Connexion à l'App Store impossible. Vérifie ta connexion."
+    static let erreurAchat = "L'achat a échoué. Réessaie."
 
     // MARK: - Badges
 
