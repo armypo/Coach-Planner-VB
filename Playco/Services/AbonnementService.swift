@@ -296,6 +296,8 @@ final class AbonnementService {
     }
 
     /// Sauvegarde le statut courant dans le modèle Abonnement (SwiftData).
+    /// Renseigne `codeEquipe` depuis la première équipe locale du coach (clé de
+    /// fallback CloudKit Public DB pour reconnexion sur Apple ID différent).
     private func persisterDansSwiftData(context: ModelContext,
                                         utilisateur: Utilisateur,
                                         produit: Product,
@@ -314,6 +316,18 @@ final class AbonnementService {
         abo.dateExpiration = expDate
         abo.dateDernierSync = Date()
         abo.type = typeAbonnementCourant()
+
+        // Lookup codeEquipe via première équipe disponible (les coachs ont au
+        // moins une équipe après onboarding ; multi-équipes → première suffit
+        // car le tier est propagé sur TOUTES via propagerTierAuxEquipes).
+        if abo.codeEquipe.isEmpty {
+            let equipes = (try? context.fetch(FetchDescriptor<Equipe>())) ?? []
+            if let code = equipes.first?.codeEquipe, !code.isEmpty {
+                abo.codeEquipe = code
+                loggerAbo.info("Abonnement scopé codeEquipe=\(code)")
+            }
+        }
+
         do {
             try context.save()
         } catch {
