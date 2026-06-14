@@ -9,7 +9,7 @@ import SwiftData
 
 // MARK: - Tier d'abonnement
 
-enum Tier: String, Codable, CaseIterable {
+nonisolated enum Tier: String, Codable, CaseIterable {
     case aucun
     case pro    // coach + staff
     case club   // tout Pro + athlètes
@@ -25,7 +25,7 @@ enum Tier: String, Codable, CaseIterable {
 
 // MARK: - Type d'abonnement
 
-enum TypeAbonnement: String, Codable, CaseIterable {
+nonisolated enum TypeAbonnement: String, Codable, CaseIterable {
     case aucun
     case essai           // 14 jours d'essai gratuit Apple
     case mensuel
