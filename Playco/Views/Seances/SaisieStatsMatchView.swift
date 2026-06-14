@@ -304,9 +304,13 @@ struct SaisieStatsMatchView: View {
 
             joueur.passesDecisives += stat.passesDecisives
             joueur.manchettes += stat.manchettes
+
+            // Bump pour que le sweep coach republie les stats à jour vers la Public DB.
+            joueur.dateModification = Date()
         }
 
         seance.statsEntrees = true
+        seance.dateModification = Date()  // score/stats du match modifiés → republier la séance
         do {
             try modelContext.save()
             confirmeSauvegarde = true

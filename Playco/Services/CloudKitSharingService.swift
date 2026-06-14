@@ -41,6 +41,8 @@ final class CloudKitSharingService {
         static let utilisateur = "UtilisateurPartage"
         static let joueur = "JoueurPartage"
         static let etablissement = "EtablissementPartage"
+        static let seance = "SeancePartagee"
+        static let matchCalendrier = "MatchCalendrierPartagee"
     }
 
     // MARK: - Publication (côté Coach)
@@ -185,6 +187,53 @@ final class CloudKitSharingService {
         estEnCoursDePublication = false
     }
 
+    /// Sweep de publication côté coach : republie tout ce qui a changé depuis la
+    /// dernière sync (équipe, établissement, utilisateurs, joueurs+stats, séances,
+    /// matchs) pour un `codeEquipe`. DRY : un seul point d'appel (foreground coach)
+    /// couvre toutes les créations/éditions sans triggers éparpillés.
+    /// Respecte `masquerPratiquesAthletes` : les pratiques ne sont pas publiées si activé.
+    func publierMisesAJourCoach(codeEquipe: String, context: ModelContext) async {
+        guard !codeEquipe.isEmpty else { return }
+        estEnCoursDePublication = true
+        defer { estEnCoursDePublication = false }
+        let seuil = derniereSyncDate
+
+        let masquer = ((try? context.fetch(FetchDescriptor<ProfilCoach>()))?
+            .first?.masquerPratiquesAthletes) ?? false
+
+        do {
+            let descEq = FetchDescriptor<Equipe>(predicate: #Predicate { $0.codeEquipe == codeEquipe })
+            if let equipe = try? context.fetch(descEq).first {
+                if equipe.dateModification > seuil { try await publierEquipe(equipe) }
+                if let etab = equipe.etablissement, etab.dateModification > seuil {
+                    try await publierEtablissement(etab, codeEquipe: codeEquipe)
+                }
+            }
+            let descU = FetchDescriptor<Utilisateur>(predicate: #Predicate { $0.codeEcole == codeEquipe })
+            for u in (try? context.fetch(descU)) ?? [] where u.dateModification > seuil {
+                try await publierUtilisateur(u)
+            }
+            let descJ = FetchDescriptor<JoueurEquipe>(predicate: #Predicate { $0.codeEquipe == codeEquipe })
+            for j in (try? context.fetch(descJ)) ?? [] where j.dateModification > seuil {
+                try await publierJoueur(j)
+            }
+            let pratiqueRaw = TypeSeance.pratique.rawValue
+            let descS = FetchDescriptor<Seance>(predicate: #Predicate { $0.codeEquipe == codeEquipe })
+            for s in (try? context.fetch(descS)) ?? [] where s.dateModification > seuil && !s.estArchivee {
+                if masquer && s.typeSeanceRaw == pratiqueRaw { continue }  // pratiques masquées
+                try await publierSeance(s)
+            }
+            let descM = FetchDescriptor<MatchCalendrier>(predicate: #Predicate { $0.codeEquipe == codeEquipe })
+            for m in (try? context.fetch(descM)) ?? [] where m.dateModification > seuil {
+                try await publierMatchCalendrier(m)
+            }
+            derniereSyncDate = Date()
+        } catch {
+            logger.error("publierMisesAJourCoach: \(error.localizedDescription)")
+            self.erreur = error.localizedDescription
+        }
+    }
+
     // MARK: - Récupération (côté Athlète)
 
     /// Vérifie si un code d'équipe existe dans le CloudKit public
@@ -258,6 +307,24 @@ final class CloudKitSharingService {
             importerJoueur(from: record, context: context)
         }
 
+        // 7b. Importer séances + matchs du calendrier (lecture seule athlète).
+        let seanceRecords = try await fetchRecords(type: RecordType.seance, codeEquipe: codeEquipe)
+        for record in seanceRecords { importerSeance(from: record, context: context) }
+        let matchCalRecords = try await fetchRecords(type: RecordType.matchCalendrier, codeEquipe: codeEquipe)
+        for record in matchCalRecords { importerMatchCalendrier(from: record, context: context) }
+
+        // 8. Brancher le tier d'abonnement depuis AbonnementPartage (Public DB).
+        // EquipePartagee ne porte PAS le tier (sécurité). Sans ça l'équipe importée
+        // resterait .aucun → athlète d'un coach Club bloqué à tort (gate).
+        if let snap = await CloudKitPublicSyncAbonnement.shared.lire(codeEquipe: codeEquipe) {
+            let codeRech = codeEquipe
+            let descEq = FetchDescriptor<Equipe>(predicate: #Predicate { $0.codeEquipe == codeRech })
+            if let eqLocale = try? context.fetch(descEq).first, eqLocale.tierAbonnement != snap.tier {
+                eqLocale.tierAbonnement = snap.tier
+                logger.info("Tier importé pour \(codeEquipe, privacy: .private): \(snap.tier.rawValue, privacy: .public)")
+            }
+        }
+
         do {
             try context.save()
         } catch {
@@ -283,6 +350,12 @@ final class CloudKitSharingService {
             for record in joueurRecords {
                 importerJoueur(from: record, context: context)
             }
+
+            let seanceRecords = try await fetchRecords(type: RecordType.seance, codeEquipe: codeEquipe)
+            for record in seanceRecords { importerSeance(from: record, context: context) }
+
+            let matchCalRecords = try await fetchRecords(type: RecordType.matchCalendrier, codeEquipe: codeEquipe)
+            for record in matchCalRecords { importerMatchCalendrier(from: record, context: context) }
 
             do {
                 try context.save()
@@ -311,7 +384,7 @@ final class CloudKitSharingService {
         record["couleurSecondaireHex"] = equipe.couleurSecondaireHex as CKRecordValue
         record["dateModification"] = equipe.dateModification as CKRecordValue
 
-        try await publicDB.save(record)
+        _ = try await publicDB.save(record)
     }
 
     private func publierEtablissement(_ etab: Etablissement, codeEquipe: String) async throws {
@@ -324,7 +397,7 @@ final class CloudKitSharingService {
         record["ville"] = etab.ville as CKRecordValue
         record["province"] = etab.province as CKRecordValue
 
-        try await publicDB.save(record)
+        _ = try await publicDB.save(record)
     }
 
     private func publierUtilisateur(_ utilisateur: Utilisateur) async throws {
@@ -355,7 +428,7 @@ final class CloudKitSharingService {
         }
         record["dateModification"] = utilisateur.dateModification as CKRecordValue
 
-        try await publicDB.save(record)
+        _ = try await publicDB.save(record)
     }
 
     private func publierJoueur(_ joueur: JoueurEquipe) async throws {
@@ -373,9 +446,59 @@ final class CloudKitSharingService {
         if let utilisateurID = joueur.utilisateurID {
             record["utilisateurID"] = utilisateurID.uuidString as CKRecordValue
         }
+        // Stats cumulées (lecture seule athlète). Pas de PII.
+        record["matchsJoues"] = joueur.matchsJoues as CKRecordValue
+        record["setsJoues"] = joueur.setsJoues as CKRecordValue
+        record["attaquesReussies"] = joueur.attaquesReussies as CKRecordValue
+        record["erreursAttaque"] = joueur.erreursAttaque as CKRecordValue
+        record["attaquesTotales"] = joueur.attaquesTotales as CKRecordValue
+        record["aces"] = joueur.aces as CKRecordValue
+        record["erreursService"] = joueur.erreursService as CKRecordValue
+        record["servicesTotaux"] = joueur.servicesTotaux as CKRecordValue
+        record["blocsSeuls"] = joueur.blocsSeuls as CKRecordValue
+        record["blocsAssistes"] = joueur.blocsAssistes as CKRecordValue
+        record["erreursBloc"] = joueur.erreursBloc as CKRecordValue
+        record["receptionsReussies"] = joueur.receptionsReussies as CKRecordValue
+        record["erreursReception"] = joueur.erreursReception as CKRecordValue
+        record["receptionsTotales"] = joueur.receptionsTotales as CKRecordValue
+        record["passesDecisives"] = joueur.passesDecisives as CKRecordValue
+        record["manchettes"] = joueur.manchettes as CKRecordValue
         record["dateModification"] = joueur.dateModification as CKRecordValue
 
-        try await publicDB.save(record)
+        _ = try await publicDB.save(record)
+    }
+
+    /// Publie une séance (pratique ou match) en lecture seule pour les athlètes.
+    func publierSeance(_ seance: Seance) async throws {
+        let recordID = CKRecord.ID(recordName: "seance-\(seance.id.uuidString)")
+        let record = CKRecord(recordType: RecordType.seance, recordID: recordID)
+        record["seanceID"] = seance.id.uuidString as CKRecordValue
+        record["codeEquipe"] = seance.codeEquipe as CKRecordValue
+        record["nom"] = seance.nom as CKRecordValue
+        record["date"] = seance.date as CKRecordValue
+        record["typeSeanceRaw"] = seance.typeSeanceRaw as CKRecordValue
+        record["lieu"] = seance.lieu as CKRecordValue
+        record["adversaire"] = seance.adversaire as CKRecordValue
+        record["scoreEquipe"] = seance.scoreEquipe as CKRecordValue
+        record["scoreAdversaire"] = seance.scoreAdversaire as CKRecordValue
+        record["resultatRaw"] = seance.resultatRaw as CKRecordValue
+        record["estArchivee"] = (seance.estArchivee ? 1 : 0) as CKRecordValue
+        record["dateModification"] = seance.dateModification as CKRecordValue
+        _ = try await publicDB.save(record)
+    }
+
+    /// Publie un match du calendrier en lecture seule pour les athlètes.
+    func publierMatchCalendrier(_ match: MatchCalendrier) async throws {
+        let recordID = CKRecord.ID(recordName: "matchcal-\(match.id.uuidString)")
+        let record = CKRecord(recordType: RecordType.matchCalendrier, recordID: recordID)
+        record["matchID"] = match.id.uuidString as CKRecordValue
+        record["codeEquipe"] = match.codeEquipe as CKRecordValue
+        record["date"] = match.date as CKRecordValue
+        record["adversaire"] = match.adversaire as CKRecordValue
+        record["lieu"] = match.lieu as CKRecordValue
+        record["estDomicile"] = (match.estDomicile ? 1 : 0) as CKRecordValue
+        record["dateModification"] = match.dateModification as CKRecordValue
+        _ = try await publicDB.save(record)
     }
 
     // MARK: - Import vers SwiftData
@@ -497,6 +620,7 @@ final class CloudKitSharingService {
             existant.prenom = record["prenom"] as? String ?? existant.prenom
             existant.numero = record["numero"] as? Int ?? existant.numero
             existant.posteRaw = record["posteRaw"] as? String ?? existant.posteRaw
+            appliquerStats(record, sur: existant)
             existant.dateModification = remoteDateMod
             return
         }
@@ -514,8 +638,95 @@ final class CloudKitSharingService {
         if let utilisateurIDStr = record["utilisateurID"] as? String {
             joueur.utilisateurID = UUID(uuidString: utilisateurIDStr)
         }
+        appliquerStats(record, sur: joueur)
 
         context.insert(joueur)
+    }
+
+    /// Applique les stats cumulées d'un CKRecord JoueurPartage sur un JoueurEquipe.
+    /// DRY — partagé par les branches update + création de `importerJoueur`.
+    private func appliquerStats(_ record: CKRecord, sur joueur: JoueurEquipe) {
+        joueur.matchsJoues = record["matchsJoues"] as? Int ?? joueur.matchsJoues
+        joueur.setsJoues = record["setsJoues"] as? Int ?? joueur.setsJoues
+        joueur.attaquesReussies = record["attaquesReussies"] as? Int ?? joueur.attaquesReussies
+        joueur.erreursAttaque = record["erreursAttaque"] as? Int ?? joueur.erreursAttaque
+        joueur.attaquesTotales = record["attaquesTotales"] as? Int ?? joueur.attaquesTotales
+        joueur.aces = record["aces"] as? Int ?? joueur.aces
+        joueur.erreursService = record["erreursService"] as? Int ?? joueur.erreursService
+        joueur.servicesTotaux = record["servicesTotaux"] as? Int ?? joueur.servicesTotaux
+        joueur.blocsSeuls = record["blocsSeuls"] as? Int ?? joueur.blocsSeuls
+        joueur.blocsAssistes = record["blocsAssistes"] as? Int ?? joueur.blocsAssistes
+        joueur.erreursBloc = record["erreursBloc"] as? Int ?? joueur.erreursBloc
+        joueur.receptionsReussies = record["receptionsReussies"] as? Int ?? joueur.receptionsReussies
+        joueur.erreursReception = record["erreursReception"] as? Int ?? joueur.erreursReception
+        joueur.receptionsTotales = record["receptionsTotales"] as? Int ?? joueur.receptionsTotales
+        joueur.passesDecisives = record["passesDecisives"] as? Int ?? joueur.passesDecisives
+        joueur.manchettes = record["manchettes"] as? Int ?? joueur.manchettes
+    }
+
+    /// Importe une séance (merge `dateModification`). Lecture seule athlète.
+    func importerSeance(from record: CKRecord, context: ModelContext) {
+        guard let idString = record["seanceID"] as? String,
+              let uuid = UUID(uuidString: idString) else { return }
+        let remoteDateMod = record["dateModification"] as? Date ?? .distantPast
+        let desc = FetchDescriptor<Seance>(predicate: #Predicate { $0.id == uuid })
+        if let existant = try? context.fetch(desc).first {
+            guard remoteDateMod > existant.dateModification else { return }
+            existant.nom = record["nom"] as? String ?? existant.nom
+            existant.date = record["date"] as? Date ?? existant.date
+            existant.typeSeanceRaw = record["typeSeanceRaw"] as? String ?? existant.typeSeanceRaw
+            existant.lieu = record["lieu"] as? String ?? existant.lieu
+            existant.adversaire = record["adversaire"] as? String ?? existant.adversaire
+            existant.scoreEquipe = record["scoreEquipe"] as? Int ?? existant.scoreEquipe
+            existant.scoreAdversaire = record["scoreAdversaire"] as? Int ?? existant.scoreAdversaire
+            existant.resultatRaw = record["resultatRaw"] as? String ?? existant.resultatRaw
+            existant.estArchivee = (record["estArchivee"] as? Int ?? 0) == 1
+            existant.dateModification = remoteDateMod
+            return
+        }
+        let seance = Seance(nom: record["nom"] as? String ?? "",
+                            date: record["date"] as? Date ?? Date(),
+                            typeSeance: TypeSeance(rawValue: record["typeSeanceRaw"] as? String ?? "") ?? .pratique)
+        seance.id = uuid
+        seance.codeEquipe = record["codeEquipe"] as? String ?? ""
+        seance.lieu = record["lieu"] as? String ?? ""
+        seance.adversaire = record["adversaire"] as? String ?? ""
+        seance.scoreEquipe = record["scoreEquipe"] as? Int ?? 0
+        seance.scoreAdversaire = record["scoreAdversaire"] as? Int ?? 0
+        seance.resultatRaw = record["resultatRaw"] as? String ?? ""
+        seance.estArchivee = (record["estArchivee"] as? Int ?? 0) == 1
+        seance.dateModification = remoteDateMod
+        context.insert(seance)
+    }
+
+    /// Importe un match du calendrier (merge `dateModification`). Lecture seule athlète.
+    func importerMatchCalendrier(from record: CKRecord, context: ModelContext) {
+        guard let idString = record["matchID"] as? String,
+              let uuid = UUID(uuidString: idString) else { return }
+        let remoteDateMod = record["dateModification"] as? Date ?? .distantPast
+        let code = record["codeEquipe"] as? String ?? ""
+        let descEq = FetchDescriptor<Equipe>(predicate: #Predicate { $0.codeEquipe == code })
+        let equipeLocale = try? context.fetch(descEq).first
+        let desc = FetchDescriptor<MatchCalendrier>(predicate: #Predicate { $0.id == uuid })
+        if let existant = try? context.fetch(desc).first {
+            guard remoteDateMod > existant.dateModification else { return }
+            existant.date = record["date"] as? Date ?? existant.date
+            existant.adversaire = record["adversaire"] as? String ?? existant.adversaire
+            existant.lieu = record["lieu"] as? String ?? existant.lieu
+            existant.estDomicile = (record["estDomicile"] as? Int ?? 1) == 1
+            existant.equipe = existant.equipe ?? equipeLocale
+            existant.dateModification = remoteDateMod
+            return
+        }
+        let match = MatchCalendrier(date: record["date"] as? Date ?? Date(),
+                                    adversaire: record["adversaire"] as? String ?? "")
+        match.id = uuid
+        match.codeEquipe = code
+        match.lieu = record["lieu"] as? String ?? ""
+        match.estDomicile = (record["estDomicile"] as? Int ?? 1) == 1
+        match.equipe = equipeLocale
+        match.dateModification = remoteDateMod
+        context.insert(match)
     }
 
     // MARK: - Helpers CloudKit

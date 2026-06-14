@@ -276,6 +276,9 @@ final class Seance {
     /// Qui sert au début du match : true = nous, false = adversaire
     var nousServonsEnPremier: Bool = true
 
+    /// Horodatage de dernière modification — merge Public DB (partage athlètes cross-Apple-ID).
+    var dateModification: Date = Date()
+
     /// Computed : score par set décodé
     var sets: [SetScore] {
         get {

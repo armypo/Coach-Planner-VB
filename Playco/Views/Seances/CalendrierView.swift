@@ -9,6 +9,7 @@ struct CalendrierView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @Environment(\.codeEquipeActif) private var codeEquipeActif
+    @Environment(AuthService.self) private var authService
     @Query(filter: #Predicate<Seance> { $0.estArchivee == false },
            sort: \Seance.date) private var toutesSeancesQuery: [Seance]
 
@@ -152,12 +153,16 @@ struct CalendrierView: View {
                             .font(.title3)
                             .symbolRenderingMode(.hierarchical)
                     }
+                    // Lecture seule pour l'athlète : pas de création de séance.
+                    .siAutorise(authService.utilisateurConnecte?.role.peutModifierSeances ?? false)
                 }
             }
         }
         .sheet(isPresented: $afficherNouvelleSeance) {
             NouvelleSeanceView { nom, date in
                 let s = Seance(nom: nom, date: date)
+                s.codeEquipe = codeEquipeActif       // scope équipe + clé partage Public DB
+                s.dateModification = Date()           // sera publiée au prochain sweep coach
                 modelContext.insert(s)
             }
         }
