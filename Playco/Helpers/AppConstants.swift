@@ -11,13 +11,21 @@ import Foundation
 
 enum AppConstants {
 
+    /// Construit une URL depuis un littéral réputé valide, sans force-unwrap.
+    /// Repli infaillible (`file:///`) si jamais le littéral était malformé — cas
+    /// impossible en pratique car les littéraux ci-dessous sont fixes et valides,
+    /// mais évite tout `!` (cf. règle « no force unwrap »).
+    static func url(_ litteral: String) -> URL {
+        URL(string: litteral) ?? URL(filePath: "/")
+    }
+
     // MARK: - URLs légales (hébergées sur le site Origotech)
 
     /// Conditions d'utilisation (CGU). PLACEHOLDER_LAUNCH : à remplacer par l'URL finale.
-    static let urlConditionsUtilisation = URL(string: "https://origotech.ca/playco/cgu")!
+    static let urlConditionsUtilisation = url("https://origotech.ca/playco/cgu")
 
     /// Politique de confidentialité. PLACEHOLDER_LAUNCH : à remplacer par l'URL finale.
-    static let urlPolitiqueConfidentialite = URL(string: "https://origotech.ca/playco/confidentialite")!
+    static let urlPolitiqueConfidentialite = url("https://origotech.ca/playco/confidentialite")
 
     // MARK: - Support
 
@@ -27,11 +35,11 @@ enum AppConstants {
     /// URL `mailto:` formatée avec sujet pré-rempli pour le support général.
     static var mailtoSupport: URL {
         let sujet = "Aide%20Playco".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "Aide"
-        return URL(string: "mailto:\(emailSupport)?subject=\(sujet)")!
+        return url("mailto:\(emailSupport)?subject=\(sujet)")
     }
 
     /// URL `mailto:` pour signaler une erreur de démarrage critique.
     static var mailtoSupportErreurDemarrage: URL {
-        URL(string: "mailto:\(emailSupport)?subject=Erreur%20d%C3%A9marrage%20Playco")!
+        url("mailto:\(emailSupport)?subject=Erreur%20d%C3%A9marrage%20Playco")
     }
 }

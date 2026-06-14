@@ -46,8 +46,12 @@ extension Color {
 
 // MARK: - JSON Encoder/Decoder cachés (P0-01 v0.4.0 — évite 14+ instanciations)
 enum JSONCoderCache {
-    static let decoder = JSONDecoder()
-    static let encoder = JSONEncoder()
+    // `nonisolated` : caches partagés globalement. Sous
+    // SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor, ils hériteraient sinon de
+    // l'isolation MainActor et deviendraient inaccessibles depuis un `actor`
+    // (cf. FileReplicationUtilisateur). JSONDecoder/JSONEncoder sont Sendable.
+    nonisolated static let decoder = JSONDecoder()
+    nonisolated static let encoder = JSONEncoder()
 }
 
 // MARK: - DateFormatters cachés (P0-01 — évite de recréer à chaque appel)
