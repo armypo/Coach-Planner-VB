@@ -110,6 +110,7 @@ struct PlaycoApp: App {
         case choixInitial      // premier lancement : configurer ou login
         case configuration     // wizard 6 étapes
         case login             // login unifié (Coach / Assistant / Athlète)
+        case rejoindre         // rejoindre une équipe (multi-Apple-ID, code + identifiant)
         case app               // ContentView (sections)
     }
 
@@ -137,6 +138,9 @@ struct PlaycoApp: App {
                             },
                             onConnexion: {
                                 withAnimation { ecranActif = .login }
+                            },
+                            onRejoindre: {
+                                withAnimation { ecranActif = .rejoindre }
                             }
                         )
                         .environment(authService)
@@ -191,6 +195,26 @@ struct PlaycoApp: App {
                             },
                             onConnecte: {
                                 // Appliquer la gate centrale avant de passer à .app
+                                appliquerGateTier()
+                                if authService.utilisateurConnecte != nil {
+                                    withAnimation(LiquidGlassKit.springDefaut) {
+                                        ecranActif = .app
+                                    }
+                                }
+                            }
+                        )
+                        .environment(authService)
+                        .environment(syncService)
+                        .environment(sharingService)
+                        .modelContainer(container)
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
+
+                    case .rejoindre:
+                        RejoindreEquipeView(
+                            onRetour: {
+                                withAnimation { ecranActif = .choixInitial }
+                            },
+                            onConnecte: {
                                 appliquerGateTier()
                                 if authService.utilisateurConnecte != nil {
                                     withAnimation(LiquidGlassKit.springDefaut) {

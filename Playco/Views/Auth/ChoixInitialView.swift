@@ -8,6 +8,7 @@ import SwiftUI
 struct ChoixInitialView: View {
     var onConfigurer: () -> Void
     var onConnexion: () -> Void
+    var onRejoindre: () -> Void
 
     @State private var animee = false
 
@@ -66,6 +67,20 @@ struct ChoixInitialView: View {
                         }
                         .buttonStyle(.plain)
                         .offset(x: animee ? 0 : 60)
+                        .opacity(animee ? 1 : 0)
+
+                        // Rejoindre une équipe (multi-Apple-ID : code + identifiant + mot de passe)
+                        Button { onRejoindre() } label: {
+                            carteChoix(
+                                icone: "person.2.badge.key.fill",
+                                titre: "Rejoindre une équipe",
+                                description: "Vous avez un code d'équipe ? Rejoignez l'équipe de votre coach avec vos identifiants.",
+                                couleur: PaletteMat.vert,
+                                badge: "Athlète · Assistant"
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .offset(x: animee ? 0 : -60)
                         .opacity(animee ? 1 : 0)
                     }
                     .frame(maxWidth: 480)
