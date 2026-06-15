@@ -350,6 +350,24 @@ struct LoginView: View {
     /// sélectionné. Si mismatch : déconnexion immédiate + message explicite.
     private func connecter() {
         authService.erreur = nil
+
+        // Si un Sign in with Apple non lié est en attente, on RATTACHE le compte
+        // legacy à l'identité Apple (puis les secrets sont effacés).
+        if let appleUserID = appleUserIDEnAttente {
+            if let messageErreur = authService.lierCompteExistant(
+                appleUserID: appleUserID,
+                identifiant: identifiant,
+                motDePasse: motDePasse,
+                context: modelContext
+            ) {
+                authService.erreur = messageErreur
+                return
+            }
+            appleUserIDEnAttente = nil
+            onConnecte?()
+            return
+        }
+
         authService.connexion(
             identifiant: identifiant,
             motDePasse: motDePasse,

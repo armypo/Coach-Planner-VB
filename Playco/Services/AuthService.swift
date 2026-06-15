@@ -290,6 +290,67 @@ final class AuthService {
         return .connecte
     }
 
+    // MARK: - Rattachement d'un compte existant à Sign in with Apple
+
+    /// Lie un compte legacy (identifiant + mot de passe) à un `appleUserID`, puis
+    /// EFFACE les secrets stockés (le compte n'utilisera plus que SIWA).
+    /// - Returns: `nil` si succès (utilisateur connecté), sinon message d'erreur.
+    ///
+    /// Vérifie le verrouillage et l'ancien mot de passe (constant-time) avant de
+    /// rattacher. Supprime aussi les `CredentialAthlete` (mdp en clair) liés.
+    func lierCompteExistant(appleUserID: String, identifiant: String, motDePasse: String, context: ModelContext) -> String? {
+        erreur = nil
+        if estVerrouille {
+            return "Compte verrouillé. Réessayez dans \(tempsRestantVerrouillage) secondes."
+        }
+
+        let id = appleUserID.trimmingCharacters(in: .whitespaces)
+        guard !id.isEmpty else { return "Identifiant Apple manquant. Réessaie la connexion Apple." }
+
+        let idNormalise = identifiant.lowercased().trimmingCharacters(in: .whitespaces)
+        let descripteur = FetchDescriptor<Utilisateur>(
+            predicate: #Predicate { $0.identifiant == idNormalise && $0.estActif == true }
+        )
+
+        guard let utilisateur = try? context.fetch(descripteur).first,
+              KeyDerivation.verifier(motDePasse,
+                                     hash: utilisateur.motDePasseHash,
+                                     sel: utilisateur.sel,
+                                     iterations: utilisateur.iterations) else {
+            enregistrerEchec()
+            return "Identifiant ou mot de passe incorrect."
+        }
+
+        lockout.reinitialiser()
+
+        // Rattacher l'identité Apple et effacer définitivement les secrets.
+        utilisateur.appleUserID = id
+        utilisateur.motDePasseHash = ""
+        utilisateur.sel = nil
+        utilisateur.iterations = 1
+        utilisateur.sessionCreeeLe = Date()
+
+        // Purger les mots de passe en clair éventuels (CredentialAthlete).
+        let userID = utilisateur.id
+        let credDescripteur = FetchDescriptor<CredentialAthlete>(
+            predicate: #Predicate { $0.utilisateurID == userID }
+        )
+        if let creds = try? context.fetch(credDescripteur) {
+            for cred in creds { context.delete(cred) }
+        }
+
+        do {
+            try context.save()
+        } catch {
+            Self.logger.error("lierCompteExistant: échec sauvegarde: \(error.localizedDescription)")
+            return "Impossible de lier le compte. Réessaie."
+        }
+
+        utilisateurConnecte = utilisateur
+        session.sauvegarder(utilisateurID: utilisateur.id)
+        return nil
+    }
+
     // MARK: - Enregistrer un échec de connexion
 
     /// Délègue à `LockoutManager.enregistrerEchec()` et propage le message de
