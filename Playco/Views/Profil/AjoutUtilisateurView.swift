@@ -440,6 +440,9 @@ struct AjoutUtilisateurView: View {
                 predicate: #Predicate { $0.identifiant == idRecherche }
             )
             if let utilisateurPub = try? modelContext.fetch(descriptorPub).first {
+                // Scope l'utilisateur à l'équipe pour la jointure CloudKit publique.
+                if utilisateurPub.codeEquipe.isEmpty { utilisateurPub.codeEquipe = codeEcole }
+                try? modelContext.save()
                 var joueurPub: JoueurEquipe?
                 if let jID = utilisateurPub.joueurEquipeID {
                     let descJoueur = FetchDescriptor<JoueurEquipe>(
@@ -447,8 +450,9 @@ struct AjoutUtilisateurView: View {
                     )
                     joueurPub = try? modelContext.fetch(descJoueur).first
                 }
+                let codeEquipePub = codeEcole
                 Task {
-                    await sharingService.publierNouvelUtilisateur(utilisateurPub, joueur: joueurPub)
+                    await sharingService.publierNouvelUtilisateur(utilisateurPub, joueur: joueurPub, codeEquipe: codeEquipePub)
                 }
             }
 

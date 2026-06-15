@@ -85,6 +85,10 @@ final class Utilisateur {
     /// Défaut `""` = CloudKit-safe (migration additive).
     var appleUserID: String = ""
 
+    /// Code de l'équipe à laquelle ce compte appartient — scope la publication et
+    /// la jointure CloudKit publique (requête par `codeEquipe`). Défaut `""` = CloudKit-safe.
+    var codeEquipe: String = ""
+
     // Données physiques
     var tailleCm: Int = 0          // cm
     var poidKg: Double = 0         // kg

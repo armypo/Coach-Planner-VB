@@ -56,6 +56,7 @@ enum RoleLogin: String, CaseIterable, Identifiable {
 struct LoginView: View {
     @Environment(AuthService.self) private var authService
     @Environment(AppleSignInService.self) private var appleSignIn
+    @Environment(CloudKitSharingService.self) private var sharingService
     @Environment(\.modelContext) private var modelContext
 
     /// Callback optionnel : retour à l'écran précédent (utilisé depuis PlaycoApp
@@ -74,8 +75,14 @@ struct LoginView: View {
     /// pour la transition Sign in with Apple). Masqué par défaut : SIWA primaire.
     @State private var afficherFormulaireLegacy = false
     /// `appleUserID` d'un Sign in with Apple non encore lié à un compte —
-    /// conservé pour le rattachement (lierCompteExistant, Phase 3).
+    /// conservé pour le rattachement (lierCompteExistant, Phase 3) ou la jointure.
     @State private var appleUserIDEnAttente: String?
+
+    // Rejoindre une équipe (athlète/assistant, cross-Apple-ID)
+    @State private var afficherRejoindre = false
+    @State private var codeEquipeSaisi = ""
+    @State private var codeInvitationSaisi = ""
+    @State private var rejoindreEnCours = false
 
     private var couleurActive: Color { roleSelectionne.couleur }
 
@@ -97,6 +104,9 @@ struct LoginView: View {
                         boutonApple
                         bandeauErreur
                         if afficherFormulaireLegacy {
+                            if appleUserIDEnAttente != nil {
+                                boutonRejoindreEquipe
+                            }
                             separateurLegacy
                             pickerRole
                             formulaire
@@ -215,8 +225,93 @@ struct LoginView: View {
             onConnecte?()
         case .compteInconnu(let appleUserID, _, _):
             appleUserIDEnAttente = appleUserID
-            authService.erreur = "Aucun compte lié à cet Apple ID. Connecte-toi une fois avec ton ancien identifiant pour le lier, ou crée/rejoins une équipe."
+            authService.erreur = "Aucun compte lié à cet Apple ID. Rejoins ton équipe avec un code d'invitation, lie ton ancien identifiant, ou crée une équipe."
             withAnimation(LiquidGlassKit.springDefaut) { afficherFormulaireLegacy = true }
+        }
+    }
+
+    // MARK: - Rejoindre une équipe (athlète / assistant)
+
+    private var boutonRejoindreEquipe: some View {
+        Button {
+            afficherRejoindre = true
+        } label: {
+            HStack(spacing: LiquidGlassKit.espaceSM) {
+                Image(systemName: "person.3.fill")
+                Text("Rejoindre mon équipe").fontWeight(.semibold)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .background(PaletteMat.orange, in: RoundedRectangle(cornerRadius: LiquidGlassKit.rayonMoyen))
+            .foregroundStyle(.white)
+        }
+        .buttonStyle(GlassButtonStyle())
+        .sheet(isPresented: $afficherRejoindre) { sheetRejoindre }
+    }
+
+    private var sheetRejoindre: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("Code d'équipe", text: $codeEquipeSaisi)
+                        .textInputAutocapitalization(.characters)
+                        .autocorrectionDisabled()
+                    TextField("Code d'invitation", text: $codeInvitationSaisi)
+                        .textInputAutocapitalization(.characters)
+                        .autocorrectionDisabled()
+                } header: {
+                    Text("Codes fournis par ton coach")
+                } footer: {
+                    Text("Ton coach te communique le code d'équipe et ton code d'invitation personnel.")
+                }
+                if let erreur = authService.erreur {
+                    Text(erreur).font(.caption).foregroundStyle(.red)
+                }
+            }
+            .navigationTitle("Rejoindre une équipe")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Annuler") { afficherRejoindre = false }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Rejoindre") { Task { await rejoindre() } }
+                        .disabled(codeEquipeSaisi.isEmpty || codeInvitationSaisi.isEmpty || rejoindreEnCours)
+                }
+            }
+        }
+    }
+
+    @MainActor
+    private func rejoindre() async {
+        guard let appleUserID = appleUserIDEnAttente else { return }
+        authService.erreur = nil
+        rejoindreEnCours = true
+        defer { rejoindreEnCours = false }
+        do {
+            let membre = try await sharingService.rejoindreEquipe(
+                codeEquipe: codeEquipeSaisi,
+                codeInvitation: codeInvitationSaisi,
+                appleUserID: appleUserID,
+                context: modelContext
+            )
+            // Reconnexion via l'identité Apple désormais rattachée.
+            let etat = authService.connexionApple(
+                appleUserID: membre.appleUserID,
+                prenom: membre.prenom,
+                nom: membre.nom,
+                context: modelContext
+            )
+            if case .connecte = etat {
+                appleUserIDEnAttente = nil
+                afficherRejoindre = false
+                onConnecte?()
+            } else {
+                authService.erreur = "Rattachement effectué mais connexion impossible. Réessaie."
+            }
+        } catch {
+            authService.erreur = (error as? CloudKitSharingService.SharingError)?.errorDescription
+                ?? "Impossible de rejoindre l'équipe. Vérifie ta connexion."
         }
     }
 
