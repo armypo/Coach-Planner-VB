@@ -53,9 +53,11 @@ struct CloudKitSharingServiceTests {
         #expect(user.identifiant == "test.import")
         #expect(user.prenom == "Jean")
         #expect(user.nom == "Tremblay")
-        #expect(user.sel == "sel456")
         #expect(user.numero == 7)
         #expect(user.posteRaw == "Passeur")
+        // SÉCURITÉ v2.0.1 : aucun secret n'est importé depuis la base publique.
+        #expect(user.motDePasseHash == "", "Le hash ne doit JAMAIS provenir du public DB")
+        #expect(user.sel == nil, "Le sel ne doit JAMAIS provenir du public DB")
     }
 
     @Test("Import utilisateur existant — met à jour si remote plus récent")
@@ -84,8 +86,10 @@ struct CloudKitSharingServiceTests {
 
         service.importerUtilisateur(from: record, context: context)
 
-        #expect(existant.motDePasseHash == "newhash")
-        #expect(existant.sel == "newsel")
+        // SÉCURITÉ v2.0.1 : la mise à jour depuis le public DB n'écrase JAMAIS
+        // les secrets locaux (le hash/sel restent inchangés ; auth via SIWA).
+        #expect(existant.motDePasseHash == "old", "Le hash local ne doit pas être écrasé par le public DB")
+        #expect(existant.sel == nil, "Le sel local ne doit pas être modifié par le public DB")
     }
 
     @Test("Import utilisateur existant — ignore si local plus récent")
@@ -227,5 +231,41 @@ struct CloudKitSharingServiceTests {
         let equipes = try context.fetch(desc)
         #expect(equipes.count == 1)
         #expect(equipes[0].etablissement?.nom == "Test Uni")
+    }
+}
+
+// MARK: - Garde-fou régression : aucun secret publié
+
+@Suite("CloudKitSharingService — Sécurité publication")
+struct CloudKitSharingSecuriteTests {
+
+    @Test("champsPublicsUtilisateur ne contient AUCUN secret")
+    func aucunSecretPublie() {
+        let u = Utilisateur(identifiant: "coach.test", motDePasseHash: "HASH_SECRET",
+                            prenom: "Coach", nom: "Test", role: .coach)
+        u.sel = "SEL_SECRET"
+        u.iterations = 600_000
+        u.appleUserID = "001234.abcdef"
+        u.codeEquipe = "EQU-1"
+
+        let champs = CloudKitSharingService.champsPublicsUtilisateur(u, codeEquipe: "EQU-1")
+
+        // Les clés sensibles ne doivent JAMAIS être publiées.
+        #expect(champs["motDePasseHash"] == nil)
+        #expect(champs["sel"] == nil)
+        #expect(champs["iterations"] == nil)
+        // Les clés de mapping attendues sont présentes.
+        #expect(champs["codeEquipe"] != nil)
+        #expect(champs["appleUserID"] != nil)
+        #expect(champs["codeInvitation"] != nil)
+        #expect(champs["roleRaw"] != nil)
+    }
+
+    @Test("codeEquipe fallback sur le champ utilisateur si paramètre vide")
+    func codeEquipeFallback() {
+        let u = Utilisateur(identifiant: "x", motDePasseHash: "", prenom: "X", nom: "Y", role: .etudiant)
+        u.codeEquipe = "EQU-FALLBACK"
+        let champs = CloudKitSharingService.champsPublicsUtilisateur(u, codeEquipe: "")
+        #expect((champs["codeEquipe"] as? String) == "EQU-FALLBACK")
     }
 }

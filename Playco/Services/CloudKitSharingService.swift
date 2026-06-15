@@ -327,42 +327,47 @@ final class CloudKitSharingService {
         try await publicDB.save(record)
     }
 
+    /// Construit le dictionnaire de champs PUBLICS d'un utilisateur (sans aucun
+    /// secret). Fonction pure exposée pour le garde-fou de régression de la faille
+    /// (test : ne contient jamais motDePasseHash/sel/iterations).
+    /// - Parameter codeEquipe: code de l'équipe propriétaire (fallback `utilisateur.codeEquipe`).
+    static func champsPublicsUtilisateur(_ utilisateur: Utilisateur, codeEquipe: String) -> [String: CKRecordValue] {
+        let code = codeEquipe.isEmpty ? utilisateur.codeEquipe : codeEquipe
+        var champs: [String: CKRecordValue] = [
+            "codeEquipe": code as CKRecordValue,
+            "utilisateurID": utilisateur.id.uuidString as CKRecordValue,
+            "identifiant": utilisateur.identifiant as CKRecordValue,
+            "prenom": utilisateur.prenom as CKRecordValue,
+            "nom": utilisateur.nom as CKRecordValue,
+            "roleRaw": utilisateur.roleRaw as CKRecordValue,
+            "codeEcole": utilisateur.codeEcole as CKRecordValue,
+            "estActif": (utilisateur.estActif ? 1 : 0) as CKRecordValue,
+            // Mapping SIWA non secret : appleUserID (vide = roster en attente) + codeInvitation.
+            "appleUserID": utilisateur.appleUserID as CKRecordValue,
+            "codeInvitation": utilisateur.codeInvitation as CKRecordValue,
+            "dateModification": utilisateur.dateModification as CKRecordValue
+        ]
+        if let joueurID = utilisateur.joueurEquipeID {
+            champs["joueurEquipeID"] = joueurID.uuidString as CKRecordValue
+        }
+        if utilisateur.numero > 0 {
+            champs["numero"] = utilisateur.numero as CKRecordValue
+        }
+        if !utilisateur.posteRaw.isEmpty {
+            champs["posteRaw"] = utilisateur.posteRaw as CKRecordValue
+        }
+        return champs
+    }
+
     /// Publie un utilisateur de mapping d'équipe (sans aucun secret).
-    /// - Parameter codeEquipe: code de l'équipe propriétaire — rend le record
-    ///   requêtable par les membres qui rejoignent (fallback sur `utilisateur.codeEquipe`).
+    /// SÉCURITÉ : ne JAMAIS publier motDePasseHash/sel/iterations dans la base
+    /// CloudKit PUBLIQUE — auth déléguée à Sign in with Apple (cf. `champsPublicsUtilisateur`).
     private func publierUtilisateur(_ utilisateur: Utilisateur, codeEquipe: String) async throws {
         let recordID = CKRecord.ID(recordName: "user-\(utilisateur.id.uuidString)")
         let record = CKRecord(recordType: RecordType.utilisateur, recordID: recordID)
-
-        // SÉCURITÉ : ne JAMAIS publier de secret (motDePasseHash/sel/iterations)
-        // dans la base CloudKit PUBLIQUE (lisible par tous). L'authentification est
-        // déléguée à Sign in with Apple — seules les données non sensibles de mapping
-        // d'équipe transitent ici.
-        let code = codeEquipe.isEmpty ? utilisateur.codeEquipe : codeEquipe
-        record["codeEquipe"] = code as CKRecordValue
-        record["utilisateurID"] = utilisateur.id.uuidString as CKRecordValue
-        record["identifiant"] = utilisateur.identifiant as CKRecordValue
-        record["prenom"] = utilisateur.prenom as CKRecordValue
-        record["nom"] = utilisateur.nom as CKRecordValue
-        record["roleRaw"] = utilisateur.roleRaw as CKRecordValue
-        record["codeEcole"] = utilisateur.codeEcole as CKRecordValue
-        record["estActif"] = (utilisateur.estActif ? 1 : 0) as CKRecordValue
-        // Mapping SIWA : appleUserID (vide = ligne de roster en attente de rattachement)
-        // + codeInvitation (jeton non secret partagé par le coach pour la réclamation).
-        record["appleUserID"] = utilisateur.appleUserID as CKRecordValue
-        record["codeInvitation"] = utilisateur.codeInvitation as CKRecordValue
-
-        if let joueurID = utilisateur.joueurEquipeID {
-            record["joueurEquipeID"] = joueurID.uuidString as CKRecordValue
+        for (cle, valeur) in Self.champsPublicsUtilisateur(utilisateur, codeEquipe: codeEquipe) {
+            record[cle] = valeur
         }
-        if utilisateur.numero > 0 {
-            record["numero"] = utilisateur.numero as CKRecordValue
-        }
-        if !utilisateur.posteRaw.isEmpty {
-            record["posteRaw"] = utilisateur.posteRaw as CKRecordValue
-        }
-        record["dateModification"] = utilisateur.dateModification as CKRecordValue
-
         try await publicDB.save(record)
     }
 
