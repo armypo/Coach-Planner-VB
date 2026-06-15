@@ -8,6 +8,7 @@
 
 import SwiftUI
 import StoreKit
+import SwiftData
 
 enum ModePaywall {
     case welcome     // sheet après wizard, dismissable uniquement via choix
@@ -22,6 +23,8 @@ struct PaywallView: View {
     @Environment(StoreKitService.self) private var storeKit
     @Environment(AbonnementService.self) private var abonnementService
     @Environment(AnalyticsService.self) private var analytics
+    @Environment(AuthService.self) private var authService
+    @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
     @State private var viewModel: PaywallViewModel?
@@ -254,6 +257,14 @@ struct PaywallView: View {
             return
         }
         if await vm.acheter() {
+            // Rafraîchir immédiatement le statut (sinon l'app reste sur le tier
+            // périmé jusqu'au prochain lancement). Déclenche aussi en cascade
+            // publierAbonnementPublic + propagerTierAuxEquipes → débloque les athlètes.
+            await abonnementService.rafraichir(
+                utilisateur: authService.utilisateurConnecte,
+                context: modelContext,
+                storeKit: storeKit
+            )
             if let onTermine { onTermine() } else { dismiss() }
         }
     }
@@ -263,6 +274,11 @@ struct PaywallView: View {
             Task {
                 guard let vm = viewModel else { return }
                 if await vm.restaurer() {
+                    await abonnementService.rafraichir(
+                        utilisateur: authService.utilisateurConnecte,
+                        context: modelContext,
+                        storeKit: storeKit
+                    )
                     if let onTermine { onTermine() } else { dismiss() }
                 }
             }

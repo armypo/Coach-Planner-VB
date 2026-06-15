@@ -1,35 +1,33 @@
 //  Playco
 //  Copyright © 2025 Christopher Dionne. Tous droits réservés.
 //
-//  RejoindreEquipeView — jonction d'équipe multi-Apple-ID.
-//
-//  L'athlète/assistant rejoint l'équipe de son coach (sur un Apple ID différent)
-//  avec : code d'équipe + identifiant + mot de passe. Les données d'équipe
-//  publiques sont importées et le compte local est créé en dérivant le hash
-//  LOCALEMENT à partir du mot de passe saisi (aucun hash n'est jamais publié).
-//  Voir docs/Securite_AbonnementPublicDB.md.
+//  RejoindreEquipeView — jonction athlète/assistant sur un Apple ID différent.
+//  Flux : equipeExiste(code) → recupererEtImporterEquipe (importe roster + tier +
+//  calendrier + stats depuis la Public DB) → AuthService.connexion (compte importé)
+//  → vérification d'appartenance. La gate tier est appliquée ensuite par PlaycoApp.
 
 import SwiftUI
 import SwiftData
+import os
+
+private let loggerRejoindre = Logger(subsystem: "com.origotech.playco", category: "RejoindreEquipe")
 
 struct RejoindreEquipeView: View {
     @Environment(AuthService.self) private var authService
     @Environment(CloudKitSharingService.self) private var sharingService
     @Environment(\.modelContext) private var modelContext
 
-    /// Retour à l'écran précédent (ChoixInitialView).
     var onRetour: () -> Void
-    /// Jonction + connexion réussies → laisser PlaycoApp appliquer la gate.
     var onConnecte: () -> Void
 
     @State private var codeEquipe = ""
     @State private var identifiant = ""
     @State private var motDePasse = ""
     @State private var afficherMotDePasse = false
-    @State private var chargement = false
-    @State private var erreur: String?
+    @State private var chargementCloud = false
+    @State private var erreurLocale: String?
 
-    private let couleurActive = PaletteMat.vert
+    private let couleur = PaletteMat.vert
 
     private var formulaireValide: Bool {
         !codeEquipe.trimmingCharacters(in: .whitespaces).isEmpty &&
@@ -37,9 +35,11 @@ struct RejoindreEquipeView: View {
         !motDePasse.isEmpty
     }
 
+    private var enChargement: Bool { chargementCloud || authService.chargement }
+
     var body: some View {
         ZStack {
-            couleurActive.opacity(0.04).ignoresSafeArea()
+            couleur.opacity(0.04).ignoresSafeArea()
 
             ScrollView {
                 VStack(spacing: 0) {
@@ -49,7 +49,7 @@ struct RejoindreEquipeView: View {
                         entete
                         formulaire
                         bandeauErreur
-                        boutonRejoindre
+                        boutonConnexion
                     }
                     .padding(.horizontal, LiquidGlassKit.espaceXL)
                     .padding(.vertical, LiquidGlassKit.espaceXL)
@@ -61,20 +61,38 @@ struct RejoindreEquipeView: View {
                 .frame(maxWidth: .infinity)
             }
 
-            boutonRetour
+            VStack {
+                HStack {
+                    Button { onRetour() } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "chevron.left")
+                            Text("Retour")
+                        }
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(.ultraThinMaterial, in: Capsule())
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, LiquidGlassKit.espaceMD)
+                .padding(.top, LiquidGlassKit.espaceMD)
+                Spacer()
+            }
         }
     }
 
     // MARK: - En-tête
 
     private var entete: some View {
-        VStack(spacing: LiquidGlassKit.espaceXS) {
-            Image(systemName: "person.2.badge.key.fill")
-                .font(.system(size: LiquidGlassKit.iconeGrande, weight: .bold))
-                .foregroundStyle(couleurActive)
+        VStack(spacing: LiquidGlassKit.espaceSM) {
+            Image(systemName: "number.circle.fill")
+                .font(.system(size: 48, weight: .bold))
+                .foregroundStyle(couleur)
             Text("Rejoindre une équipe")
                 .font(.system(size: 24, weight: .bold, design: .rounded))
-            Text("Entrez le code fourni par votre coach et vos identifiants.")
+            Text("Entrez le code d'équipe fourni par votre coach et vos identifiants.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -85,42 +103,27 @@ struct RejoindreEquipeView: View {
 
     private var formulaire: some View {
         VStack(spacing: LiquidGlassKit.espaceMD) {
-            champSaisie(
-                titre: "CODE D'ÉQUIPE",
-                placeholder: "ABC123",
-                icone: "number.square.fill",
-                texte: $codeEquipe
-            )
-            .textInputAutocapitalization(.characters)
-            .autocorrectionDisabled()
+            champSaisie(titre: "CODE D'ÉQUIPE", placeholder: "ABCD1234",
+                        icone: "number", texte: $codeEquipe)
+                .textInputAutocapitalization(.characters)
+                .autocorrectionDisabled()
 
-            champSaisie(
-                titre: "IDENTIFIANT",
-                placeholder: "prenom.nom.1234",
-                icone: "person.text.rectangle.fill",
-                texte: $identifiant
-            )
-            .textInputAutocapitalization(.never)
-            .autocorrectionDisabled()
-            .textContentType(.username)
+            champSaisie(titre: "IDENTIFIANT", placeholder: "prenom.nom.1234",
+                        icone: "person.text.rectangle.fill", texte: $identifiant)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .textContentType(.username)
 
             champMotDePasse
         }
     }
 
-    private func champSaisie(
-        titre: String,
-        placeholder: String,
-        icone: String,
-        texte: Binding<String>
-    ) -> some View {
+    private func champSaisie(titre: String, placeholder: String, icone: String,
+                             texte: Binding<String>) -> some View {
         VStack(alignment: .leading, spacing: LiquidGlassKit.espaceXS) {
-            Text(titre)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .tracking(0.5)
+            Text(titre).font(.caption.weight(.semibold)).foregroundStyle(.secondary).tracking(0.5)
             HStack(spacing: LiquidGlassKit.espaceSM + 2) {
-                Image(systemName: icone).foregroundStyle(couleurActive).frame(width: LiquidGlassKit.iconeChamp)
+                Image(systemName: icone).foregroundStyle(couleur).frame(width: LiquidGlassKit.iconeChamp)
                 TextField(placeholder, text: texte)
             }
             .padding(LiquidGlassKit.paddingChamp)
@@ -131,22 +134,16 @@ struct RejoindreEquipeView: View {
 
     private var champMotDePasse: some View {
         VStack(alignment: .leading, spacing: LiquidGlassKit.espaceXS) {
-            Text("MOT DE PASSE")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .tracking(0.5)
+            Text("MOT DE PASSE").font(.caption.weight(.semibold)).foregroundStyle(.secondary).tracking(0.5)
             HStack(spacing: LiquidGlassKit.espaceSM + 2) {
-                Image(systemName: "lock.fill").foregroundStyle(couleurActive).frame(width: LiquidGlassKit.iconeChamp)
+                Image(systemName: "lock.fill").foregroundStyle(PaletteMat.vert).frame(width: LiquidGlassKit.iconeChamp)
                 if afficherMotDePasse {
                     TextField("••••••••", text: $motDePasse)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled().textInputAutocapitalization(.never)
                 } else {
                     SecureField("••••••••", text: $motDePasse).textContentType(.password)
                 }
-                Button {
-                    afficherMotDePasse.toggle()
-                } label: {
+                Button { afficherMotDePasse.toggle() } label: {
                     Image(systemName: afficherMotDePasse ? "eye.slash.fill" : "eye.fill")
                         .foregroundStyle(.secondary)
                 }
@@ -157,109 +154,109 @@ struct RejoindreEquipeView: View {
         }
     }
 
-    // MARK: - Bandeau d'erreur
+    // MARK: - Bandeau erreur
 
     @ViewBuilder
     private var bandeauErreur: some View {
-        if let erreur {
+        if let erreur = erreurLocale ?? authService.erreur {
             HStack(spacing: LiquidGlassKit.espaceSM) {
                 Image(systemName: "exclamationmark.triangle.fill")
                 Text(erreur)
             }
-            .font(.caption)
-            .foregroundStyle(.white)
-            .padding(12)
+            .font(.caption).foregroundStyle(.white).padding(12)
             .frame(maxWidth: .infinity)
             .background(.red, in: RoundedRectangle(cornerRadius: LiquidGlassKit.rayonPetit))
             .transition(.opacity.combined(with: .move(edge: .top)))
         }
     }
 
-    // MARK: - Bouton rejoindre
+    // MARK: - Bouton
 
-    private var boutonRejoindre: some View {
+    private var boutonConnexion: some View {
         Button {
-            rejoindre()
+            Task { await seConnecter() }
         } label: {
             HStack(spacing: LiquidGlassKit.espaceSM) {
-                if chargement {
+                if enChargement {
                     ProgressView().tint(.white)
                 } else {
                     Image(systemName: "arrow.right.circle.fill")
                     Text("Rejoindre").fontWeight(.semibold)
                 }
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .background(
-                formulaireValide ? couleurActive : Color.gray.opacity(0.4),
-                in: RoundedRectangle(cornerRadius: LiquidGlassKit.rayonMoyen)
-            )
+            .frame(maxWidth: .infinity).padding(.vertical, 14)
+            .background(formulaireValide ? couleur : Color.gray.opacity(0.4),
+                        in: RoundedRectangle(cornerRadius: LiquidGlassKit.rayonMoyen))
             .foregroundStyle(.white)
         }
-        .disabled(!formulaireValide || chargement)
+        .disabled(!formulaireValide || enChargement || authService.estVerrouille)
         .animation(LiquidGlassKit.springDefaut, value: formulaireValide)
         .buttonStyle(GlassButtonStyle())
     }
 
-    private var boutonRetour: some View {
-        VStack {
-            HStack {
-                Button {
-                    onRetour()
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "chevron.left")
-                        Text("Retour")
-                    }
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .background(.ultraThinMaterial, in: Capsule())
-                }
-                Spacer()
-            }
-            .padding(.horizontal, LiquidGlassKit.espaceMD)
-            .padding(.top, LiquidGlassKit.espaceMD)
-            Spacer()
+    // MARK: - Logique
+
+    private func seConnecter() async {
+        let codeNormalise = Equipe.normaliserCodeEquipe(codeEquipe)
+        let idNormalise = identifiant.lowercased().trimmingCharacters(in: .whitespaces)
+        erreurLocale = nil
+        authService.erreur = nil
+
+        guard !codeNormalise.isEmpty, !idNormalise.isEmpty, !motDePasse.isEmpty else {
+            erreurLocale = "Veuillez remplir tous les champs."
+            return
         }
-    }
 
-    // MARK: - Action
-
-    /// Importe les données d'équipe + crée le compte local (hash dérivé
-    /// localement), puis connecte le membre. La connexion réutilise tout
-    /// l'appareil d'auth existant (verrouillage, session).
-    private func rejoindre() {
-        erreur = nil
-        chargement = true
-        let code = codeEquipe
-        let id = identifiant
-        let mdp = motDePasse
-
-        Task { @MainActor in
-            defer { chargement = false }
-            do {
-                try await sharingService.rejoindreEquipe(
-                    codeEquipe: code,
-                    identifiant: id,
-                    motDePasse: mdp,
-                    context: modelContext
-                )
-            } catch {
-                erreur = (error as? LocalizedError)?.errorDescription
-                    ?? "Impossible de rejoindre l'équipe. Vérifiez le code et vos identifiants."
-                return
-            }
-
-            // Connexion locale (le compte vient d'être créé avec ce mot de passe)
-            authService.connexion(identifiant: id, motDePasse: mdp, context: modelContext)
-            guard authService.utilisateurConnecte != nil else {
-                erreur = authService.erreur ?? "Connexion impossible après la jonction."
-                return
-            }
-            onConnecte()
+        // 1. Vérifier l'existence de l'équipe dans la Public DB.
+        chargementCloud = true
+        guard await sharingService.equipeExiste(codeEquipe: codeNormalise) else {
+            chargementCloud = false
+            erreurLocale = "Code équipe invalide. Vérifiez auprès de votre coach."
+            return
         }
+
+        // 2. Importer roster + tier + calendrier + stats dans le SwiftData local
+        // (données non sensibles uniquement — aucun compte/credential répliqué).
+        do {
+            try await sharingService.recupererEtImporterEquipe(codeEquipe: codeNormalise, context: modelContext)
+        } catch {
+            chargementCloud = false
+            loggerRejoindre.error("Import équipe échoué : \(error.localizedDescription)")
+            erreurLocale = "Impossible de récupérer l'équipe. Vérifiez votre connexion internet."
+            return
+        }
+
+        // 3. Créer le compte local : hash dérivé LOCALEMENT du mot de passe saisi
+        // (jamais publié), rôle clampé (anti-escalade coach/admin).
+        do {
+            try await sharingService.creerCompteLocalJonction(
+                codeEquipe: codeNormalise,
+                identifiant: idNormalise,
+                motDePasse: motDePasse,
+                context: modelContext
+            )
+        } catch {
+            chargementCloud = false
+            loggerRejoindre.error("Création compte jonction échouée : \(error.localizedDescription)")
+            erreurLocale = (error as? LocalizedError)?.errorDescription
+                ?? "Impossible de créer le compte. Vérifiez votre identifiant."
+            return
+        }
+        chargementCloud = false
+
+        // 4. Connexion sur le compte fraîchement créé (vérification mdp locale).
+        authService.connexion(identifiant: idNormalise, motDePasse: motDePasse, context: modelContext)
+        guard authService.estConnecte, let user = authService.utilisateurConnecte else { return }
+
+        // 5. Vérifier que le compte appartient bien à cette équipe.
+        let codeUser = user.codeEcole
+        if !codeUser.isEmpty && codeUser != codeNormalise {
+            authService.deconnexion()
+            erreurLocale = "Votre compte n'est pas associé à cette équipe."
+            return
+        }
+
+        // PlaycoApp applique la gate tier (athlète → Club requis) via onConnecte.
+        onConnecte()
     }
 }

@@ -19,7 +19,9 @@ struct UtilisateurEnAttente: Codable {
 }
 
 /// Politique de retry : délais successifs, puis cap au dernier.
-enum PolitiqueRetry {
+/// `nonisolated` : constantes/fonctions pures, doivent rester accessibles depuis
+/// l'`actor` ci-dessous sans hériter de l'isolation MainActor par défaut.
+nonisolated enum PolitiqueRetry {
     /// Nombre max de tentatives avant abandon (NEW-SEC-04).
     /// 10 tentatives ≈ 10h cumulés avec le backoff plafonné à 1h.
     static let tentativesMax = 10

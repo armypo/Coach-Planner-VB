@@ -110,7 +110,7 @@ struct PlaycoApp: App {
         case choixInitial      // premier lancement : configurer ou login
         case configuration     // wizard 6 étapes
         case login             // login unifié (Coach / Assistant / Athlète)
-        case rejoindre         // rejoindre une équipe (multi-Apple-ID, code + identifiant)
+        case rejoindre         // jonction athlète/assistant via code équipe (cross-Apple-ID)
         case app               // ContentView (sections)
     }
 
@@ -194,13 +194,9 @@ struct PlaycoApp: App {
                                 withAnimation { ecranActif = .choixInitial }
                             },
                             onConnecte: {
-                                // Appliquer la gate centrale avant de passer à .app
-                                appliquerGateTier()
-                                if authService.utilisateurConnecte != nil {
-                                    withAnimation(LiquidGlassKit.springDefaut) {
-                                        ecranActif = .app
-                                    }
-                                }
+                                // Gate centrale (async : peut relire le tier en Public DB).
+                                // La transition vers .app est gérée dans appliquerGateTier.
+                                Task { await appliquerGateTier() }
                             }
                         )
                         .environment(authService)
@@ -215,12 +211,7 @@ struct PlaycoApp: App {
                                 withAnimation { ecranActif = .choixInitial }
                             },
                             onConnecte: {
-                                appliquerGateTier()
-                                if authService.utilisateurConnecte != nil {
-                                    withAnimation(LiquidGlassKit.springDefaut) {
-                                        ecranActif = .app
-                                    }
-                                }
+                                Task { await appliquerGateTier() }
                             }
                         )
                         .environment(authService)
@@ -273,7 +264,7 @@ struct PlaycoApp: App {
                                         storeKit: storeKitService
                                     )
                                     // Appliquer la gate (athlète bloqué si tier coach != .club)
-                                    appliquerGateTier()
+                                    await appliquerGateTier()
                                     // Observer transactions Apple en continu (renouvellements, refunds)
                                     if observerTransactionsTask == nil {
                                         observerTransactionsTask = storeKitService.observerTransactions()
@@ -308,11 +299,23 @@ struct PlaycoApp: App {
     /// - Athlète : tier équipe doit être `.club` — sinon déconnexion immédiate
     /// - Assistant : tier équipe doit être `.pro` ou `.club` — sinon déconnexion
     /// - Coach/Admin : pas de gate (gérés par bannière + feature gating)
-    private func appliquerGateTier() {
+    private func appliquerGateTier() async {
         guard let user = authService.utilisateurConnecte else { return }
         let code = user.codeEcole
         let desc = FetchDescriptor<Equipe>(predicate: #Predicate { $0.codeEquipe == code })
-        let tier = (try? container.mainContext.fetch(desc).first)?.tierAbonnement ?? .aucun
+        var tier = (try? container.mainContext.fetch(desc).first)?.tierAbonnement ?? .aucun
+
+        // Fallback Public DB : si le tier local est .aucun (équipe juste importée
+        // cross-Apple-ID, ou tier pas encore propagé), relire AbonnementPartage et
+        // rafraîchir l'Equipe locale. Sans ça l'athlète d'un coach Club resterait bloqué.
+        if tier == .aucun, !code.isEmpty,
+           let snap = await CloudKitPublicSyncAbonnement.shared.lire(codeEquipe: code) {
+            tier = snap.tier
+            if let eq = try? container.mainContext.fetch(desc).first, eq.tierAbonnement != tier {
+                eq.tierAbonnement = tier
+                try? container.mainContext.save()
+            }
+        }
 
         switch user.role {
         case .etudiant:
@@ -320,15 +323,22 @@ struct PlaycoApp: App {
                 authService.deconnexion()
                 erreurGate = TextesPaywall.erreurAthleteBloque
                 withAnimation { ecranActif = .choixInitial }
+                return
             }
         case .assistantCoach:
             if tier == .aucun {
                 authService.deconnexion()
                 erreurGate = TextesPaywall.erreurAssistantBloque
                 withAnimation { ecranActif = .choixInitial }
+                return
             }
         case .coach, .admin:
             break  // pas de gate tier pour eux
+        }
+
+        // Gate franchie → entrer dans l'app (centralisé ici car la gate est async).
+        if authService.utilisateurConnecte != nil {
+            withAnimation(LiquidGlassKit.springDefaut) { ecranActif = .app }
         }
     }
 

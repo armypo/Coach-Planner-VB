@@ -69,14 +69,14 @@ struct ChoixInitialView: View {
                         .offset(x: animee ? 0 : 60)
                         .opacity(animee ? 1 : 0)
 
-                        // Rejoindre une équipe (multi-Apple-ID : code + identifiant + mot de passe)
+                        // Rejoindre avec un code (Athlète cross-Apple-ID)
                         Button { onRejoindre() } label: {
                             carteChoix(
-                                icone: "person.2.badge.key.fill",
-                                titre: "Rejoindre une équipe",
-                                description: "Vous avez un code d'équipe ? Rejoignez l'équipe de votre coach avec vos identifiants.",
+                                icone: "number.circle.fill",
+                                titre: "Rejoindre avec un code",
+                                description: "Athlète : entrez le code d'équipe fourni par votre coach + vos identifiants.",
                                 couleur: PaletteMat.vert,
-                                badge: "Athlète · Assistant"
+                                badge: "Athlète"
                             )
                         }
                         .buttonStyle(.plain)

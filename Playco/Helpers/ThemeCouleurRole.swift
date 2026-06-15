@@ -41,9 +41,15 @@ enum PaletteMat {
     static let texteTertiaire  = Color(.tertiaryLabel)
 }
 
-// MARK: - Glass Modifiers
+// MARK: - Glass Modifiers (Liquid Glass natif — iOS 26+)
+//
+// Migration v2 → matériau Apple natif `.glassEffect` (API iOS 26.0, disponible
+// sur la cible 26.2 sans garde `#available`). Le natif fournit refraction,
+// highlight et bordure dynamiques (plus besoin des overlays gradient/stroke
+// manuels). Les signatures `.glassCard()/.glassSection()/.glassChip()` sont
+// inchangées : tous les sites d'appel héritent du matériau natif.
 
-/// Carte glass premium — fond material, highlight gradient, double shadow
+/// Carte glass premium — matériau Liquid Glass natif, teinte optionnelle.
 struct GlassCard: ViewModifier {
     var cornerRadius: CGFloat = 20
     var ombre: Bool = true
@@ -51,69 +57,28 @@ struct GlassCard: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .background {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                    .overlay {
-                        if let teinte {
-                            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                                .fill(teinte.opacity(0.05))
-                        }
-                    }
-            }
-            // Highlight gradient interne (refraction lumineuse)
-            .overlay {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [.white.opacity(0.12), .clear],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .allowsHitTesting(false)
-            }
-            // Bordure fine
-            .overlay {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .strokeBorder(.white.opacity(0.25), lineWidth: 0.5)
-            }
+            .glassEffect(
+                .regular.tint(teinte.map { $0.opacity(0.18) }),
+                in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            )
+            // Élévation : une ombre douce conservée (le natif ne porte pas d'ombre
+            // d'élévation sur fond clair). Désactivable via `ombre: false`.
             .if(ombre) { view in
-                view
-                    .shadow(color: .black.opacity(0.03), radius: 3, y: 1)
-                    .shadow(color: .black.opacity(0.06), radius: 12, y: 4)
+                view.shadow(color: .black.opacity(0.06), radius: 12, y: 4)
             }
     }
 }
 
-/// Section glass — conteneur de contenu
+/// Section glass — conteneur de contenu (matériau natif, sans teinte).
 struct GlassSection: ViewModifier {
     func body(content: Content) -> some View {
         content
             .padding(16)
-            .background {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(.thinMaterial)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .fill(
-                                LinearGradient(
-                                    colors: [.white.opacity(0.06), .clear],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                    }
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(.white.opacity(0.18), lineWidth: 0.5)
-            }
-            .shadow(color: .black.opacity(0.03), radius: 6, y: 2)
+            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
 
-/// Chip glass — badge/tag
+/// Chip glass — badge/tag (capsule Liquid Glass teintée).
 struct GlassChip: ViewModifier {
     var couleur: Color = .secondary
 
@@ -123,14 +88,7 @@ struct GlassChip: ViewModifier {
             .foregroundStyle(couleur)
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
-            .background {
-                Capsule(style: .continuous)
-                    .fill(couleur.opacity(0.1))
-            }
-            .overlay {
-                Capsule(style: .continuous)
-                    .strokeBorder(couleur.opacity(0.15), lineWidth: 0.5)
-            }
+            .glassEffect(.regular.tint(couleur.opacity(0.18)), in: Capsule(style: .continuous))
     }
 }
 

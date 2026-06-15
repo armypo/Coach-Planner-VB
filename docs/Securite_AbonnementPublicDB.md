@@ -1,81 +1,131 @@
-# Sécurité — CloudKit Public Database
+# Sécurité — Fallback d'abonnement via CloudKit Public DB
 
-**Container :** `iCloud.Origo.Playco`
-**Dernière mise à jour :** 13 juin 2026
-**Statut :** correctif code livré (v2.x) — **actions Dashboard P0 requises avant App Store**
+> Suivi de l'audit Xcode 27 (juin 2026). Concerne `CloudKitPublicSyncAbonnement` +
+> `AbonnementService.restaurerDepuisPublicDB`. Source de vérité = **StoreKit** ;
+> la Public DB n'est qu'un **fallback de confort** pour la reconnexion sur un
+> Apple ID différent.
 
----
+## 1. Modèle de menace
 
-## 1. Contexte
+`CloudKitPublicSyncAbonnement` publie/lit un enregistrement `AbonnementPartage`
+(clé `recordName = "abo-<codeEquipe>"`) dans la **CloudKit Public Database**.
 
-Playco utilise SwiftData `ModelConfiguration(cloudKitDatabase: .automatic)`, qui ne synchronise que dans la **private DB d'un même Apple ID**. Pour qu'un athlète/assistant sur un **Apple ID différent** rejoigne l'équipe de son coach, `CloudKitSharingService` publie un miroir des données d'équipe dans la **Public Database** du container, interrogeable par `codeEquipe`.
+- La Public DB est **inscriptible par tout utilisateur iCloud authentifié**.
+- `codeEquipe` est **partagé avec toute l'équipe** (athlètes inclus) et figure
+  dans les flux « Rejoindre une équipe ».
 
-La Public Database est **world-readable** par tout utilisateur iCloud authentifié, et **world-writable par défaut** tant que les *Security Roles* ne sont pas restreints.
+**Menace** : un utilisateur qui connaît un `codeEquipe` peut écrire un
+`AbonnementPartage` forgé (`tier=club`, expiration lointaine) → toute reconnexion
+sur ce code restaurerait un tier payant **sans achat** (contournement paywall).
 
----
+**Gravité** : commerciale (perte de revenu), pas une fuite de données. Bornée à
+l'équipe dont on connaît le code. StoreKit reste autoritatif sur l'appareil payeur.
 
-## 2. Vulnérabilité (corrigée — historique)
+## 2. Défense en profondeur — CÔTÉ CODE (implémenté ✅)
 
-`CloudKitSharingService.publierUtilisateur(_:)` écrivait dans le record world-readable `UtilisateurPartage` :
+`AbonnementService.statutDepuisSnapshotPublic(_:)` est la **frontière de confiance**
+(là où un instantané public devient un entitlement). Garde-fous ajoutés :
 
-- `motDePasseHash` (PBKDF2-HMAC-SHA256, 600k itérations),
-- `sel`,
-- `iterations`.
+- **Expiration obligatoire** : un record sans `dateExpiration` est rejeté (un
+  record légitime en publie toujours une via `dateExpirationCourante()`).
+- **Expiration non aberrante** : rejet si `dateExpiration > now + ~13 mois` (un
+  abonnement Apple ne dépasse jamais ~1 an). Bloque les forgeries grossières
+  type `tier=club, expiration=2099`.
+- **Log d'anomalie** : tout rejet est journalé (`loggerAbo.warning`), et tout
+  octroi via fallback est journalé (visibilité).
+- Le tier dérivé du public **n'est jamais traité comme StoreKit-validé** : il
+  alimente seulement `statut` + le cache UserDefaults, et le prochain
+  `rafraichir()` avec un vrai entitlement StoreKit l'écrase.
 
-Conséquences :
+> Ces gardes relèvent significativement la barre, mais **ne suffisent pas seuls** :
+> un attaquant peut toujours publier un record « plausible » (expiration ≤ 13 mois).
+> La protection structurelle est la config CloudKit ci-dessous.
 
-1. **Exposition des hash de mots de passe** : quiconque connaît un `codeEquipe` (partagé avec toute l'équipe, et **énumérable** via `equipeExiste`) pouvait télécharger tous les hash → **brute-force offline** (PBKDF2 600k ralentit mais ne protège pas les mots de passe faibles).
-2. **Forge/écrasement** de n'importe quel record `*Partage` (record names déterministes : `user-<uuid>`, `joueur-<uuid>`, `equipe-<code>`) faute de Security Roles → usurpation + **escalade de rôle** à la jonction (un record forgé `roleRaw = coach` aurait accordé des privilèges coach sur l'appareil joignant).
+## 3. Protection structurelle — CLOUDKIT DASHBOARD (action humaine requise 🚫)
 
-> Note : le chemin de **consommation** historique (`recupererEtImporterEquipe` / `syncDepuisPublic`) n'était jamais appelé — la publication des credentials était donc purement vestigiale. Ces méthodes ont été supprimées au profit de `rejoindreEquipe`.
+Restreindre l'écriture du record type `AbonnementPartage` au **créateur uniquement**.
 
----
+**Procédure** (conteneur `iCloud.Origo.Playco`) :
+1. https://icloud.developer.apple.com/dashboard → conteneur **iCloud.Origo.Playco**.
+2. **Schema → Record Types → `AbonnementPartage`** (le créer si absent ; champs :
+   `codeEquipe` String (queryable), `tierRaw` String, `typeRaw` String,
+   `dateExpiration` Date/Time, `dateDernierSync` Date/Time).
+3. **Security Roles** :
+   - `_world` : **No access** (ou Read seul si une lecture anonyme est requise).
+   - `_icloud` (authentifié) : **Read** uniquement.
+   - `_creator` : **Read/Write**.
+4. Appliquer aux environnements **Development ET Production**, puis **Deploy Schema
+   Changes to Production**.
 
-## 3. Correctif livré (code)
+**Effet** : un attaquant ne peut plus **écraser** le record d'une équipe créé par
+le coach légitime. Reste possible : créer le record d'une équipe qui n'en a pas
+encore (équipe non-payante) — impact borné et sans victime payante.
 
-- **`publierUtilisateur` ne publie plus** `motDePasseHash` / `sel` / `iterations`. `UtilisateurPartage` ne contient que le **profil non sensible** (identifiant, prénom, nom, roleRaw, codeEcole, estActif, numero, posteRaw, joueurEquipeID, dateModification). Construction isolée dans `construireRecordUtilisateur(_:)` (testable).
-- **Nouveau flux de jonction** `CloudKitSharingService.rejoindreEquipe(codeEquipe:identifiant:motDePasse:context:)` + `RejoindreEquipeView` (entrée « Rejoindre une équipe » dans `ChoixInitialView`). Le membre saisit code + identifiant + mot de passe ; le **hash est dérivé localement** sur son appareil (`KeyDerivation.hashPBKDF2` + sel généré, 600k itérations) — **aucun matériel dérivé du mot de passe ne transite par le réseau**.
-- **Modèle « premier mot de passe tapé = le sien »** : le membre possède son mot de passe (le coach distribue un mot de passe initial suggéré hors-bande). Aucun tag de vérification n'est publié.
-- **Clamp de rôle anti-escalade** : `roleJonctionAutorise(_:)` n'autorise que `.etudiant` / `.assistantCoach`. Tout `roleRaw` résolvant en `.coach` / `.admin` est **rejeté** — le rôle n'est jamais accordé en aveugle depuis un record réseau.
-- **Tier publié sur `EquipePartagee`** : `tierAbonnementRaw` (non sensible) est désormais publié/importé pour que la gate d'accès laisse entrer les membres rejoignant sur un autre Apple ID quand le coach est abonné (l'`Abonnement` lui-même n'est pas synchronisé cross-Apple-ID). ⚠️ **Ajout de champ schéma** (additif/rétrocompatible) → redéployer le schéma Public en Production (cf. `CloudKit_Schema_Deployment.md`).
+**⚠️ Compromis à connaître** : `_creator`-only signifie que seul l'Apple ID ayant
+créé le record peut le mettre à jour. Si le coach **change réellement d'Apple ID**,
+son nouveau compte ne pourra pas rafraîchir l'ancien record (il deviendra stale).
+Options : (a) accepter le stale (le record garde le dernier tier connu, lisible) ;
+(b) inclure le date `dateDernierSync` et tolérer un record périmé en lecture ;
+(c) à terme, valider via App Store Server API (cf. §4).
 
-Gardes de régression : `PlaycoTests/CloudKitSharingServiceTests.swift`
-(`publicationSansCredentials`, `roleJonctionAutoriseOK`, `roleJonctionAutoriseRejet`).
+## 4. Renforcement futur (hors périmètre lancement)
 
----
+- **Validation de reçu signé** (App Store Server API / `Transaction` JWS) côté
+  backend pour corroborer le fallback — nécessite un serveur + clés (action humaine).
+  Tant qu'absent : ne jamais élever au-dessus d'un tier crédible (déjà borné par §2).
 
-## 4. Actions humaines requises — CloudKit Dashboard (P0, non automatisables)
+## 5. Credentials hors Public DB + refonte jonction (RÉSOLU ✅ — code)
 
-À effectuer dans [https://icloud.developer.apple.com/dashboard/](https://icloud.developer.apple.com/dashboard/), container `iCloud.Origo.Playco`, **environnements Development ET Production** :
+> Constat initialement pré-existant : `CloudKitSharingService.publierUtilisateur`
+> écrivait `motDePasseHash` / `sel` / `iterations` dans `UtilisateurPartage`
+> (world-readable) → brute-force offline des hash + forge/escalade à la jonction.
 
-### 4.1 Scrub des hash déjà exposés (incident de credentials)
-Les hash déjà publiés **restent exposés** tant qu'ils ne sont pas supprimés — arrêter l'écriture ne suffit pas.
-1. Onglet **Data** → record type `UtilisateurPartage`.
-2. Supprimer les champs `motDePasseHash` / `sel` / `iterations` de tous les records (ou supprimer + republier le record type).
-3. Traiter comme **exposition de credentials** : **faire tourner (rotation) les mots de passe athlètes/assistants hors-bande** (les regénérer via `IdentifiantsEquipeView` côté coach et les redistribuer).
-   - ⚠️ La republication post-correctif (record names déterministes `user-<uuid>`) écrase les records des **membres locaux actuels** sans les champs hash, mais **pas** les records orphelins (membres partis) → suppression manuelle nécessaire.
+**Correctif livré (code) :**
+- `publierUtilisateur` ne publie **plus** `motDePasseHash` / `sel` / `iterations`
+  (extraction `construireRecordUtilisateur`, testable). `UtilisateurPartage` ne
+  porte que le profil non sensible.
+- Suppression de `importerUtilisateur` et retrait de l'import de comptes (avec
+  credentials) dans `recupererEtImporterEquipe` / `syncDepuisPublic` — on ne
+  réplique **plus jamais** les comptes des autres membres sur l'appareil.
+- **Refonte jonction** : `creerCompteLocalJonction(...)` crée le compte du membre
+  joignant en **dérivant le hash localement** depuis le mot de passe saisi
+  (PBKDF2 600k) — rien de dérivé du mdp ne transite par le réseau. Modèle
+  « premier mdp tapé = le sien ». Appelé par `RejoindreEquipeView` après l'import
+  de données, avant `AuthService.connexion`.
+- **Clamp de rôle anti-escalade** : `roleJonctionAutorise(_:)` n'autorise que
+  `.etudiant` / `.assistantCoach` ; `.coach` / `.admin` rejetés — le rôle n'est
+  jamais accordé en aveugle depuis un record réseau.
+- Gardes de régression : `CloudKitSharingServiceTests`
+  (`publicationSansCredentials`, `roleJonctionAutoriseOK`, `roleJonctionAutoriseRejet`).
 
-### 4.2 Security Roles (write réservé au créateur)
-Sans ça, retirer le hash d'un store toujours **world-writable** laisse la porte à la forge/escalade.
-1. Onglet **Schema** → **Security Roles**.
-2. Pour `EquipePartagee`, `UtilisateurPartage`, `JoueurPartage`, `EtablissementPartage` : rôle `_world` = **Read** uniquement (retirer Write/Create) ; **Creator** = Read/Write/Create.
-3. Déployer en Production.
+**Actions humaines requises (Dashboard 🚫) :**
+- **Scrub** des `motDePasseHash` / `sel` / `iterations` déjà publiés dans
+  `UtilisateurPartage` (les hash exposés y restent jusqu'à suppression) + **rotation
+  hors-bande** des mdp athlètes/assistants.
+- **Security Roles** `_world` = lecture seule (write = créateur) sur **tous** les
+  `*Partage` : `EquipePartagee`, `UtilisateurPartage`, `JoueurPartage`,
+  `EtablissementPartage`, `SeancePartagee`, `MatchCalendrierPartagee`,
+  `AbonnementPartage` (cf. §3). Ces types ne contiennent aucune PII/hash après ce
+  correctif, mais restent inscriptibles par défaut → forge possible sans restriction.
 
----
+**Risque résiduel accepté** : la Public DB contient toujours du PII de roster
+(noms, numéros, rôles, identifiants, code d'équipe), world-readable et énumérable
+par code d'équipe ; accepté en lieu d'un rewrite CKShare (non exposé par le store
+SwiftData `.automatic`). La rotation/désactivation côté coach ne se propage pas aux
+membres ayant rejoint sur un autre Apple ID (à redistribuer hors-bande).
 
-## 5. Risques résiduels acceptés
+> Note : `tierAbonnement` n'est PAS publié sur `EquipePartagee` (vérifié) — le
+> commentaire de `propagerTierAuxEquipes` est trompeur (il sauvegarde en local →
+> sync DB **privée**, pas la sharing DB). `AbonnementPartage` est donc le seul
+> vecteur public du tier.
 
-Après ce changement, **aucun matériel dérivé du mot de passe n'est publié** ; les hash sont dérivés localement sur chaque appareil à partir du mot de passe que le membre saisit (distribué hors-bande par le coach). Risques restants, acceptés :
+## 6. État
 
-1. **PII de mineurs world-readable** : la Public DB contient toujours noms, numéros, rôles, identifiants de connexion et code d'équipe, **énumérables par code d'équipe**. Atténué par la minimisation des champs publiés ; accepté en lieu d'une réécriture **CKShare** (ACL par participant), que le store SwiftData `.automatic` n'expose pas sans abandonner le mirroring CloudKit de SwiftData (effort disproportionné pour des données de roster non financières/médicales).
-2. **Forge d'écriture** des records partagés : atténuée **uniquement** par les Security Roles (§4.2) — c'est une étape de déploiement, non garantie par le code applicatif.
-3. **Rôle local épinglé** à la jonction (`.etudiant`/`.assistantCoach`), jamais accordé depuis un record réseau → pas d'escalade via record forgé.
-4. **Rotation/désactivation côté coach ne se propage pas** aux membres ayant rejoint sur un autre Apple ID (pas de sync privée inter-Apple-ID) ; tout changement de credential doit être **redistribué hors-bande**. (Déjà non fonctionnel avant ce changement.)
-
----
-
-## 6. À auditer (suivi)
-
-- Confirmer qu'aucun autre champ sensible ne transite par la Public DB (revue des records `EquipePartagee` / `JoueurPartage` / `EtablissementPartage`).
-- Évaluer une réduction supplémentaire de la PII publiée (ex. initiales/numéro au lieu du nom complet ; codes d'équipe non triviaux/non énumérables).
-- Réévaluer **CKShare** si une exigence de revocation/rotation à distance ou de confidentialité renforcée émerge.
+| Mesure | Statut |
+|--------|--------|
+| Garde-fous code (expiration obligatoire + plafond 13 mois + logs) | ✅ implémenté |
+| Caveat SÉCURITÉ en tête de `CloudKitPublicSyncAbonnement.swift` | ✅ |
+| Rôle d'écriture CloudKit `AbonnementPartage` = créateur | 🚫 action humaine (Dashboard) |
+| Validation reçu signé | ⏳ futur (serveur) |
+| `UtilisateurPartage` sans credentials + dérivation locale + clamp rôle | ✅ implémenté |
+| Scrub hash publiés + Security Roles tous `*Partage` + rotation mdp | 🚫 action humaine (Dashboard) |

@@ -14,6 +14,11 @@ final class MatchCalendrier {
     var lieu: String = ""
     var estDomicile: Bool = true
 
+    /// Code équipe — filtre multi-équipe + clé de partage Public DB (athlètes cross-Apple-ID).
+    var codeEquipe: String = ""
+    /// Horodatage de dernière modification — merge Public DB.
+    var dateModification: Date = Date()
+
     var equipe: Equipe? = nil
 
     init(date: Date = Date(), adversaire: String = "") {
