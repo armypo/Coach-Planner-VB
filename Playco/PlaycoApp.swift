@@ -12,6 +12,7 @@ private let logger = Logger(subsystem: "com.origotech.playco", category: "App")
 struct PlaycoApp: App {
     let container: ModelContainer
     @State private var authService = AuthService()
+    @State private var appleSignInService = AppleSignInService()
     @State private var syncService = CloudKitSyncService()
     @State private var sharingService = CloudKitSharingService()
     @State private var analyticsService = AnalyticsService()
@@ -140,6 +141,7 @@ struct PlaycoApp: App {
                             }
                         )
                         .environment(authService)
+                        .environment(appleSignInService)
                         .environment(syncService)
                         .environment(sharingService)
                         .modelContainer(container)
@@ -200,6 +202,7 @@ struct PlaycoApp: App {
                             }
                         )
                         .environment(authService)
+                        .environment(appleSignInService)
                         .environment(syncService)
                         .environment(sharingService)
                         .modelContainer(container)
@@ -208,6 +211,7 @@ struct PlaycoApp: App {
                     case .app:
                         ContentView()
                             .environment(authService)
+                            .environment(appleSignInService)
                             .environment(syncService)
                             .environment(sharingService)
                             .environment(analyticsService)

@@ -246,6 +246,50 @@ final class AuthService {
         chargement = false
     }
 
+    // MARK: - Connexion par Sign in with Apple
+
+    /// Résultat d'une tentative de connexion via Sign in with Apple.
+    enum EtatConnexionApple {
+        /// Compte trouvé et connecté.
+        case connecte
+        /// Aucun compte lié à cet `appleUserID` — l'UI doit router vers
+        /// lier-ancien-compte, rejoindre-une-équipe ou onboarding coach.
+        case compteInconnu(appleUserID: String, prenom: String, nom: String)
+    }
+
+    /// Connecte l'utilisateur dont `appleUserID` correspond, sinon signale un
+    /// compte inconnu (l'authentification a déjà été faite par Apple — aucun
+    /// mot de passe n'est vérifié ici).
+    /// - Parameters:
+    ///   - appleUserID: `ASAuthorizationAppleIDCredential.user` (clé durable).
+    ///   - prenom/nom: fournis par Apple au 1er login uniquement (sinon vides).
+    func connexionApple(appleUserID: String, prenom: String, nom: String, context: ModelContext) -> EtatConnexionApple {
+        erreur = nil
+        let id = appleUserID.trimmingCharacters(in: .whitespaces)
+        guard !id.isEmpty else {
+            return .compteInconnu(appleUserID: appleUserID, prenom: prenom, nom: nom)
+        }
+
+        let descripteur = FetchDescriptor<Utilisateur>(
+            predicate: #Predicate { $0.appleUserID == id && $0.estActif == true }
+        )
+
+        guard let utilisateur = try? context.fetch(descripteur).first else {
+            return .compteInconnu(appleUserID: id, prenom: prenom, nom: nom)
+        }
+
+        utilisateur.sessionCreeeLe = Date()
+        do {
+            try context.save()
+        } catch {
+            Self.logger.warning("connexionApple: impossible d'amorcer la session: \(error.localizedDescription)")
+        }
+
+        utilisateurConnecte = utilisateur
+        session.sauvegarder(utilisateurID: utilisateur.id)
+        return .connecte
+    }
+
     // MARK: - Enregistrer un échec de connexion
 
     /// Délègue à `LockoutManager.enregistrerEchec()` et propage le message de
