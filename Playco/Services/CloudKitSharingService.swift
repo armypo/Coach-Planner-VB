@@ -295,11 +295,10 @@ final class CloudKitSharingService {
             }
         }
 
-        // 6. Récupérer et importer les utilisateurs
-        let utilisateurRecords = try await fetchRecords(type: RecordType.utilisateur, codeEquipe: codeEquipe)
-        for record in utilisateurRecords {
-            importerUtilisateur(from: record, context: context)
-        }
+        // 6. SÉCURITÉ : on n'importe PLUS les comptes Utilisateur (avec hash) depuis
+        // la Public DB. Le compte du membre joignant est créé localement, le hash
+        // dérivé du mot de passe saisi (cf. `creerCompteLocalJonction`). On ne
+        // réplique jamais les credentials des autres membres sur cet appareil.
 
         // 7. Récupérer et importer les joueurs
         let joueurRecords = try await fetchRecords(type: RecordType.joueur, codeEquipe: codeEquipe)
@@ -332,7 +331,89 @@ final class CloudKitSharingService {
             throw SharingError.sauvegardeEchouee
         }
 
-        logger.info("Équipe \(codeEquipe, privacy: .private) importée: \(utilisateurRecords.count) utilisateurs, \(joueurRecords.count) joueurs")
+        logger.info("Équipe \(codeEquipe, privacy: .private) importée: \(joueurRecords.count) joueurs (comptes non répliqués)")
+    }
+
+    /// Crée le compte local du membre joignant en dérivant le hash LOCALEMENT à
+    /// partir du mot de passe saisi — aucun matériel dérivé du mot de passe n'est
+    /// jamais lu depuis la Public DB. Modèle « premier mdp tapé = le sien ».
+    ///
+    /// Le profil (prénom/nom/role/numéro/poste) provient du record `UtilisateurPartage`
+    /// (non sensible). Le rôle est **clampé** via `roleJonctionAutorise` : jamais
+    /// coach/admin accordé en aveugle depuis un record réseau (anti-escalade).
+    /// À appeler après `recupererEtImporterEquipe`, avant `AuthService.connexion`.
+    /// No-op si un compte avec cet UUID existe déjà localement.
+    func creerCompteLocalJonction(
+        codeEquipe: String,
+        identifiant: String,
+        motDePasse: String,
+        context: ModelContext
+    ) async throws {
+        let codeNormalise = Equipe.normaliserCodeEquipe(codeEquipe)
+        let idNormalise = identifiant.lowercased().trimmingCharacters(in: .whitespaces)
+
+        let utilisateurRecords = try await fetchRecords(type: RecordType.utilisateur, codeEquipe: codeNormalise)
+        guard let monRecord = utilisateurRecords.first(where: {
+            ($0["identifiant"] as? String)?.lowercased() == idNormalise
+        }) else {
+            throw SharingError.utilisateurNonTrouve
+        }
+
+        // Clamp du rôle — jamais coach/admin via jonction.
+        guard let roleAutorise = Self.roleJonctionAutorise(monRecord["roleRaw"] as? String ?? "") else {
+            throw SharingError.roleNonAutorise
+        }
+
+        let uuid = (monRecord["utilisateurID"] as? String).flatMap(UUID.init(uuidString:)) ?? UUID()
+        let descripteurUser = FetchDescriptor<Utilisateur>(predicate: #Predicate { $0.id == uuid })
+        guard ((try? context.fetch(descripteurUser)) ?? []).isEmpty else { return }
+
+        let sel = KeyDerivation.genererSel()
+        let hash: String
+        do {
+            hash = try KeyDerivation.hashPBKDF2(motDePasse, sel: sel)
+        } catch {
+            logger.error("creerCompteLocalJonction: dérivation hash échouée: \(error.localizedDescription)")
+            throw SharingError.sauvegardeEchouee
+        }
+
+        let utilisateur = Utilisateur(
+            identifiant: monRecord["identifiant"] as? String ?? idNormalise,
+            motDePasseHash: hash,
+            prenom: monRecord["prenom"] as? String ?? "",
+            nom: monRecord["nom"] as? String ?? "",
+            role: roleAutorise,
+            codeEcole: codeNormalise
+        )
+        utilisateur.id = uuid
+        utilisateur.sel = sel
+        utilisateur.iterations = KeyDerivation.iterationsParDefaut
+        utilisateur.estActif = (monRecord["estActif"] as? Int ?? 1) == 1
+        if let joueurIDStr = monRecord["joueurEquipeID"] as? String {
+            utilisateur.joueurEquipeID = UUID(uuidString: joueurIDStr)
+        }
+        if let numero = monRecord["numero"] as? Int { utilisateur.numero = numero }
+        if let posteRaw = monRecord["posteRaw"] as? String { utilisateur.posteRaw = posteRaw }
+        context.insert(utilisateur)
+
+        do {
+            try context.save()
+        } catch {
+            logger.error("creerCompteLocalJonction: échec sauvegarde: \(error.localizedDescription)")
+            throw SharingError.sauvegardeEchouee
+        }
+        logger.info("Compte local de jonction créé (rôle \(roleAutorise.rawValue, privacy: .public))")
+    }
+
+    /// Rôles autorisés à rejoindre via le flux public (anti-escalade).
+    /// Seuls `.etudiant` / `.assistantCoach` ; `.coach` / `.admin` rejetés
+    /// (le coach est le créateur de l'équipe, jamais un joignant).
+    static func roleJonctionAutorise(_ roleRaw: String) -> RoleUtilisateur? {
+        guard let role = RoleUtilisateur(rawValue: roleRaw) else { return nil }
+        switch role {
+        case .etudiant, .assistantCoach: return role
+        case .coach, .admin: return nil
+        }
     }
 
     // MARK: - Sync incrémentale
@@ -340,12 +421,8 @@ final class CloudKitSharingService {
     /// Synchronise les nouvelles données depuis le public DB (appel périodique)
     func syncDepuisPublic(codeEquipe: String, context: ModelContext) async {
         do {
-            // Re-fetch utilisateurs et joueurs pour détecter les ajouts
-            let utilisateurRecords = try await fetchRecords(type: RecordType.utilisateur, codeEquipe: codeEquipe)
-            for record in utilisateurRecords {
-                importerUtilisateur(from: record, context: context)
-            }
-
+            // SÉCURITÉ : pas d'import de comptes Utilisateur (credentials). On ne
+            // rafraîchit que les données non sensibles (roster, séances, calendrier).
             let joueurRecords = try await fetchRecords(type: RecordType.joueur, codeEquipe: codeEquipe)
             for record in joueurRecords {
                 importerJoueur(from: record, context: context)
@@ -400,23 +477,25 @@ final class CloudKitSharingService {
         _ = try await publicDB.save(record)
     }
 
-    private func publierUtilisateur(_ utilisateur: Utilisateur) async throws {
+    /// Construit le record `UtilisateurPartage` publié en Public DB.
+    ///
+    /// SÉCURITÉ : ne contient JAMAIS de matériel dérivé du mot de passe
+    /// (`motDePasseHash` / `sel` / `iterations`) — la Public DB est world-readable.
+    /// Le hash est dérivé localement au moment de la jonction
+    /// (cf. `creerCompteLocalJonction`). Voir docs/Securite_AbonnementPublicDB.md.
+    /// Exposé `internal` pour une garde de régression unitaire.
+    static func construireRecordUtilisateur(_ utilisateur: Utilisateur) -> CKRecord {
         let recordID = CKRecord.ID(recordName: "user-\(utilisateur.id.uuidString)")
         let record = CKRecord(recordType: RecordType.utilisateur, recordID: recordID)
 
         record["utilisateurID"] = utilisateur.id.uuidString as CKRecordValue
         record["identifiant"] = utilisateur.identifiant as CKRecordValue
-        record["motDePasseHash"] = utilisateur.motDePasseHash as CKRecordValue
         record["prenom"] = utilisateur.prenom as CKRecordValue
         record["nom"] = utilisateur.nom as CKRecordValue
         record["roleRaw"] = utilisateur.roleRaw as CKRecordValue
         record["codeEcole"] = utilisateur.codeEcole as CKRecordValue
         record["estActif"] = (utilisateur.estActif ? 1 : 0) as CKRecordValue
 
-        if let sel = utilisateur.sel, !sel.isEmpty {
-            record["sel"] = sel as CKRecordValue
-        }
-        record["iterations"] = utilisateur.iterations as CKRecordValue
         if let joueurID = utilisateur.joueurEquipeID {
             record["joueurEquipeID"] = joueurID.uuidString as CKRecordValue
         }
@@ -428,7 +507,11 @@ final class CloudKitSharingService {
         }
         record["dateModification"] = utilisateur.dateModification as CKRecordValue
 
-        _ = try await publicDB.save(record)
+        return record
+    }
+
+    private func publierUtilisateur(_ utilisateur: Utilisateur) async throws {
+        _ = try await publicDB.save(Self.construireRecordUtilisateur(utilisateur))
     }
 
     private func publierJoueur(_ joueur: JoueurEquipe) async throws {
@@ -526,83 +609,10 @@ final class CloudKitSharingService {
         return etab
     }
 
-    func importerUtilisateur(from record: CKRecord, context: ModelContext) {
-        guard let idString = record["utilisateurID"] as? String,
-              let uuid = UUID(uuidString: idString) else { return }
-
-        // Vérifier si cet utilisateur existe déjà
-        let descripteur = FetchDescriptor<Utilisateur>(
-            predicate: #Predicate { $0.id == uuid }
-        )
-        if let existant = try? context.fetch(descripteur).first {
-            // Comparer dateModification — ne mettre à jour que si le remote est plus récent
-            let remoteDateMod = record["dateModification"] as? Date ?? .distantPast
-            guard remoteDateMod > existant.dateModification else { return }
-
-            // Mettre à jour les champs mutables
-            existant.estActif = (record["estActif"] as? Int ?? 1) == 1
-            existant.dateModification = remoteDateMod
-            // Toujours synchroniser le hash — le coach peut avoir changé le mot de passe
-            if let motDePasseHash = record["motDePasseHash"] as? String, !motDePasseHash.isEmpty {
-                existant.motDePasseHash = motDePasseHash
-            }
-            if let sel = record["sel"] as? String, !sel.isEmpty {
-                existant.sel = sel
-            }
-            if let iterations = record["iterations"] as? Int, iterations >= 1 {
-                existant.iterations = iterations
-            }
-            if let prenom = record["prenom"] as? String {
-                existant.prenom = prenom
-            }
-            if let nom = record["nom"] as? String {
-                existant.nom = nom
-            }
-            if let numero = record["numero"] as? Int {
-                existant.numero = numero
-            }
-            if let posteRaw = record["posteRaw"] as? String {
-                existant.posteRaw = posteRaw
-            }
-            return
-        }
-
-        // Créer le nouvel utilisateur avec les credentials de la source.
-        // Refuser la création si le hash est absent : un compte sans hash est
-        // inexploitable (connexion impossible), polluerait la BD locale, et
-        // masquerait le problème côté diagnostic.
-        let hashImporte = record["motDePasseHash"] as? String ?? ""
-        guard !hashImporte.isEmpty else {
-            logger.warning("Skip création utilisateur \(uuid.uuidString, privacy: .private) — hash absent, record source corrompu ou pré-v1.9")
-            return
-        }
-        let utilisateur = Utilisateur(
-            identifiant: record["identifiant"] as? String ?? "",
-            motDePasseHash: hashImporte,
-            prenom: record["prenom"] as? String ?? "",
-            nom: record["nom"] as? String ?? "",
-            role: RoleUtilisateur(rawValue: record["roleRaw"] as? String ?? "Étudiant") ?? .etudiant,
-            codeEcole: record["codeEcole"] as? String ?? ""
-        )
-        // Forcer le même UUID que la source
-        utilisateur.id = uuid
-        utilisateur.estActif = (record["estActif"] as? Int ?? 1) == 1
-        utilisateur.sel = record["sel"] as? String
-        // Itérations PBKDF2 — défaut 1 = chemin legacy SHA256 pour records pré-v1.10
-        utilisateur.iterations = record["iterations"] as? Int ?? 1
-
-        if let joueurIDStr = record["joueurEquipeID"] as? String {
-            utilisateur.joueurEquipeID = UUID(uuidString: joueurIDStr)
-        }
-        if let numero = record["numero"] as? Int {
-            utilisateur.numero = numero
-        }
-        if let posteRaw = record["posteRaw"] as? String {
-            utilisateur.posteRaw = posteRaw
-        }
-
-        context.insert(utilisateur)
-    }
+    // NOTE SÉCURITÉ : `importerUtilisateur` a été supprimé. On n'importe plus de
+    // comptes Utilisateur (avec credentials) depuis la Public DB. Le compte du
+    // membre joignant est créé localement avec un hash dérivé du mot de passe
+    // saisi (`creerCompteLocalJonction`). Voir docs/Securite_AbonnementPublicDB.md.
 
     func importerJoueur(from record: CKRecord, context: ModelContext) {
         guard let idString = record["joueurID"] as? String,
@@ -752,12 +762,16 @@ final class CloudKitSharingService {
 
     enum SharingError: LocalizedError {
         case equipeNonTrouvee
+        case utilisateurNonTrouve
+        case roleNonAutorise
         case importEchoue
         case sauvegardeEchouee
 
         var errorDescription: String? {
             switch self {
             case .equipeNonTrouvee: return "Aucune équipe trouvée avec ce code."
+            case .utilisateurNonTrouve: return "Aucun membre trouvé avec cet identifiant dans cette équipe."
+            case .roleNonAutorise: return "Ce compte ne peut pas rejoindre une équipe de cette façon. Contacte ton coach."
             case .importEchoue: return "Impossible d'importer les données de l'équipe."
             case .sauvegardeEchouee: return "Impossible de sauvegarder les données importées."
             }

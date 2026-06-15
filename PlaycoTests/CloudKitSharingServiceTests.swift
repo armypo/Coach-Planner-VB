@@ -20,101 +20,51 @@ struct CloudKitSharingServiceTests {
         return ModelContext(container)
     }
 
-    // MARK: - Import Utilisateur
+    // MARK: - SÉCURITÉ : aucun credential publié en Public DB
 
-    @Test("Importer un utilisateur depuis CKRecord")
-    func importerUtilisateur() throws {
-        let service = CloudKitSharingService()
-        let context = try creerContexteEnMemoire()
+    @Test("publierUtilisateur n'émet AUCUN matériel dérivé du mot de passe")
+    func publicationSansCredentials() throws {
+        let user = Utilisateur(
+            identifiant: "marie.tremblay.1234",
+            motDePasseHash: "HASH_SECRET_NE_DOIT_PAS_FUIR",
+            prenom: "Marie",
+            nom: "Tremblay",
+            role: .etudiant,
+            codeEcole: "EQ001"
+        )
+        user.sel = "SEL_SECRET"
+        user.iterations = 600_000
+        user.numero = 7
+        user.posteRaw = "Passeur"
 
-        let record = CKRecord(recordType: "PlaycoUtilisateur")
-        let uuid = UUID()
-        record["utilisateurID"] = uuid.uuidString
-        record["identifiant"] = "test.import"
-        record["motDePasseHash"] = "abc123hash"
-        record["sel"] = "sel456"
-        record["prenom"] = "Jean"
-        record["nom"] = "Tremblay"
-        record["roleRaw"] = "Étudiant"
-        record["codeEcole"] = "EQUIPE001"
-        record["estActif"] = 1
-        record["numero"] = 7
-        record["posteRaw"] = "Passeur"
+        let record = CloudKitSharingService.construireRecordUtilisateur(user)
 
-        service.importerUtilisateur(from: record, context: context)
-        try context.save()
+        // Garde de régression : ces clés ne doivent JAMAIS atterrir en Public DB.
+        #expect(record["motDePasseHash"] == nil, "Le hash ne doit jamais être publié")
+        #expect(record["sel"] == nil, "Le sel ne doit jamais être publié")
+        #expect(record["iterations"] == nil, "Les itérations ne doivent jamais être publiées")
 
-        let desc = FetchDescriptor<Utilisateur>()
-        let users = try context.fetch(desc)
-        #expect(users.count == 1)
-
-        let user = users[0]
-        #expect(user.id == uuid)
-        #expect(user.identifiant == "test.import")
-        #expect(user.prenom == "Jean")
-        #expect(user.nom == "Tremblay")
-        #expect(user.sel == "sel456")
-        #expect(user.numero == 7)
-        #expect(user.posteRaw == "Passeur")
+        // Profil non sensible attendu, lui, présent.
+        #expect((record["identifiant"] as? String) == "marie.tremblay.1234")
+        #expect((record["prenom"] as? String) == "Marie")
+        #expect((record["roleRaw"] as? String) == RoleUtilisateur.etudiant.rawValue)
+        #expect((record["numero"] as? Int) == 7)
     }
 
-    @Test("Import utilisateur existant — met à jour si remote plus récent")
-    func importerUtilisateurMiseAJour() throws {
-        let service = CloudKitSharingService()
-        let context = try creerContexteEnMemoire()
+    // MARK: - SÉCURITÉ : clamp de rôle à la jonction
 
-        let uuid = UUID()
-        let existant = Utilisateur(identifiant: "existant", motDePasseHash: "old", prenom: "Old", nom: "Name", role: .etudiant)
-        existant.id = uuid
-        existant.dateModification = Date(timeIntervalSince1970: 1000)
-        context.insert(existant)
-        try context.save()
-
-        let record = CKRecord(recordType: "PlaycoUtilisateur")
-        record["utilisateurID"] = uuid.uuidString
-        record["identifiant"] = "existant"
-        record["motDePasseHash"] = "newhash"
-        record["sel"] = "newsel"
-        record["prenom"] = "Old"
-        record["nom"] = "Name"
-        record["roleRaw"] = "Étudiant"
-        record["codeEcole"] = ""
-        record["estActif"] = 1
-        record["dateModification"] = Date(timeIntervalSince1970: 2000)
-
-        service.importerUtilisateur(from: record, context: context)
-
-        #expect(existant.motDePasseHash == "newhash")
-        #expect(existant.sel == "newsel")
+    @Test("roleJonctionAutorise — étudiant et assistant autorisés")
+    func roleJonctionAutoriseOK() {
+        #expect(CloudKitSharingService.roleJonctionAutorise(RoleUtilisateur.etudiant.rawValue) == .etudiant)
+        #expect(CloudKitSharingService.roleJonctionAutorise(RoleUtilisateur.assistantCoach.rawValue) == .assistantCoach)
     }
 
-    @Test("Import utilisateur existant — ignore si local plus récent")
-    func importerUtilisateurIgnore() throws {
-        let service = CloudKitSharingService()
-        let context = try creerContexteEnMemoire()
-
-        let uuid = UUID()
-        let existant = Utilisateur(identifiant: "local", motDePasseHash: "localhash", prenom: "L", nom: "N", role: .etudiant)
-        existant.id = uuid
-        existant.dateModification = Date(timeIntervalSince1970: 3000)
-        context.insert(existant)
-        try context.save()
-
-        let record = CKRecord(recordType: "PlaycoUtilisateur")
-        record["utilisateurID"] = uuid.uuidString
-        record["identifiant"] = "local"
-        record["motDePasseHash"] = "remotehash"
-        record["sel"] = "remotesel"
-        record["prenom"] = "L"
-        record["nom"] = "N"
-        record["roleRaw"] = "Étudiant"
-        record["codeEcole"] = ""
-        record["estActif"] = 1
-        record["dateModification"] = Date(timeIntervalSince1970: 1000) // Plus ancien
-
-        service.importerUtilisateur(from: record, context: context)
-
-        #expect(existant.motDePasseHash == "localhash", "Ne doit pas être écrasé")
+    @Test("roleJonctionAutorise — coach/admin rejetés (anti-escalade)")
+    func roleJonctionAutoriseRejet() {
+        #expect(CloudKitSharingService.roleJonctionAutorise(RoleUtilisateur.coach.rawValue) == nil)
+        #expect(CloudKitSharingService.roleJonctionAutorise(RoleUtilisateur.admin.rawValue) == nil)
+        #expect(CloudKitSharingService.roleJonctionAutorise("RoleInexistant") == nil)
+        #expect(CloudKitSharingService.roleJonctionAutorise("") == nil)
     }
 
     // MARK: - Import Joueur

@@ -74,21 +74,45 @@ Options : (a) accepter le stale (le record garde le dernier tier connu, lisible)
   backend pour corroborer le fallback — nécessite un serveur + clés (action humaine).
   Tant qu'absent : ne jamais élever au-dessus d'un tier crédible (déjà borné par §2).
 
-## 5. ⚠️ Constat connexe (HORS périmètre de cette tâche — à trier séparément)
+## 5. Credentials hors Public DB + refonte jonction (RÉSOLU ✅ — code)
 
-En auditant la Public DB, on note que **`CloudKitSharingService.publierUtilisateur`
-écrit `motDePasseHash`, `sel`, `roleRaw`, `identifiant` dans `UtilisateurPartage`
-en Public DB** (monde-lisible). Conséquences potentielles :
-- Exposition publique des **hash de mots de passe** (PBKDF2 600k — coûteux à casser,
-  mais ne devrait pas être public) à quiconque connaît un `codeEquipe`.
-- Possibilité de **forger/écraser** des `UtilisateurPartage` (usurpation à la
-  jonction d'équipe) faute de rôle d'écriture restreint.
+> Constat initialement pré-existant : `CloudKitSharingService.publierUtilisateur`
+> écrivait `motDePasseHash` / `sel` / `iterations` dans `UtilisateurPartage`
+> (world-readable) → brute-force offline des hash + forge/escalade à la jonction.
 
-C'est **pré-existant** (non introduit par l'audit Xcode 27) et **plus sévère** que
-le fallback abonnement. À traiter dans un chantier auth/CloudKit dédié :
-- déplacer les identifiants sensibles hors de la Public DB (ou chiffrer), 
-- restreindre les rôles d'écriture de **tous** les types `*Partage` au créateur — y compris les types **ajoutés au partage coach→athlète** : `SeancePartagee`, `MatchCalendrierPartagee` (et les champs stats ajoutés à `JoueurPartage`). Ces nouveaux types ne contiennent **aucune PII/hash** (vérifié), mais restent inscriptibles par défaut ;
-- repenser le flux « Rejoindre une équipe » sans exposer les hash.
+**Correctif livré (code) :**
+- `publierUtilisateur` ne publie **plus** `motDePasseHash` / `sel` / `iterations`
+  (extraction `construireRecordUtilisateur`, testable). `UtilisateurPartage` ne
+  porte que le profil non sensible.
+- Suppression de `importerUtilisateur` et retrait de l'import de comptes (avec
+  credentials) dans `recupererEtImporterEquipe` / `syncDepuisPublic` — on ne
+  réplique **plus jamais** les comptes des autres membres sur l'appareil.
+- **Refonte jonction** : `creerCompteLocalJonction(...)` crée le compte du membre
+  joignant en **dérivant le hash localement** depuis le mot de passe saisi
+  (PBKDF2 600k) — rien de dérivé du mdp ne transite par le réseau. Modèle
+  « premier mdp tapé = le sien ». Appelé par `RejoindreEquipeView` après l'import
+  de données, avant `AuthService.connexion`.
+- **Clamp de rôle anti-escalade** : `roleJonctionAutorise(_:)` n'autorise que
+  `.etudiant` / `.assistantCoach` ; `.coach` / `.admin` rejetés — le rôle n'est
+  jamais accordé en aveugle depuis un record réseau.
+- Gardes de régression : `CloudKitSharingServiceTests`
+  (`publicationSansCredentials`, `roleJonctionAutoriseOK`, `roleJonctionAutoriseRejet`).
+
+**Actions humaines requises (Dashboard 🚫) :**
+- **Scrub** des `motDePasseHash` / `sel` / `iterations` déjà publiés dans
+  `UtilisateurPartage` (les hash exposés y restent jusqu'à suppression) + **rotation
+  hors-bande** des mdp athlètes/assistants.
+- **Security Roles** `_world` = lecture seule (write = créateur) sur **tous** les
+  `*Partage` : `EquipePartagee`, `UtilisateurPartage`, `JoueurPartage`,
+  `EtablissementPartage`, `SeancePartagee`, `MatchCalendrierPartagee`,
+  `AbonnementPartage` (cf. §3). Ces types ne contiennent aucune PII/hash après ce
+  correctif, mais restent inscriptibles par défaut → forge possible sans restriction.
+
+**Risque résiduel accepté** : la Public DB contient toujours du PII de roster
+(noms, numéros, rôles, identifiants, code d'équipe), world-readable et énumérable
+par code d'équipe ; accepté en lieu d'un rewrite CKShare (non exposé par le store
+SwiftData `.automatic`). La rotation/désactivation côté coach ne se propage pas aux
+membres ayant rejoint sur un autre Apple ID (à redistribuer hors-bande).
 
 > Note : `tierAbonnement` n'est PAS publié sur `EquipePartagee` (vérifié) — le
 > commentaire de `propagerTierAuxEquipes` est trompeur (il sauvegarde en local →
@@ -103,4 +127,5 @@ le fallback abonnement. À traiter dans un chantier auth/CloudKit dédié :
 | Caveat SÉCURITÉ en tête de `CloudKitPublicSyncAbonnement.swift` | ✅ |
 | Rôle d'écriture CloudKit `AbonnementPartage` = créateur | 🚫 action humaine (Dashboard) |
 | Validation reçu signé | ⏳ futur (serveur) |
-| Chantier `UtilisateurPartage` / hash public | 🚫 à trier séparément |
+| `UtilisateurPartage` sans credentials + dérivation locale + clamp rôle | ✅ implémenté |
+| Scrub hash publiés + Security Roles tous `*Partage` + rotation mdp | 🚫 action humaine (Dashboard) |

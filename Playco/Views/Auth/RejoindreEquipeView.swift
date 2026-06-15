@@ -215,7 +215,8 @@ struct RejoindreEquipeView: View {
             return
         }
 
-        // 2. Importer roster + tier + calendrier + stats dans le SwiftData local.
+        // 2. Importer roster + tier + calendrier + stats dans le SwiftData local
+        // (données non sensibles uniquement — aucun compte/credential répliqué).
         do {
             try await sharingService.recupererEtImporterEquipe(codeEquipe: codeNormalise, context: modelContext)
         } catch {
@@ -224,13 +225,30 @@ struct RejoindreEquipeView: View {
             erreurLocale = "Impossible de récupérer l'équipe. Vérifiez votre connexion internet."
             return
         }
+
+        // 3. Créer le compte local : hash dérivé LOCALEMENT du mot de passe saisi
+        // (jamais publié), rôle clampé (anti-escalade coach/admin).
+        do {
+            try await sharingService.creerCompteLocalJonction(
+                codeEquipe: codeNormalise,
+                identifiant: idNormalise,
+                motDePasse: motDePasse,
+                context: modelContext
+            )
+        } catch {
+            chargementCloud = false
+            loggerRejoindre.error("Création compte jonction échouée : \(error.localizedDescription)")
+            erreurLocale = (error as? LocalizedError)?.errorDescription
+                ?? "Impossible de créer le compte. Vérifiez votre identifiant."
+            return
+        }
         chargementCloud = false
 
-        // 3. Connexion sur le compte importé (vérification mot de passe locale).
+        // 4. Connexion sur le compte fraîchement créé (vérification mdp locale).
         authService.connexion(identifiant: idNormalise, motDePasse: motDePasse, context: modelContext)
         guard authService.estConnecte, let user = authService.utilisateurConnecte else { return }
 
-        // 4. Vérifier que le compte appartient bien à cette équipe.
+        // 5. Vérifier que le compte appartient bien à cette équipe.
         let codeUser = user.codeEcole
         if !codeUser.isEmpty && codeUser != codeNormalise {
             authService.deconnexion()
