@@ -578,9 +578,14 @@ final class CloudKitSharingService {
     // MARK: - Helpers CloudKit
 
     private func fetchRecords(type: String, codeEquipe: String) async throws -> [CKRecord] {
-        // Tous les record types sont scopés par `codeEquipe` (y compris
-        // UtilisateurPartage depuis v2.0.1 — auparavant requêté par codeEcole).
-        let predicate = NSPredicate(format: "%K == %@", "codeEquipe", codeEquipe)
+        // UtilisateurPartage : requête rétrocompatible. Les records publiés avant
+        // v2.0.1 étaient indexés par `codeEcole` (= code d'équipe à l'époque) ; les
+        // records v2.0.1+ portent `codeEquipe`. L'OR couvre les deux sans migration
+        // destructive (les deux champs doivent être QUERYABLE dans le schéma CloudKit).
+        // Les autres types (equipe/joueur/etablissement) ont toujours porté `codeEquipe`.
+        let predicate: NSPredicate = (type == RecordType.utilisateur)
+            ? NSPredicate(format: "codeEquipe == %@ OR codeEcole == %@", codeEquipe, codeEquipe)
+            : NSPredicate(format: "%K == %@", "codeEquipe", codeEquipe)
         let query = CKQuery(recordType: type, predicate: predicate)
 
         var allRecords: [CKRecord] = []

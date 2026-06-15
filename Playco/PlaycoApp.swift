@@ -238,6 +238,14 @@ struct PlaycoApp: App {
                                 Task {
                                     await syncService.attendreSyncInitiale()
                                     authService.restaurerSession(context: container.mainContext)
+                                    // Sécurité SIWA : révoquer la session si l'Apple ID lié n'est plus
+                                    // autorisé (app réinstallée, identité révoquée côté Apple).
+                                    if let appleID = authService.utilisateurConnecte?.appleUserID, !appleID.isEmpty {
+                                        if await appleSignInService.estRevoque(appleUserID: appleID) {
+                                            logger.info("Session SIWA révoquée/introuvable — déconnexion")
+                                            authService.deconnexion()
+                                        }
+                                    }
                                     if authService.utilisateurConnecte != nil {
                                         analyticsService.suivre(
                                             evenement: EvenementAnalytics.utilisateurConnecte,

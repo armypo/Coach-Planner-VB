@@ -246,7 +246,10 @@ struct LoginView: View {
             .foregroundStyle(.white)
         }
         .buttonStyle(GlassButtonStyle())
-        .sheet(isPresented: $afficherRejoindre) { sheetRejoindre }
+        .sheet(isPresented: $afficherRejoindre, onDismiss: {
+            codeEquipeSaisi = ""
+            codeInvitationSaisi = ""
+        }) { sheetRejoindre }
     }
 
     private var sheetRejoindre: some View {

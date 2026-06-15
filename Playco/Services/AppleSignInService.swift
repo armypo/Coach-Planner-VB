@@ -72,4 +72,12 @@ final class AppleSignInService {
             }
         }
     }
+
+    /// `true` si l'identité Apple n'est plus autorisée (révoquée ou introuvable).
+    /// Helper Bool pour éviter d'exposer `AuthenticationServices` aux appelants.
+    /// `.transferred` est traité comme encore valide (migration d'équipe de dev).
+    func estRevoque(appleUserID: String) async -> Bool {
+        let etat = await verifierEtat(appleUserID: appleUserID)
+        return etat == .revoked || etat == .notFound
+    }
 }

@@ -22,6 +22,8 @@ struct PaywallView: View {
     @Environment(StoreKitService.self) private var storeKit
     @Environment(AbonnementService.self) private var abonnementService
     @Environment(AnalyticsService.self) private var analytics
+    @Environment(AuthService.self) private var authService
+    @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
     @State private var viewModel: PaywallViewModel?
@@ -254,6 +256,9 @@ struct PaywallView: View {
             return
         }
         if await vm.acheter() {
+            // Rafraîchir immédiatement le statut pour lever le gate sans redémarrage.
+            await abonnementService.rafraichir(utilisateur: authService.utilisateurConnecte,
+                                               context: modelContext, storeKit: storeKit)
             if let onTermine { onTermine() } else { dismiss() }
         }
     }
@@ -263,6 +268,8 @@ struct PaywallView: View {
             Task {
                 guard let vm = viewModel else { return }
                 if await vm.restaurer() {
+                    await abonnementService.rafraichir(utilisateur: authService.utilisateurConnecte,
+                                                       context: modelContext, storeKit: storeKit)
                     if let onTermine { onTermine() } else { dismiss() }
                 }
             }
