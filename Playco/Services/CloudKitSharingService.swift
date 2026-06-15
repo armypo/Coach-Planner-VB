@@ -331,19 +331,18 @@ final class CloudKitSharingService {
         let recordID = CKRecord.ID(recordName: "user-\(utilisateur.id.uuidString)")
         let record = CKRecord(recordType: RecordType.utilisateur, recordID: recordID)
 
+        // SÉCURITÉ : ne JAMAIS publier de secret (motDePasseHash/sel/iterations)
+        // dans la base CloudKit PUBLIQUE (lisible par tous). L'authentification est
+        // déléguée à Sign in with Apple — seules les données non sensibles de mapping
+        // d'équipe transitent ici.
         record["utilisateurID"] = utilisateur.id.uuidString as CKRecordValue
         record["identifiant"] = utilisateur.identifiant as CKRecordValue
-        record["motDePasseHash"] = utilisateur.motDePasseHash as CKRecordValue
         record["prenom"] = utilisateur.prenom as CKRecordValue
         record["nom"] = utilisateur.nom as CKRecordValue
         record["roleRaw"] = utilisateur.roleRaw as CKRecordValue
         record["codeEcole"] = utilisateur.codeEcole as CKRecordValue
         record["estActif"] = (utilisateur.estActif ? 1 : 0) as CKRecordValue
 
-        if let sel = utilisateur.sel, !sel.isEmpty {
-            record["sel"] = sel as CKRecordValue
-        }
-        record["iterations"] = utilisateur.iterations as CKRecordValue
         if let joueurID = utilisateur.joueurEquipeID {
             record["joueurEquipeID"] = joueurID.uuidString as CKRecordValue
         }
@@ -419,16 +418,8 @@ final class CloudKitSharingService {
             // Mettre à jour les champs mutables
             existant.estActif = (record["estActif"] as? Int ?? 1) == 1
             existant.dateModification = remoteDateMod
-            // Toujours synchroniser le hash — le coach peut avoir changé le mot de passe
-            if let motDePasseHash = record["motDePasseHash"] as? String, !motDePasseHash.isEmpty {
-                existant.motDePasseHash = motDePasseHash
-            }
-            if let sel = record["sel"] as? String, !sel.isEmpty {
-                existant.sel = sel
-            }
-            if let iterations = record["iterations"] as? Int, iterations >= 1 {
-                existant.iterations = iterations
-            }
+            // SÉCURITÉ : plus aucun secret (hash/sel/iterations) en base publique.
+            // L'auth passe par Sign in with Apple ; ces champs ne transitent plus.
             if let prenom = record["prenom"] as? String {
                 existant.prenom = prenom
             }
@@ -444,18 +435,13 @@ final class CloudKitSharingService {
             return
         }
 
-        // Créer le nouvel utilisateur avec les credentials de la source.
-        // Refuser la création si le hash est absent : un compte sans hash est
-        // inexploitable (connexion impossible), polluerait la BD locale, et
-        // masquerait le problème côté diagnostic.
-        let hashImporte = record["motDePasseHash"] as? String ?? ""
-        guard !hashImporte.isEmpty else {
-            logger.warning("Skip création utilisateur \(uuid.uuidString, privacy: .private) — hash absent, record source corrompu ou pré-v1.9")
-            return
-        }
+        // Créer le nouvel utilisateur de mapping d'équipe. SÉCURITÉ : aucun secret
+        // n'est importé depuis la base publique — l'authentification est déléguée à
+        // Sign in with Apple (motDePasseHash reste vide ; le rattachement se fait
+        // via appleUserID lors du flux « Rejoindre une équipe »).
         let utilisateur = Utilisateur(
             identifiant: record["identifiant"] as? String ?? "",
-            motDePasseHash: hashImporte,
+            motDePasseHash: "",
             prenom: record["prenom"] as? String ?? "",
             nom: record["nom"] as? String ?? "",
             role: RoleUtilisateur(rawValue: record["roleRaw"] as? String ?? "Étudiant") ?? .etudiant,
@@ -464,9 +450,6 @@ final class CloudKitSharingService {
         // Forcer le même UUID que la source
         utilisateur.id = uuid
         utilisateur.estActif = (record["estActif"] as? Int ?? 1) == 1
-        utilisateur.sel = record["sel"] as? String
-        // Itérations PBKDF2 — défaut 1 = chemin legacy SHA256 pour records pré-v1.10
-        utilisateur.iterations = record["iterations"] as? Int ?? 1
 
         if let joueurIDStr = record["joueurEquipeID"] as? String {
             utilisateur.joueurEquipeID = UUID(uuidString: joueurIDStr)
