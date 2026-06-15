@@ -464,7 +464,12 @@ struct AjoutUtilisateurView: View {
                 let descCred = FetchDescriptor<Utilisateur>(
                     predicate: #Predicate { $0.identifiant == idFinal }
                 )
+                // Code d'invitation pour la jointure Sign in with Apple (généré à
+                // l'init de l'Utilisateur). Fallback vide si l'utilisateur est introuvable.
+                var codeInvitationMembre = ""
                 if let utilisateur = try? modelContext.fetch(descCred).first {
+                    codeInvitationMembre = utilisateur.codeInvitation
+                    // CredentialAthlete conservé (DB privée) pour fallback legacy.
                     let cred = CredentialAthlete(
                         utilisateurID: utilisateur.id,
                         joueurEquipeID: utilisateur.joueurEquipeID,
@@ -479,7 +484,8 @@ struct AjoutUtilisateurView: View {
                 credACopier = [CredentialRecap(
                     nomComplet: "\(prenom) \(nom)",
                     identifiant: idFinal,
-                    motDePasse: motDePasse,
+                    codeEquipe: codeEcole,
+                    codeInvitation: codeInvitationMembre,
                     role: roleChoisi == .etudiant ? "Athlète" : "Assistant"
                 )]
                 afficherRecap = true

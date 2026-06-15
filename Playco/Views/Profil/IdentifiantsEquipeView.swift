@@ -13,6 +13,7 @@ struct IdentifiantsEquipeView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.codeEquipeActif) private var codeEquipeActif
     @Environment(AuthService.self) private var authService
+    @Environment(CloudKitSharingService.self) private var sharingService
 
     @Query private var credentials: [CredentialAthlete]
     @Query private var utilisateurs: [Utilisateur]
@@ -98,12 +99,24 @@ struct IdentifiantsEquipeView: View {
                 .buttonStyle(.borderless)
             }
             HStack(spacing: 8) {
-                Text("Mdp :").font(.caption).foregroundStyle(.secondary)
-                Text(cred.motDePasseClair)
+                Text("Équipe :").font(.caption).foregroundStyle(.secondary)
+                Text(codeEquipeActif)
                     .font(.system(.caption, design: .monospaced))
                 Spacer()
                 Button {
-                    UIPasteboard.general.string = cred.motDePasseClair
+                    UIPasteboard.general.string = codeEquipeActif
+                } label: {
+                    Image(systemName: "doc.on.doc").font(.caption)
+                }
+                .buttonStyle(.borderless)
+            }
+            HStack(spacing: 8) {
+                Text("Invitation :").font(.caption).foregroundStyle(.secondary)
+                Text(user?.codeInvitation ?? "—")
+                    .font(.system(.caption, design: .monospaced))
+                Spacer()
+                Button {
+                    UIPasteboard.general.string = user?.codeInvitation ?? ""
                 } label: {
                     Image(systemName: "doc.on.doc").font(.caption)
                 }
@@ -111,9 +124,9 @@ struct IdentifiantsEquipeView: View {
             }
             HStack(spacing: 10) {
                 Button {
-                    regenererMdp(cred: cred, user: user)
+                    regenererCodeInvitation(user: user)
                 } label: {
-                    Label("Régénérer mdp", systemImage: "arrow.clockwise")
+                    Label("Régénérer le code", systemImage: "arrow.clockwise")
                         .font(.caption)
                 }
                 .buttonStyle(.bordered)
@@ -128,29 +141,29 @@ struct IdentifiantsEquipeView: View {
         .padding(.vertical, 4)
     }
 
-    // MARK: - Régénération mdp
+    // MARK: - Régénération du code d'invitation
 
-    private func regenererMdp(cred: CredentialAthlete, user: Utilisateur?) {
+    /// Génère un nouveau code d'invitation (ex: si l'ancien a fuité avant la jointure)
+    /// et republie le mapping vers CloudKit public pour qu'il soit réclamable.
+    private func regenererCodeInvitation(user: Utilisateur?) {
         guard let user = user else { return }
-        let nouveauMdp = Utilisateur.genererMotDePasseAthlete()
-        let nouveauSel = authService.genererSel()
-        user.sel = nouveauSel
-        user.motDePasseHash = authService.hashMotDePasse(nouveauMdp, sel: nouveauSel)
-        user.iterations = AuthService.iterationsParDefaut
-        cred.motDePasseClair = nouveauMdp
-        cred.dateModification = Date()
+        let nouveauCode = Utilisateur.genererCodeUniqueInvitation(context: modelContext)
+        user.codeInvitation = nouveauCode
+        user.dateModification = Date()
         try? modelContext.save()
-        afficherNouveauMdp = NouveauMdpWrapper(nom: user.nomComplet, mdp: nouveauMdp)
+        let code = codeEquipeActif
+        Task { await sharingService.publierNouvelUtilisateur(user, joueur: nil, codeEquipe: code) }
+        afficherNouveauMdp = NouveauMdpWrapper(nom: user.nomComplet, mdp: nouveauCode)
     }
 
-    // MARK: - Sheet nouveau mdp
+    // MARK: - Sheet nouveau code d'invitation
 
     private func nouveauMdpSheet(wrapper: NouveauMdpWrapper) -> some View {
         VStack(spacing: 20) {
-            Image(systemName: "key.fill")
+            Image(systemName: "ticket.fill")
                 .font(.system(size: 60))
                 .foregroundStyle(PaletteMat.orange)
-            Text("Nouveau mot de passe pour \(wrapper.nom)")
+            Text("Nouveau code d'invitation pour \(wrapper.nom)")
                 .font(.headline)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)
@@ -158,7 +171,7 @@ struct IdentifiantsEquipeView: View {
                 .font(.system(.title2, design: .monospaced, weight: .bold))
                 .padding()
                 .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
-            Text("L'ancien mot de passe ne fonctionne plus. Partage le nouveau à la personne concernée.")
+            Text("L'ancien code ne fonctionne plus. Partage le nouveau code (avec le code d'équipe) à la personne concernée.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -184,17 +197,19 @@ struct IdentifiantsEquipeView: View {
 
     private func templatePartage(cred: CredentialAthlete, user: Utilisateur?, role: String) -> String {
         let prenom = user?.prenom ?? ""
+        let invitation = user?.codeInvitation ?? ""
         return """
-        Salut \(prenom) ! Voici tes accès Playco :
-        Identifiant : \(cred.identifiant)
-        Mot de passe : \(cred.motDePasseClair)
+        Salut \(prenom) ! Voici comment rejoindre l'équipe sur Playco :
+        Code d'équipe : \(codeEquipeActif)
+        Code d'invitation : \(invitation)
 
-        Ouvre l'app Playco, choisis « Connexion », sélectionne l'onglet « \(role) », puis entre ces infos.
+        Ouvre l'app Playco, appuie sur « Se connecter avec Apple », puis « Rejoindre mon équipe » et entre ces deux codes.
         """
     }
 
     // MARK: - Wrapper Sheet item
 
+    /// `mdp` contient désormais le code d'invitation (nom historique conservé).
     struct NouveauMdpWrapper: Identifiable {
         let id = UUID()
         let nom: String

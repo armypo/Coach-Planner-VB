@@ -364,6 +364,7 @@ struct ConfigurationView: View {
             utilisateur.sel = sel
             utilisateur.iterations = AuthService.iterationsParDefaut
             utilisateur.codeInvitation = Utilisateur.genererCodeUniqueInvitation(context: modelContext)
+            utilisateur.codeEquipe = codeEquipe
             modelContext.insert(utilisateur)
 
             let assistant = AssistantCoach(prenom: a.prenom, nom: a.nom)
@@ -389,7 +390,8 @@ struct ConfigurationView: View {
             recaps.append(CredentialRecap(
                 nomComplet: "\(a.prenom) \(a.nom)",
                 identifiant: idUnique,
-                motDePasse: a.motDePasse,
+                codeEquipe: codeEquipe,
+                codeInvitation: utilisateur.codeInvitation,
                 role: "Assistant"
             ))
         }
@@ -427,6 +429,7 @@ struct ConfigurationView: View {
             utilisateur.numero = j.numero
             utilisateur.posteRaw = j.poste.rawValue
             utilisateur.codeInvitation = Utilisateur.genererCodeUniqueInvitation(context: modelContext)
+            utilisateur.codeEquipe = codeEquipe
             modelContext.insert(utilisateur)
 
             joueur.utilisateurID = utilisateur.id
@@ -444,7 +447,8 @@ struct ConfigurationView: View {
             recaps.append(CredentialRecap(
                 nomComplet: "\(j.prenom) \(j.nom)",
                 identifiant: idJoueur,
-                motDePasse: j.motDePasse,
+                codeEquipe: codeEquipe,
+                codeInvitation: utilisateur.codeInvitation,
                 role: "Athlète"
             ))
         }
