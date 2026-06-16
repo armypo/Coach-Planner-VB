@@ -249,6 +249,7 @@ struct LoginView: View {
         .sheet(isPresented: $afficherRejoindre, onDismiss: {
             codeEquipeSaisi = ""
             codeInvitationSaisi = ""
+            rejoindreEnCours = false
         }) { sheetRejoindre }
     }
 

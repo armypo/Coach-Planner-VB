@@ -126,16 +126,21 @@ final class CloudKitSharingService {
         }
     }
 
-    /// Publie un seul utilisateur (quand le coach ajoute un athlète après la config initiale)
+    /// Publie un seul utilisateur (quand le coach ajoute un athlète après la config
+    /// initiale, ou régénère un code d'invitation). En cas d'échec, l'ID est enfilé
+    /// dans `FileReplicationUtilisateur` pour re-publication automatique au retour
+    /// réseau — sinon le membre resterait introuvable à la jointure (échec silencieux).
     func publierNouvelUtilisateur(_ utilisateur: Utilisateur, joueur: JoueurEquipe?, codeEquipe: String) async {
         do {
             try await publierUtilisateur(utilisateur, codeEquipe: codeEquipe)
+            await FileReplicationUtilisateur.shared.marquerPublie(utilisateur.id)
             if let joueur {
                 try await publierJoueur(joueur)
             }
             logger.info("Utilisateur \(utilisateur.identifiant, privacy: .private) publié")
         } catch {
-            logger.error("Erreur publication utilisateur: \(error.localizedDescription)")
+            await FileReplicationUtilisateur.shared.enregistrer(utilisateur.id)
+            logger.warning("Publication utilisateur \(utilisateur.id.uuidString, privacy: .private) échouée, enfilé pour retry : \(error.localizedDescription)")
         }
     }
 
@@ -548,22 +553,10 @@ final class CloudKitSharingService {
         guard await equipeExiste(codeEquipe: code) else { throw SharingError.equipeNonTrouvee }
         try await recupererEtImporterEquipe(codeEquipe: code, context: context)
 
-        // 3. Trouver la ligne de roster non réclamée correspondant au code d'invitation.
-        let descripteur = FetchDescriptor<Utilisateur>(
-            predicate: #Predicate {
-                $0.codeEquipe == code &&
-                $0.codeInvitation == invite &&
-                $0.appleUserID == "" &&
-                $0.estActif == true
-            }
-        )
-        guard let membre = try? context.fetch(descripteur).first else {
+        // 3-4. Réclamer la ligne de roster non liée (logique locale testable).
+        guard let membre = reclamerMembreLocal(codeEquipe: code, codeInvitation: invite, appleUserID: appleID, context: context) else {
             throw SharingError.invitationInvalide
         }
-
-        // 4. Réclamer : rattacher l'identité Apple + republier le mapping.
-        membre.appleUserID = appleID
-        membre.dateModification = Date()
         do {
             try context.save()
         } catch {
@@ -575,17 +568,48 @@ final class CloudKitSharingService {
         return membre
     }
 
+    // MARK: - Réclamation locale (testable, sans CloudKit)
+
+    /// Trouve la ligne de roster non liée correspondant au code d'invitation et
+    /// lui rattache `appleUserID`. Logique purement locale (SwiftData) extraite
+    /// de `rejoindreEquipe` pour être testable sans CloudKit.
+    /// - Returns: l'`Utilisateur` réclamé (appleUserID renseigné, NON sauvegardé),
+    ///   ou `nil` si aucune ligne libre ne correspond.
+    func reclamerMembreLocal(codeEquipe: String, codeInvitation: String, appleUserID: String, context: ModelContext) -> Utilisateur? {
+        let code = codeEquipe.trimmingCharacters(in: .whitespaces).uppercased()
+        let invite = codeInvitation.trimmingCharacters(in: .whitespaces).uppercased()
+        let appleID = appleUserID.trimmingCharacters(in: .whitespaces)
+        guard !code.isEmpty, !invite.isEmpty, !appleID.isEmpty else { return nil }
+
+        let descripteur = FetchDescriptor<Utilisateur>(
+            predicate: #Predicate {
+                $0.codeEquipe == code &&
+                $0.codeInvitation == invite &&
+                $0.appleUserID == "" &&
+                $0.estActif == true
+            }
+        )
+        guard let membre = try? context.fetch(descripteur).first else { return nil }
+        membre.appleUserID = appleID
+        membre.dateModification = Date()
+        return membre
+    }
+
     // MARK: - Helpers CloudKit
 
-    private func fetchRecords(type: String, codeEquipe: String) async throws -> [CKRecord] {
-        // UtilisateurPartage : requête rétrocompatible. Les records publiés avant
-        // v2.0.1 étaient indexés par `codeEcole` (= code d'équipe à l'époque) ; les
-        // records v2.0.1+ portent `codeEquipe`. L'OR couvre les deux sans migration
-        // destructive (les deux champs doivent être QUERYABLE dans le schéma CloudKit).
-        // Les autres types (equipe/joueur/etablissement) ont toujours porté `codeEquipe`.
-        let predicate: NSPredicate = (type == RecordType.utilisateur)
+    /// Prédicat de recherche public (extrait pour test du backward-compat OR).
+    /// UtilisateurPartage : `codeEquipe OR codeEcole` (records v<2.0.1 indexés par
+    /// codeEcole). Les autres types : `codeEquipe` uniquement.
+    static func predicatRecherche(estUtilisateur: Bool, codeEquipe: String) -> NSPredicate {
+        estUtilisateur
             ? NSPredicate(format: "codeEquipe == %@ OR codeEcole == %@", codeEquipe, codeEquipe)
             : NSPredicate(format: "%K == %@", "codeEquipe", codeEquipe)
+    }
+
+    private func fetchRecords(type: String, codeEquipe: String) async throws -> [CKRecord] {
+        // Les deux champs (codeEquipe ET codeEcole) doivent être QUERYABLE dans le
+        // schéma CloudKit public pour UtilisateurPartage (action humaine ASC).
+        let predicate = Self.predicatRecherche(estUtilisateur: type == RecordType.utilisateur, codeEquipe: codeEquipe)
         let query = CKQuery(recordType: type, predicate: predicate)
 
         var allRecords: [CKRecord] = []
