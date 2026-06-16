@@ -214,13 +214,12 @@ final class AbonnementService {
             return
         }
 
-        // Pas d'entitlement actif : tenter le fallback équipe (coach reconnecté
-        // sur un autre Apple ID où StoreKit n'a pas l'entitlement local), sinon essaiExpire.
+        // Pas d'entitlement actif → essaiExpire. SÉCURITÉ : on n'accorde JAMAIS
+        // d'accès payant à partir d'un statut publié en base publique (non signé,
+        // falsifiable par n'importe qui). La récupération légitime d'un abonnement
+        // sur un nouvel appareil se fait via StoreKit (bouton « Restaurer ») —
+        // conforme au modèle Apple (abonnement lié à l'Apple ID).
         guard let info = await storeKit.statutSouscriptionActif() else {
-            if await appliquerFallbackEquipe(context: context) {
-                persisterCache()
-                return
-            }
             statut = .essaiExpire
             persisterCache()
             return
@@ -299,26 +298,11 @@ final class AbonnementService {
         )
     }
 
-    /// Fallback : adopte le statut publié de l'équipe si actif (coach sans
-    /// entitlement local sur cet Apple ID). Représenté en `.gracePeriode`
-    /// (accès autorisé + bannière douce invitant à vérifier l'abonnement).
-    /// - Returns: `true` si un statut actif a été adopté.
-    private func appliquerFallbackEquipe(context: ModelContext) async -> Bool {
-        let code = codeEquipeLocal(context: context)
-        guard !code.isEmpty,
-              let s = await CloudKitPublicSyncAbonnement.shared.lireStatut(codeEquipe: code),
-              s.isActive,
-              let tier = Tier(rawValue: s.tierRaw), tier != .aucun else {
-            return false
-        }
-        let exp = s.dateExpiration ?? Date().addingTimeInterval(30 * 24 * 3600)
-        statut = .gracePeriode(tier: tier, dateExpirationAttendue: exp)
-        loggerAbo.info("Fallback équipe adopté : tier=\(tier.rawValue) (Apple ID sans entitlement local)")
-        return true
-    }
-
     /// Lit le statut d'abonnement de l'équipe depuis le public DB (appareils
-    /// non-coach). Informe l'UI du tier du coach sans dépendre de StoreKit local.
+    /// non-coach). Usage INFORMATIONNEL uniquement (`tierEquipeActif`) : n'accorde
+    /// AUCUN droit d'écriture — le gate paywall reste piloté par `peutEcrire`
+    /// (StoreKit local) et la règle role-aware. Ne jamais utiliser cette valeur
+    /// pour débloquer une fonctionnalité.
     func chargerStatutEquipe(codeEquipe: String) async {
         guard let s = await CloudKitPublicSyncAbonnement.shared.lireStatut(codeEquipe: codeEquipe) else {
             tierEquipeActif = .aucun

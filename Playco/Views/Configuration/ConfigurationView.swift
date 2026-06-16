@@ -377,12 +377,14 @@ struct ConfigurationView: View {
             assistant.codeEquipe = codeEquipe
             modelContext.insert(assistant)
 
-            // CredentialAthlete privé (mdp en clair pour récupération coach)
+            // CredentialAthlete = marqueur de membre (identifiant + équipe). SÉCURITÉ :
+            // on ne stocke PLUS de mot de passe en clair (connexion via SIWA + code
+            // d'invitation). motDePasseClair reste vide.
             let cred = CredentialAthlete(
                 utilisateurID: utilisateur.id,
                 joueurEquipeID: nil,
                 identifiant: idUnique,
-                motDePasseClair: a.motDePasse,
+                motDePasseClair: "",
                 codeEquipe: codeEquipe
             )
             modelContext.insert(cred)
@@ -434,12 +436,13 @@ struct ConfigurationView: View {
 
             joueur.utilisateurID = utilisateur.id
 
-            // CredentialAthlete privé
+            // CredentialAthlete = marqueur de membre. SÉCURITÉ : aucun mot de passe
+            // en clair stocké (connexion via SIWA + code d'invitation).
             let cred = CredentialAthlete(
                 utilisateurID: utilisateur.id,
                 joueurEquipeID: joueur.id,
                 identifiant: idJoueur,
-                motDePasseClair: j.motDePasse,
+                motDePasseClair: "",
                 codeEquipe: codeEquipe
             )
             modelContext.insert(cred)

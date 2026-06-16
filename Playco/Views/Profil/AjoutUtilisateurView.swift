@@ -489,12 +489,13 @@ struct AjoutUtilisateurView: View {
                 var codeInvitationMembre = ""
                 if let utilisateur = try? modelContext.fetch(descCred).first {
                     codeInvitationMembre = utilisateur.codeInvitation
-                    // CredentialAthlete conservé (DB privée) pour fallback legacy.
+                    // CredentialAthlete = marqueur de membre. SÉCURITÉ : aucun mot de
+                    // passe en clair (connexion via SIWA + code d'invitation).
                     let cred = CredentialAthlete(
                         utilisateurID: utilisateur.id,
                         joueurEquipeID: utilisateur.joueurEquipeID,
                         identifiant: idFinal,
-                        motDePasseClair: motDePasse,
+                        motDePasseClair: "",
                         codeEquipe: codeEcole
                     )
                     modelContext.insert(cred)
