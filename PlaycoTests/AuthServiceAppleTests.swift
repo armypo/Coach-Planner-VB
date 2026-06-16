@@ -98,6 +98,35 @@ struct AuthServiceAppleTests {
         #expect(auth.utilisateurConnecte?.id == user.id)
     }
 
+    @Test("lierCompteExistant refuse si l'Apple ID est déjà lié à un autre compte")
+    @MainActor
+    func lierCompteAppleIDDejaUtilise() throws {
+        let auth = creerAuthIsole()
+        let context = try creerContexteEnMemoire()
+
+        // Compte A déjà lié à l'Apple ID cible.
+        let autre = Utilisateur(identifiant: "autre.coach", motDePasseHash: "", prenom: "Au", nom: "Tre", role: .coach)
+        autre.appleUserID = "002.newapple"
+        context.insert(autre)
+
+        // Compte legacy B que l'on tente de lier au MÊME Apple ID.
+        let sel = auth.genererSel()
+        let hash = auth.hashMotDePasse("MotDePasseSolide12", sel: sel)
+        let legacy = Utilisateur(identifiant: "legacy.coach", motDePasseHash: hash, prenom: "Leg", nom: "Acy", role: .coach)
+        legacy.sel = sel
+        legacy.iterations = AuthService.iterationsParDefaut
+        context.insert(legacy)
+        try context.save()
+
+        let erreur = auth.lierCompteExistant(appleUserID: "002.newapple",
+                                             identifiant: "legacy.coach",
+                                             motDePasse: "MotDePasseSolide12",
+                                             context: context)
+
+        #expect(erreur != nil, "Doit refuser un Apple ID déjà lié ailleurs")
+        #expect(legacy.appleUserID == "", "Le compte legacy ne doit pas être rattaché")
+    }
+
     @Test("lierCompteExistant échoue avec un mauvais mot de passe")
     @MainActor
     func lierCompteMauvaisMdp() throws {

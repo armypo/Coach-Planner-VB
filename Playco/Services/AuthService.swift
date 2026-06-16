@@ -323,6 +323,16 @@ final class AuthService {
 
         lockout.reinitialiser()
 
+        // Unicité : refuser si cet Apple ID est déjà lié à un AUTRE compte actif
+        // (évite qu'une même identité Apple soit rattachée à plusieurs comptes).
+        let utilisateurID = utilisateur.id
+        let descAppleID = FetchDescriptor<Utilisateur>(
+            predicate: #Predicate { $0.appleUserID == id && $0.estActif == true && $0.id != utilisateurID }
+        )
+        if (try? context.fetch(descAppleID).first) != nil {
+            return "Cet identifiant Apple est déjà lié à un autre compte."
+        }
+
         // Rattacher l'identité Apple et effacer définitivement les secrets.
         utilisateur.appleUserID = id
         utilisateur.motDePasseHash = ""

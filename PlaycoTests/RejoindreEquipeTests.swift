@@ -80,6 +80,24 @@ struct RejoindreEquipeTests {
                                             appleUserID: "001.apple", context: context) == nil)
     }
 
+    @Test("Idempotent : Apple ID déjà lié dans l'équipe → retourne le membre existant (pas de doublon)")
+    func reclameIdempotent() throws {
+        let service = CloudKitSharingService()
+        let context = try contexte()
+        // Membre A déjà réclamé par cet Apple ID.
+        let dejaLie = membreRoster(codeEquipe: "EQU1", codeInvitation: "AAA111", context: context)
+        dejaLie.appleUserID = "001.apple"
+        // Membre B libre dans la même équipe (autre invitation).
+        let libre = membreRoster(codeEquipe: "EQU1", codeInvitation: "BBB222", context: context)
+        try context.save()
+
+        // Tenter de réclamer la ligne B avec le MÊME Apple ID → doit renvoyer A, pas B.
+        let reclame = service.reclamerMembreLocal(codeEquipe: "EQU1", codeInvitation: "BBB222",
+                                                  appleUserID: "001.apple", context: context)
+        #expect(reclame?.id == dejaLie.id, "Doit renvoyer le membre déjà lié")
+        #expect(libre.appleUserID == "", "La ligne libre ne doit PAS être réclamée (pas de doublon)")
+    }
+
     @Test("Codes vides → nil")
     func reclameCodesVides() throws {
         let service = CloudKitSharingService()

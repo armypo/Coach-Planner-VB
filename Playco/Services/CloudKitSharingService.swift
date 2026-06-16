@@ -439,15 +439,19 @@ final class CloudKitSharingService {
             existant.dateModification = remoteDateMod
             // SÉCURITÉ : plus aucun secret (hash/sel/iterations) en base publique.
             // L'auth passe par Sign in with Apple ; ces champs ne transitent plus.
-            // Mapping SIWA : ne JAMAIS écraser un appleUserID local déjà réclamé.
-            if existant.appleUserID.isEmpty, let appleID = record["appleUserID"] as? String {
-                existant.appleUserID = appleID
+            // Mapping SIWA : ne JAMAIS écraser ces champs sur une ligne DÉJÀ réclamée
+            // (appleUserID non vide) — sinon un record public pourrait corrompre
+            // l'identité/le code d'un membre déjà rattaché.
+            if existant.appleUserID.isEmpty {
+                if let appleID = record["appleUserID"] as? String {
+                    existant.appleUserID = appleID
+                }
+                if let invite = record["codeInvitation"] as? String, !invite.isEmpty {
+                    existant.codeInvitation = invite
+                }
             }
             if let code = record["codeEquipe"] as? String, !code.isEmpty {
                 existant.codeEquipe = code
-            }
-            if let invite = record["codeInvitation"] as? String, !invite.isEmpty {
-                existant.codeInvitation = invite
             }
             if let prenom = record["prenom"] as? String {
                 existant.prenom = prenom
@@ -580,6 +584,18 @@ final class CloudKitSharingService {
         let invite = codeInvitation.trimmingCharacters(in: .whitespaces).uppercased()
         let appleID = appleUserID.trimmingCharacters(in: .whitespaces)
         guard !code.isEmpty, !invite.isEmpty, !appleID.isEmpty else { return nil }
+
+        // Idempotence + anti-doublon : si cet Apple ID est DÉJÀ lié à un membre actif
+        // de cette équipe, le retourner tel quel — ne JAMAIS créer un second
+        // rattachement (évite les doublons en cas de double-clic / course).
+        let descDejaLie = FetchDescriptor<Utilisateur>(
+            predicate: #Predicate {
+                $0.codeEquipe == code && $0.appleUserID == appleID && $0.estActif == true
+            }
+        )
+        if let dejaLie = try? context.fetch(descDejaLie).first {
+            return dejaLie
+        }
 
         let descripteur = FetchDescriptor<Utilisateur>(
             predicate: #Predicate {
