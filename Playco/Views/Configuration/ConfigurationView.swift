@@ -482,20 +482,15 @@ struct ConfigurationView: View {
             }
         }
 
-        // 7. Matchs planifiés → Seance (type match)
+        // 7. Matchs planifiés → Seance (type match). Source unique des matchs :
+        // l'UI (coach + athlète) lit toujours Seance.estMatch. MatchCalendrier
+        // n'est plus créé (déprécié/dormant — cf. Models/MatchCalendrier.swift).
         for m in matchsTemp {
             let seance = Seance(nom: "Match vs \(m.adversaire)", date: m.date, typeSeance: .match)
             seance.adversaire = m.adversaire
             seance.lieu = m.lieu
             seance.codeEquipe = codeEquipe
             modelContext.insert(seance)
-
-            let matchCal = MatchCalendrier(date: m.date, adversaire: m.adversaire)
-            matchCal.lieu = m.lieu
-            matchCal.estDomicile = m.estDomicile
-            matchCal.codeEquipe = codeEquipe       // scope + clé partage Public DB
-            matchCal.equipe = equipe
-            modelContext.insert(matchCal)
         }
 
         // Sauvegarder et créer admin coach
