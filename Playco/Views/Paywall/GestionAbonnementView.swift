@@ -16,7 +16,7 @@ struct GestionAbonnementView: View {
     @State private var enCoursRestauration = false
     @State private var toast: String? = nil
 
-    private let urlAppleAbonnements = URL(string: "https://apps.apple.com/account/subscriptions")!
+    private let urlAppleAbonnements = AppConstants.url("https://apps.apple.com/account/subscriptions")
 
     var body: some View {
         ScrollView {

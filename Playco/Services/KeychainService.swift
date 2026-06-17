@@ -9,7 +9,11 @@ import os
 /// Service de stockage sécurisé dans le Keychain iOS.
 /// Utilise `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` pour
 /// s'assurer que les données ne quittent jamais l'appareil.
-enum KeychainService {
+///
+/// `nonisolated` : les API Keychain (SecItem*) sont thread-safe ; ce service doit
+/// rester accessible depuis n'importe quel contexte (notamment l'`actor`
+/// FileReplicationUtilisateur) sans hériter de l'isolation MainActor par défaut.
+nonisolated enum KeychainService {
 
     private static let logger = Logger(subsystem: "com.origotech.playco", category: "KeychainService")
 

@@ -5,21 +5,17 @@
 import Foundation
 import os
 
-// MARK: - TelemetryDeck integration
+// MARK: - Mode analytics
 //
-// Pour activer TelemetryDeck en production :
-// 1. Xcode → File → Add Package Dependencies → https://github.com/TelemetryDeck/SwiftSDK
-//    Rule : Up to Next Major Version (à partir de la version courante)
-// 2. Créer un compte sur https://telemetrydeck.com → obtenir l'App ID
-// 3. Remplacer `placeholderAppID` ci-dessous par la vraie valeur
-// 4. Décommenter les lignes `import TelemetryDeck` et `TelemetryDeck.signal(...)`
+// Choix d'architecture : Playco reste SANS dépendance externe (cf. CLAUDE.md).
+// Ce service fonctionne donc en mode **logger-only** : les événements sont écrits
+// dans le système de log unifié Apple (Console.app, filtre
+// `subsystem == "com.origotech.playco"`), aucune donnée n'est envoyée à un tiers.
 //
-// Tant que la librairie n'est pas ajoutée, ce service fonctionne en mode
-// "logger-only" : les événements sont écrits dans le système de log unifié Apple
-// (Console.app, filtre `subsystem == "com.origotech.playco"`) mais rien n'est
-// envoyé au serveur TelemetryDeck.
-//
-// import TelemetryDeck
+// Activer un backend analytics (ex. TelemetryDeck) est une DÉCISION PRODUIT, pas
+// une dette de code : elle implique d'ajouter un package SPM + un App ID de compte
+// (action humaine). Le point d'injection est `initialiser()` / `suivre(...)`
+// ci-dessous (un seul appel à brancher).
 
 private let logger = Logger(subsystem: "com.origotech.playco", category: "Analytics")
 
@@ -34,26 +30,15 @@ private let logger = Logger(subsystem: "com.origotech.playco", category: "Analyt
 @MainActor
 final class AnalyticsService {
 
-    /// App ID TelemetryDeck — à remplacer par la vraie valeur lors de l'ajout du package
-    /// Référencé dans le commentaire d'initialisation ci-dessous
-    private let _placeholderAppID = "REMPLACER-PAR-APP-ID-TELEMETRYDECK"
-
     private var estInitialise = false
 
     // MARK: - Initialisation
 
-    /// Initialise TelemetryDeck au démarrage de l'app
-    /// Appeler une seule fois depuis PlaycoApp.swift init()
+    /// Initialise le service d'analytics au démarrage de l'app.
+    /// Appeler une seule fois depuis PlaycoApp.swift init().
+    /// Mode logger-only : pour brancher un backend, initialiser le SDK ici.
     func initialiser() {
         guard !estInitialise else { return }
-
-        // TelemetryDeck non activé pour cette version — mode logger-only.
-        // Pour activer : ajouter le package TelemetryDeck SDK, configurer l'App ID,
-        // puis décommenter les deux lignes ci-dessous.
-        // let config = TelemetryDeck.Config(appID: _placeholderAppID)
-        // TelemetryDeck.initialize(config: config)
-        _ = _placeholderAppID // évite l'avertissement "unused" avant l'ajout du package
-
         estInitialise = true
         logger.info("AnalyticsService initialisé (mode logger-only)")
     }
@@ -77,8 +62,8 @@ final class AnalyticsService {
 
         let metadonneesFiltrees = filtrerDonneesPersonnelles(metadonnees)
 
-        // TelemetryDeck non activé — voir initialiser() ci-dessus.
-        // TelemetryDeck.signal(evenement, parameters: metadonneesFiltrees)
+        // Mode logger-only — point d'injection d'un backend analytics éventuel
+        // (cf. en-tête du fichier). Les métadonnées sont déjà filtrées (PII).
 
         let metaStr = metadonneesFiltrees.isEmpty ? "" : " \(metadonneesFiltrees)"
         logger.info("Analytics: \(evenement)\(metaStr, privacy: .public)")

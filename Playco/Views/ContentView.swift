@@ -20,6 +20,8 @@ struct ContentView: View {
     @Environment(AuthService.self) private var authService
     @Environment(AppleSignInService.self) private var appleSignInService
     @Environment(AbonnementService.self) private var abonnementService
+    @Environment(StoreKitService.self) private var storeKitService
+    @Environment(CloudKitSharingService.self) private var sharingService
     @Environment(\.scenePhase) private var scenePhase
     @State private var sectionActive: SectionApp?
     @State private var afficherProfil: Bool = false
@@ -83,6 +85,7 @@ struct ContentView: View {
                     .onAppear {
                         // Auto-sélection si 1 seule équipe
                         if equipes.count <= 1 { selectionEquipeFaite = true }
+                        Task { await synchroniserDonneesPartagees() }
                     }
             }
         }
@@ -121,6 +124,15 @@ struct ContentView: View {
                    await appleSignInService.estRevoque(appleUserID: appleID) {
                     authService.deconnexion()
                 }
+                // Coach : re-évaluer le statut d'abonnement (renouvellement/refund Apple).
+                if let user = authService.utilisateurConnecte,
+                   user.role == .coach || user.role == .admin {
+                    await abonnementService.rafraichir(
+                        utilisateur: user, context: modelContext, storeKit: storeKitService
+                    )
+                }
+                // Données partagées : athlète/assistant importent, coach publie.
+                await synchroniserDonneesPartagees()
             }
         }
         .overlay(alignment: .top) {
@@ -152,6 +164,21 @@ struct ContentView: View {
         case .desactive, .supprime:
             authService.deconnexion()
             afficherToastAvecDelai()
+        }
+    }
+
+    /// Synchronise les données partagées selon le rôle : les consommateurs
+    /// (athlète/assistant) importent depuis la Public DB, le coach publie ses
+    /// mises à jour. Idempotent, sûr hors-ligne.
+    private func synchroniserDonneesPartagees() async {
+        guard let user = authService.utilisateurConnecte else { return }
+        let code = codeEquipeActif
+        guard !code.isEmpty else { return }
+        switch user.role {
+        case .etudiant, .assistantCoach:
+            await sharingService.syncDepuisPublic(codeEquipe: code, context: modelContext)
+        case .coach, .admin:
+            await sharingService.publierMisesAJourCoach(codeEquipe: code, context: modelContext)
         }
     }
 

@@ -493,6 +493,7 @@ struct ConfigurationView: View {
             let matchCal = MatchCalendrier(date: m.date, adversaire: m.adversaire)
             matchCal.lieu = m.lieu
             matchCal.estDomicile = m.estDomicile
+            matchCal.codeEquipe = codeEquipe       // scope + clé partage Public DB
             matchCal.equipe = equipe
             modelContext.insert(matchCal)
         }
