@@ -98,6 +98,26 @@ struct RejoindreEquipeTests {
         #expect(libre.appleUserID == "", "La ligne libre ne doit PAS être réclamée (pas de doublon)")
     }
 
+    @Test("Anti-escalade : refuse de réclamer une ligne coach/admin")
+    func reclameAntiEscalade() throws {
+        let service = CloudKitSharingService()
+        let context = try contexte()
+        // Ligne de roster avec rôle coach (ne doit JAMAIS être réclamable via jointure).
+        let coachLine = membreRoster(codeEquipe: "EQU1", codeInvitation: "COA111", context: context)
+        coachLine.role = .coach
+        let adminLine = membreRoster(codeEquipe: "EQU1", codeInvitation: "ADM222", context: context)
+        adminLine.role = .admin
+        try context.save()
+
+        #expect(service.reclamerMembreLocal(codeEquipe: "EQU1", codeInvitation: "COA111",
+                                            appleUserID: "001.apple", context: context) == nil,
+                "Ne doit pas réclamer une ligne coach")
+        #expect(service.reclamerMembreLocal(codeEquipe: "EQU1", codeInvitation: "ADM222",
+                                            appleUserID: "002.apple", context: context) == nil,
+                "Ne doit pas réclamer une ligne admin")
+        #expect(coachLine.appleUserID == "", "La ligne coach ne doit pas être rattachée")
+    }
+
     @Test("Codes vides → nil")
     func reclameCodesVides() throws {
         let service = CloudKitSharingService()

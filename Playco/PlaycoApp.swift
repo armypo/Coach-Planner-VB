@@ -289,18 +289,14 @@ struct PlaycoApp: App {
         }
     }
 
-/// Gate centrale paywall : applique les règles tier sur l'utilisateur connecté.
-    /// Appelée après chaque connexion réussie + au démarrage après restaurerSession.
+    /// Routage post-connexion vers l'app. Appelée après chaque connexion réussie
+    /// + au démarrage après `restaurerSession`.
     ///
-    /// Logique :
-    /// - Athlète : tier équipe doit être `.club` — sinon déconnexion immédiate
-    /// - Assistant : tier équipe doit être `.pro` ou `.club` — sinon déconnexion
-    /// - Coach/Admin : pas de gate (gérés par bannière + feature gating)
-    /// Routage post-connexion vers l'app. Modèle role-aware (v2.0.1/SIWA) : la
-    /// connexion n'est JAMAIS bloquée selon le tier — athlètes et assistants entrent
-    /// toujours. Le paywall est appliqué in-app et UNIQUEMENT pour le coach/admin
-    /// (`paywallDoitBloquer`). Aucune confiance accordée à un tier publié non signé
-    /// (sécurité : pas de décision d'accès basée sur la Public DB).
+    /// Modèle role-aware (v2.0.1/SIWA) : la connexion n'est JAMAIS bloquée selon le
+    /// tier — athlètes et assistants entrent toujours. Le paywall est appliqué in-app
+    /// et UNIQUEMENT pour le coach/admin (`paywallDoitBloquer`). Aucune confiance
+    /// accordée à un tier publié non signé (sécurité : pas de décision d'accès
+    /// basée sur la Public DB).
     private func appliquerGateTier() async {
         guard authService.utilisateurConnecte != nil else { return }
         withAnimation(LiquidGlassKit.springDefaut) { ecranActif = .app }

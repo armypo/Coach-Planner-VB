@@ -1,9 +1,27 @@
-# Sécurité — Fallback d'abonnement via CloudKit Public DB
+# Sécurité — Statut d'abonnement via CloudKit Public DB
 
-> Suivi de l'audit Xcode 27 (juin 2026). Concerne `CloudKitPublicSyncAbonnement` +
-> `AbonnementService.restaurerDepuisPublicDB`. Source de vérité = **StoreKit** ;
-> la Public DB n'est qu'un **fallback de confort** pour la reconnexion sur un
-> Apple ID différent.
+> ⚠️ **MISE À JOUR v2.0.1 / Sign in with Apple (juin 2026)** — Ce document décrit
+> l'approche initiale (par mot de passe) de `main`. La direction retenue est
+> **Sign in with Apple**, qui **DURCIT** ce modèle. Corrections à appliquer en
+> lisant la suite :
+> - **`AbonnementService.restaurerDepuisPublicDB` et le fallback d'accès ont été
+>   SUPPRIMÉS.** Aucun accès payant n'est JAMAIS accordé à partir d'un statut publié
+>   en Public DB (non signé). La récupération d'un abonnement sur un nouvel appareil
+>   passe par **« Restaurer » StoreKit** (modèle Apple). `CloudKitPublicSyncAbonnement`
+>   ne sert plus qu'à un affichage **informationnel** (`tierEquipeActif`, jamais une
+>   décision d'accès).
+> - **La jonction d'équipe ne dérive plus de mot de passe** (`creerCompteLocalJonction`
+>   supprimé). Elle se fait par **Sign in with Apple + code d'invitation**
+>   (`rejoindreEquipe`/`reclamerMembreLocal`), avec anti-escalade (`roleJonctionAutorise` :
+>   jamais coach/admin via jointure).
+> - **Aucun mot de passe n'est stocké** (`CredentialAthlete.motDePasseClair` toujours vide).
+>
+> Le reste du document (modèle de menace Public DB, durcissement Dashboard
+> creator-write, scrub des hash) **reste valide et applicable**.
+
+> Concerne `CloudKitPublicSyncAbonnement`. Source de vérité d'accès = **StoreKit
+> local** ; la Public DB est **informationnelle uniquement** (jamais une décision
+> d'accès).
 
 ## 1. Modèle de menace
 

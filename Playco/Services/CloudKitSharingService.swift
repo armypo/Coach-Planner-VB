@@ -871,8 +871,6 @@ final class CloudKitSharingService {
 
     enum SharingError: LocalizedError {
         case equipeNonTrouvee
-        case utilisateurNonTrouve
-        case roleNonAutorise
         case importEchoue
         case sauvegardeEchouee
         case invitationInvalide
@@ -880,8 +878,6 @@ final class CloudKitSharingService {
         var errorDescription: String? {
             switch self {
             case .equipeNonTrouvee: return "Aucune équipe trouvée avec ce code."
-            case .utilisateurNonTrouve: return "Aucun membre trouvé avec cet identifiant dans cette équipe."
-            case .roleNonAutorise: return "Ce compte ne peut pas rejoindre une équipe de cette façon. Contacte ton coach."
             case .importEchoue: return "Impossible d'importer les données de l'équipe."
             case .sauvegardeEchouee: return "Impossible de sauvegarder les données importées."
             case .invitationInvalide: return "Code d'invitation invalide ou déjà utilisé. Vérifie avec ton coach."
