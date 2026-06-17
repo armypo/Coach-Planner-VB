@@ -41,6 +41,10 @@ final class AbonnementService {
     var statut: Statut = .chargement
     var dernierRafraichissement: Date? = nil
 
+    /// Tier de l'équipe lu depuis le public DB (appareils non-coach). Permet
+    /// d'informer athlètes/assistants du plan actif du coach sans StoreKit local.
+    var tierEquipeActif: Tier = .aucun
+
     // MARK: - Computed
 
     /// Tier actuellement actif (Pro, Club ou aucun).
@@ -210,20 +214,12 @@ final class AbonnementService {
             return
         }
 
-        // Pas d'entitlement actif. Avant de conclure `essaiExpire`, tenter le
-        // fallback CloudKit Public DB : un coach reconnecté sur un Apple ID
-        // DIFFÉRENT n'a pas d'entitlement StoreKit local, mais son équipe a un
-        // abonnement publié (clé codeEquipe). Phase 1.5 G2/G3.
+        // Pas d'entitlement actif → essaiExpire. SÉCURITÉ : on n'accorde JAMAIS
+        // d'accès payant à partir d'un statut publié en base publique (non signé,
+        // falsifiable par n'importe qui). La récupération légitime d'un abonnement
+        // sur un nouvel appareil se fait via StoreKit (bouton « Restaurer ») —
+        // conforme au modèle Apple (abonnement lié à l'Apple ID).
         guard let info = await storeKit.statutSouscriptionActif() else {
-            if let statutPublic = await restaurerDepuisPublicDB(context: context, utilisateur: user) {
-                statut = statutPublic
-                persisterCache()
-                if ancienTier != tierActif {
-                    await propagerTierAuxEquipes(context: context)
-                }
-                detecterTransitions(ancien: ancienStatut, nouveau: statut)
-                return
-            }
             statut = .essaiExpire
             persisterCache()
             return
@@ -271,16 +267,48 @@ final class AbonnementService {
         persisterCache()
         persisterDansSwiftData(context: context, utilisateur: user, produit: produit, expDate: expDate)
 
-        // Miroir Public DB (clé codeEquipe) pour reconnexion sur Apple ID différent.
-        await publierAbonnementPublic(context: context)
-
         // Propager le tier vers les Équipes si changement (athlètes multi-Apple-ID).
         if ancienTier != tierActif {
             await propagerTierAuxEquipes(context: context)
         }
 
+        // Publier le STATUT (sans secret) dans le public DB pour que tout appareil
+        // de l'équipe — y compris le coach reconnecté sur un autre Apple ID — le lise.
+        await publierStatutEquipe(context: context, expDate: expDate)
+
         // Détection de transitions pour analytics (essai démarré / expiré).
         detecterTransitions(ancien: ancienStatut, nouveau: statut)
+    }
+
+    // MARK: - Sync statut équipe (CloudKit public, sans secret)
+
+    /// Code de la première équipe locale (les coachs en ont au moins une).
+    private func codeEquipeLocal(context: ModelContext) -> String {
+        ((try? context.fetch(FetchDescriptor<Equipe>()))?.first?.codeEquipe) ?? ""
+    }
+
+    /// Publie le tier + état actif courant de l'équipe (aucun secret).
+    private func publierStatutEquipe(context: ModelContext, expDate: Date?) async {
+        let code = codeEquipeLocal(context: context)
+        guard !code.isEmpty else { return }
+        let tierRaw = tierActif.rawValue
+        let actif = peutEcrire
+        await CloudKitPublicSyncAbonnement.shared.publierStatut(
+            codeEquipe: code, tierRaw: tierRaw, isActive: actif, dateExpiration: expDate
+        )
+    }
+
+    /// Lit le statut d'abonnement de l'équipe depuis le public DB (appareils
+    /// non-coach). Usage INFORMATIONNEL uniquement (`tierEquipeActif`) : n'accorde
+    /// AUCUN droit d'écriture — le gate paywall reste piloté par `peutEcrire`
+    /// (StoreKit local) et la règle role-aware. Ne jamais utiliser cette valeur
+    /// pour débloquer une fonctionnalité.
+    func chargerStatutEquipe(codeEquipe: String) async {
+        guard let s = await CloudKitPublicSyncAbonnement.shared.lireStatut(codeEquipe: codeEquipe) else {
+            tierEquipeActif = .aucun
+            return
+        }
+        tierEquipeActif = s.isActive ? (Tier(rawValue: s.tierRaw) ?? .aucun) : .aucun
     }
 
     /// Émet les événements analytics sur les transitions d'état pertinentes.
@@ -347,107 +375,6 @@ final class AbonnementService {
             try context.save()
         } catch {
             loggerAbo.error("persisterDansSwiftData: échec save \(error.localizedDescription)")
-        }
-    }
-
-    // MARK: - Fallback CloudKit Public DB (reconnexion Apple ID différent)
-
-    /// Résout le `codeEquipe` du coach (Abonnement local prioritaire, sinon
-    /// première Équipe), lit l'abonnement publié et le mappe en `Statut`.
-    /// `nil` si aucun code, aucun enregistrement public, ou record sans tier actif.
-    private func restaurerDepuisPublicDB(context: ModelContext, utilisateur: Utilisateur) async -> Statut? {
-        let userID = utilisateur.id
-        let descAbo = FetchDescriptor<Abonnement>(predicate: #Predicate { $0.utilisateurID == userID })
-        let codeLocalAbo = (try? context.fetch(descAbo).first)?.codeEquipe ?? ""
-        let codeEquipe = !codeLocalAbo.isEmpty
-            ? codeLocalAbo
-            : ((try? context.fetch(FetchDescriptor<Equipe>()))?.first?.codeEquipe ?? "")
-
-        guard !codeEquipe.isEmpty,
-              let snap = await CloudKitPublicSyncAbonnement.shared.lire(codeEquipe: codeEquipe),
-              let statutPublic = statutDepuisSnapshotPublic(snap) else {
-            return nil
-        }
-        loggerAbo.info("Statut restauré depuis Public DB (fallback Apple ID, tier=\(snap.tier.rawValue))")
-        return statutPublic
-    }
-
-    /// Fenêtre d'expiration maximale acceptée pour un instantané Public DB.
-    /// Un abonnement Apple ne dépasse jamais ~1 an ; on tolère 13 mois (marge
-    /// renouvellement/fuseau). Au-delà = record invraisemblable → rejeté.
-    private static let fenetreExpirationMax: TimeInterval = 13 * 30 * 24 * 60 * 60
-
-    /// Mappe un instantané Public DB vers un `Statut`, en tenant compte de
-    /// l'expiration (un record périmé donne `expire`/`essaiExpire`).
-    ///
-    /// ⚠️ Frontière de confiance : la Public DB est inscriptible (cf. en-tête de
-    /// `CloudKitPublicSyncAbonnement`). Défense en profondeur AVANT de débloquer
-    /// un tier sur la foi d'un record public — la source de vérité reste StoreKit :
-    /// - expiration **obligatoire** (un record légitime en publie toujours une) ;
-    /// - expiration **non aberrante** (≤ ~13 mois dans le futur) ;
-    /// sinon le record est considéré forgé/corrompu et rejeté (→ `essaiExpire`).
-    ///
-    /// `internal` (pas `private`) pour être couvert par les tests de sécurité
-    /// (`@testable`) — c'est la frontière de confiance, elle doit être testée.
-    func statutDepuisSnapshotPublic(_ snap: AbonnementPublicSnapshot) -> Statut? {
-        guard snap.tier != .aucun else { return nil }
-
-        guard let exp = snap.dateExpiration,
-              exp.timeIntervalSinceNow <= Self.fenetreExpirationMax else {
-            loggerAbo.warning("Fallback Public DB REJETÉ (expiration absente ou aberrante, tier=\(snap.tier.rawValue)) — record potentiellement forgé")
-            return nil
-        }
-        let estPerime = exp < Date()
-
-        switch snap.type {
-        case .essai:
-            if estPerime { return .essaiExpire }
-            let jours = max(0, Calendar.current.dateComponents([.day], from: Date(), to: exp).day ?? 0)
-            return .essaiActif(tier: snap.tier, joursRestants: jours)
-        case .mensuel:
-            if estPerime { return .expire(tier: snap.tier, depuis: exp) }
-            return snap.tier == .club ? .clubMensuel(dateRenouvellement: exp)
-                                      : .proMensuel(dateRenouvellement: exp)
-        case .annuel:
-            if estPerime { return .expire(tier: snap.tier, depuis: exp) }
-            return snap.tier == .club ? .clubAnnuel(dateRenouvellement: exp)
-                                      : .proAnnuel(dateRenouvellement: exp)
-        case .gracePeriode:
-            return .gracePeriode(tier: snap.tier, dateExpirationAttendue: exp)
-        case .expire:
-            return .expire(tier: snap.tier, depuis: exp)
-        case .aucun:
-            return nil
-        }
-    }
-
-    /// Publie l'abonnement courant vers la Public DB si un `codeEquipe` est connu.
-    private func publierAbonnementPublic(context: ModelContext) async {
-        let codeEquipe = (try? context.fetch(FetchDescriptor<Equipe>()))?.first?.codeEquipe ?? ""
-        guard !codeEquipe.isEmpty, tierActif != .aucun else { return }
-        let snap = AbonnementPublicSnapshot(
-            codeEquipe: codeEquipe,
-            tier: tierActif,
-            type: typeAbonnementCourant(),
-            dateExpiration: dateExpirationCourante(),
-            dateDernierSync: Date()
-        )
-        await CloudKitPublicSyncAbonnement.shared.publier(snap)
-    }
-
-    /// Date d'expiration extraite du statut courant (nil si non applicable).
-    private func dateExpirationCourante() -> Date? {
-        switch statut {
-        case .proMensuel(let d), .proAnnuel(let d), .clubMensuel(let d), .clubAnnuel(let d):
-            return d
-        case .gracePeriode(_, let d):
-            return d
-        case .expire(_, let d):
-            return d
-        case .essaiActif(_, let jours):
-            return Calendar.current.date(byAdding: .day, value: jours, to: Date())
-        default:
-            return nil
         }
     }
 

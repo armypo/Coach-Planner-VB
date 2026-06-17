@@ -72,7 +72,7 @@ final class CloudKitSharingService {
             var echecsUtilisateurs: [UUID] = []
             for utilisateur in utilisateurs {
                 do {
-                    try await publierUtilisateur(utilisateur)
+                    try await publierUtilisateur(utilisateur, codeEquipe: equipe.codeEquipe)
                     await FileReplicationUtilisateur.shared.marquerPublie(utilisateur.id)
                 } catch {
                     echecsUtilisateurs.append(utilisateur.id)
@@ -119,7 +119,7 @@ final class CloudKitSharingService {
             }
 
             do {
-                try await publierUtilisateur(utilisateur)
+                try await publierUtilisateur(utilisateur, codeEquipe: utilisateur.codeEquipe)
                 await FileReplicationUtilisateur.shared.marquerPublie(id)
             } catch {
                 await FileReplicationUtilisateur.shared.planifierRetry(id)
@@ -128,16 +128,21 @@ final class CloudKitSharingService {
         }
     }
 
-    /// Publie un seul utilisateur (quand le coach ajoute un athlète après la config initiale)
-    func publierNouvelUtilisateur(_ utilisateur: Utilisateur, joueur: JoueurEquipe?) async {
+    /// Publie un seul utilisateur (quand le coach ajoute un athlète après la config
+    /// initiale, ou régénère un code d'invitation). En cas d'échec, l'ID est enfilé
+    /// dans `FileReplicationUtilisateur` pour re-publication automatique au retour
+    /// réseau — sinon le membre resterait introuvable à la jointure (échec silencieux).
+    func publierNouvelUtilisateur(_ utilisateur: Utilisateur, joueur: JoueurEquipe?, codeEquipe: String) async {
         do {
-            try await publierUtilisateur(utilisateur)
+            try await publierUtilisateur(utilisateur, codeEquipe: codeEquipe)
+            await FileReplicationUtilisateur.shared.marquerPublie(utilisateur.id)
             if let joueur {
                 try await publierJoueur(joueur)
             }
             logger.info("Utilisateur \(utilisateur.identifiant, privacy: .private) publié")
         } catch {
-            logger.error("Erreur publication utilisateur: \(error.localizedDescription)")
+            await FileReplicationUtilisateur.shared.enregistrer(utilisateur.id)
+            logger.warning("Publication utilisateur \(utilisateur.id.uuidString, privacy: .private) échouée, enfilé pour retry : \(error.localizedDescription)")
         }
     }
 
@@ -167,7 +172,7 @@ final class CloudKitSharingService {
             // Utilisateurs modifiés
             let usersModifies = utilisateurs.filter { $0.dateModification > seuil }
             for utilisateur in usersModifies {
-                try await publierUtilisateur(utilisateur)
+                try await publierUtilisateur(utilisateur, codeEquipe: equipe.codeEquipe)
             }
 
             // Joueurs modifiés
@@ -211,7 +216,7 @@ final class CloudKitSharingService {
             }
             let descU = FetchDescriptor<Utilisateur>(predicate: #Predicate { $0.codeEcole == codeEquipe })
             for u in (try? context.fetch(descU)) ?? [] where u.dateModification > seuil {
-                try await publierUtilisateur(u)
+                try await publierUtilisateur(u, codeEquipe: codeEquipe)
             }
             let descJ = FetchDescriptor<JoueurEquipe>(predicate: #Predicate { $0.codeEquipe == codeEquipe })
             for j in (try? context.fetch(descJ)) ?? [] where j.dateModification > seuil {
@@ -295,10 +300,13 @@ final class CloudKitSharingService {
             }
         }
 
-        // 6. SÉCURITÉ : on n'importe PLUS les comptes Utilisateur (avec hash) depuis
-        // la Public DB. Le compte du membre joignant est créé localement, le hash
-        // dérivé du mot de passe saisi (cf. `creerCompteLocalJonction`). On ne
-        // réplique jamais les credentials des autres membres sur cet appareil.
+        // 6. Importer les Utilisateur de mapping d'équipe (SANS secret — cf.
+        // `champsPublicsUtilisateur`). Requis pour la jointure SIWA : `reclamerMembreLocal`
+        // retrouve la ligne de roster par code d'invitation puis y rattache l'appleUserID.
+        let utilisateurRecords = try await fetchRecords(type: RecordType.utilisateur, codeEquipe: codeEquipe)
+        for record in utilisateurRecords {
+            importerUtilisateur(from: record, context: context)
+        }
 
         // 7. Récupérer et importer les joueurs
         let joueurRecords = try await fetchRecords(type: RecordType.joueur, codeEquipe: codeEquipe)
@@ -312,15 +320,17 @@ final class CloudKitSharingService {
         let matchCalRecords = try await fetchRecords(type: RecordType.matchCalendrier, codeEquipe: codeEquipe)
         for record in matchCalRecords { importerMatchCalendrier(from: record, context: context) }
 
-        // 8. Brancher le tier d'abonnement depuis AbonnementPartage (Public DB).
-        // EquipePartagee ne porte PAS le tier (sécurité). Sans ça l'équipe importée
-        // resterait .aucun → athlète d'un coach Club bloqué à tort (gate).
-        if let snap = await CloudKitPublicSyncAbonnement.shared.lire(codeEquipe: codeEquipe) {
+        // 8. Tier d'équipe INFORMATIONNEL depuis AbonnementPartage (Public DB).
+        // SÉCURITÉ : cette valeur (non signée) ne sert QU'À l'affichage — elle
+        // n'accorde aucun accès et ne bloque aucune connexion (cf. appliquerGateTier
+        // role-aware, et paywallDoitBloquer côté coach uniquement).
+        if let snap = await CloudKitPublicSyncAbonnement.shared.lireStatut(codeEquipe: codeEquipe),
+           let tier = Tier(rawValue: snap.tierRaw) {
             let codeRech = codeEquipe
             let descEq = FetchDescriptor<Equipe>(predicate: #Predicate { $0.codeEquipe == codeRech })
-            if let eqLocale = try? context.fetch(descEq).first, eqLocale.tierAbonnement != snap.tier {
-                eqLocale.tierAbonnement = snap.tier
-                logger.info("Tier importé pour \(codeEquipe, privacy: .private): \(snap.tier.rawValue, privacy: .public)")
+            if let eqLocale = try? context.fetch(descEq).first, eqLocale.tierAbonnement != tier {
+                eqLocale.tierAbonnement = tier
+                logger.info("Tier équipe (informationnel) pour \(codeEquipe, privacy: .private): \(tier.rawValue, privacy: .public)")
             }
         }
 
@@ -332,77 +342,6 @@ final class CloudKitSharingService {
         }
 
         logger.info("Équipe \(codeEquipe, privacy: .private) importée: \(joueurRecords.count) joueurs (comptes non répliqués)")
-    }
-
-    /// Crée le compte local du membre joignant en dérivant le hash LOCALEMENT à
-    /// partir du mot de passe saisi — aucun matériel dérivé du mot de passe n'est
-    /// jamais lu depuis la Public DB. Modèle « premier mdp tapé = le sien ».
-    ///
-    /// Le profil (prénom/nom/role/numéro/poste) provient du record `UtilisateurPartage`
-    /// (non sensible). Le rôle est **clampé** via `roleJonctionAutorise` : jamais
-    /// coach/admin accordé en aveugle depuis un record réseau (anti-escalade).
-    /// À appeler après `recupererEtImporterEquipe`, avant `AuthService.connexion`.
-    /// No-op si un compte avec cet UUID existe déjà localement.
-    func creerCompteLocalJonction(
-        codeEquipe: String,
-        identifiant: String,
-        motDePasse: String,
-        context: ModelContext
-    ) async throws {
-        let codeNormalise = Equipe.normaliserCodeEquipe(codeEquipe)
-        let idNormalise = identifiant.lowercased().trimmingCharacters(in: .whitespaces)
-
-        let utilisateurRecords = try await fetchRecords(type: RecordType.utilisateur, codeEquipe: codeNormalise)
-        guard let monRecord = utilisateurRecords.first(where: {
-            ($0["identifiant"] as? String)?.lowercased() == idNormalise
-        }) else {
-            throw SharingError.utilisateurNonTrouve
-        }
-
-        // Clamp du rôle — jamais coach/admin via jonction.
-        guard let roleAutorise = Self.roleJonctionAutorise(monRecord["roleRaw"] as? String ?? "") else {
-            throw SharingError.roleNonAutorise
-        }
-
-        let uuid = (monRecord["utilisateurID"] as? String).flatMap(UUID.init(uuidString:)) ?? UUID()
-        let descripteurUser = FetchDescriptor<Utilisateur>(predicate: #Predicate { $0.id == uuid })
-        guard ((try? context.fetch(descripteurUser)) ?? []).isEmpty else { return }
-
-        let sel = KeyDerivation.genererSel()
-        let hash: String
-        do {
-            hash = try KeyDerivation.hashPBKDF2(motDePasse, sel: sel)
-        } catch {
-            logger.error("creerCompteLocalJonction: dérivation hash échouée: \(error.localizedDescription)")
-            throw SharingError.sauvegardeEchouee
-        }
-
-        let utilisateur = Utilisateur(
-            identifiant: monRecord["identifiant"] as? String ?? idNormalise,
-            motDePasseHash: hash,
-            prenom: monRecord["prenom"] as? String ?? "",
-            nom: monRecord["nom"] as? String ?? "",
-            role: roleAutorise,
-            codeEcole: codeNormalise
-        )
-        utilisateur.id = uuid
-        utilisateur.sel = sel
-        utilisateur.iterations = KeyDerivation.iterationsParDefaut
-        utilisateur.estActif = (monRecord["estActif"] as? Int ?? 1) == 1
-        if let joueurIDStr = monRecord["joueurEquipeID"] as? String {
-            utilisateur.joueurEquipeID = UUID(uuidString: joueurIDStr)
-        }
-        if let numero = monRecord["numero"] as? Int { utilisateur.numero = numero }
-        if let posteRaw = monRecord["posteRaw"] as? String { utilisateur.posteRaw = posteRaw }
-        context.insert(utilisateur)
-
-        do {
-            try context.save()
-        } catch {
-            logger.error("creerCompteLocalJonction: échec sauvegarde: \(error.localizedDescription)")
-            throw SharingError.sauvegardeEchouee
-        }
-        logger.info("Compte local de jonction créé (rôle \(roleAutorise.rawValue, privacy: .public))")
     }
 
     /// Rôles autorisés à rejoindre via le flux public (anti-escalade).
@@ -477,41 +416,48 @@ final class CloudKitSharingService {
         _ = try await publicDB.save(record)
     }
 
-    /// Construit le record `UtilisateurPartage` publié en Public DB.
-    ///
-    /// SÉCURITÉ : ne contient JAMAIS de matériel dérivé du mot de passe
-    /// (`motDePasseHash` / `sel` / `iterations`) — la Public DB est world-readable.
-    /// Le hash est dérivé localement au moment de la jonction
-    /// (cf. `creerCompteLocalJonction`). Voir docs/Securite_AbonnementPublicDB.md.
-    /// Exposé `internal` pour une garde de régression unitaire.
-    static func construireRecordUtilisateur(_ utilisateur: Utilisateur) -> CKRecord {
-        let recordID = CKRecord.ID(recordName: "user-\(utilisateur.id.uuidString)")
-        let record = CKRecord(recordType: RecordType.utilisateur, recordID: recordID)
-
-        record["utilisateurID"] = utilisateur.id.uuidString as CKRecordValue
-        record["identifiant"] = utilisateur.identifiant as CKRecordValue
-        record["prenom"] = utilisateur.prenom as CKRecordValue
-        record["nom"] = utilisateur.nom as CKRecordValue
-        record["roleRaw"] = utilisateur.roleRaw as CKRecordValue
-        record["codeEcole"] = utilisateur.codeEcole as CKRecordValue
-        record["estActif"] = (utilisateur.estActif ? 1 : 0) as CKRecordValue
-
+    /// Construit le dictionnaire de champs PUBLICS d'un utilisateur (sans aucun
+    /// secret). Fonction pure exposée pour le garde-fou de régression de la faille
+    /// (test : ne contient jamais motDePasseHash/sel/iterations).
+    /// - Parameter codeEquipe: code de l'équipe propriétaire (fallback `utilisateur.codeEquipe`).
+    static func champsPublicsUtilisateur(_ utilisateur: Utilisateur, codeEquipe: String) -> [String: CKRecordValue] {
+        let code = codeEquipe.isEmpty ? utilisateur.codeEquipe : codeEquipe
+        var champs: [String: CKRecordValue] = [
+            "codeEquipe": code as CKRecordValue,
+            "utilisateurID": utilisateur.id.uuidString as CKRecordValue,
+            "identifiant": utilisateur.identifiant as CKRecordValue,
+            "prenom": utilisateur.prenom as CKRecordValue,
+            "nom": utilisateur.nom as CKRecordValue,
+            "roleRaw": utilisateur.roleRaw as CKRecordValue,
+            "codeEcole": utilisateur.codeEcole as CKRecordValue,
+            "estActif": (utilisateur.estActif ? 1 : 0) as CKRecordValue,
+            // Mapping SIWA non secret : appleUserID (vide = roster en attente) + codeInvitation.
+            "appleUserID": utilisateur.appleUserID as CKRecordValue,
+            "codeInvitation": utilisateur.codeInvitation as CKRecordValue,
+            "dateModification": utilisateur.dateModification as CKRecordValue
+        ]
         if let joueurID = utilisateur.joueurEquipeID {
-            record["joueurEquipeID"] = joueurID.uuidString as CKRecordValue
+            champs["joueurEquipeID"] = joueurID.uuidString as CKRecordValue
         }
         if utilisateur.numero > 0 {
-            record["numero"] = utilisateur.numero as CKRecordValue
+            champs["numero"] = utilisateur.numero as CKRecordValue
         }
         if !utilisateur.posteRaw.isEmpty {
-            record["posteRaw"] = utilisateur.posteRaw as CKRecordValue
+            champs["posteRaw"] = utilisateur.posteRaw as CKRecordValue
         }
-        record["dateModification"] = utilisateur.dateModification as CKRecordValue
-
-        return record
+        return champs
     }
 
-    private func publierUtilisateur(_ utilisateur: Utilisateur) async throws {
-        _ = try await publicDB.save(Self.construireRecordUtilisateur(utilisateur))
+    /// Publie un utilisateur de mapping d'équipe (sans aucun secret).
+    /// SÉCURITÉ : ne JAMAIS publier motDePasseHash/sel/iterations dans la base
+    /// CloudKit PUBLIQUE — auth déléguée à Sign in with Apple (cf. `champsPublicsUtilisateur`).
+    private func publierUtilisateur(_ utilisateur: Utilisateur, codeEquipe: String) async throws {
+        let recordID = CKRecord.ID(recordName: "user-\(utilisateur.id.uuidString)")
+        let record = CKRecord(recordType: RecordType.utilisateur, recordID: recordID)
+        for (cle, valeur) in Self.champsPublicsUtilisateur(utilisateur, codeEquipe: codeEquipe) {
+            record[cle] = valeur
+        }
+        try await publicDB.save(record)
     }
 
     private func publierJoueur(_ joueur: JoueurEquipe) async throws {
@@ -609,10 +555,85 @@ final class CloudKitSharingService {
         return etab
     }
 
-    // NOTE SÉCURITÉ : `importerUtilisateur` a été supprimé. On n'importe plus de
-    // comptes Utilisateur (avec credentials) depuis la Public DB. Le compte du
-    // membre joignant est créé localement avec un hash dérivé du mot de passe
-    // saisi (`creerCompteLocalJonction`). Voir docs/Securite_AbonnementPublicDB.md.
+    func importerUtilisateur(from record: CKRecord, context: ModelContext) {
+        guard let idString = record["utilisateurID"] as? String,
+              let uuid = UUID(uuidString: idString) else { return }
+
+        // Vérifier si cet utilisateur existe déjà
+        let descripteur = FetchDescriptor<Utilisateur>(
+            predicate: #Predicate { $0.id == uuid }
+        )
+        if let existant = try? context.fetch(descripteur).first {
+            // Comparer dateModification — ne mettre à jour que si le remote est plus récent
+            let remoteDateMod = record["dateModification"] as? Date ?? .distantPast
+            guard remoteDateMod > existant.dateModification else { return }
+
+            // Mettre à jour les champs mutables
+            existant.estActif = (record["estActif"] as? Int ?? 1) == 1
+            existant.dateModification = remoteDateMod
+            // SÉCURITÉ : plus aucun secret (hash/sel/iterations) en base publique.
+            // L'auth passe par Sign in with Apple ; ces champs ne transitent plus.
+            // Mapping SIWA : ne JAMAIS écraser ces champs sur une ligne DÉJÀ réclamée
+            // (appleUserID non vide) — sinon un record public pourrait corrompre
+            // l'identité/le code d'un membre déjà rattaché.
+            if existant.appleUserID.isEmpty {
+                if let appleID = record["appleUserID"] as? String {
+                    existant.appleUserID = appleID
+                }
+                if let invite = record["codeInvitation"] as? String, !invite.isEmpty {
+                    existant.codeInvitation = invite
+                }
+            }
+            if let code = record["codeEquipe"] as? String, !code.isEmpty {
+                existant.codeEquipe = code
+            }
+            if let prenom = record["prenom"] as? String {
+                existant.prenom = prenom
+            }
+            if let nom = record["nom"] as? String {
+                existant.nom = nom
+            }
+            if let numero = record["numero"] as? Int {
+                existant.numero = numero
+            }
+            if let posteRaw = record["posteRaw"] as? String {
+                existant.posteRaw = posteRaw
+            }
+            return
+        }
+
+        // Créer le nouvel utilisateur de mapping d'équipe. SÉCURITÉ : aucun secret
+        // n'est importé depuis la base publique — l'authentification est déléguée à
+        // Sign in with Apple (motDePasseHash reste vide ; le rattachement se fait
+        // via appleUserID lors du flux « Rejoindre une équipe »).
+        let utilisateur = Utilisateur(
+            identifiant: record["identifiant"] as? String ?? "",
+            motDePasseHash: "",
+            prenom: record["prenom"] as? String ?? "",
+            nom: record["nom"] as? String ?? "",
+            role: RoleUtilisateur(rawValue: record["roleRaw"] as? String ?? "Étudiant") ?? .etudiant,
+            codeEcole: record["codeEcole"] as? String ?? ""
+        )
+        // Forcer le même UUID que la source
+        utilisateur.id = uuid
+        utilisateur.estActif = (record["estActif"] as? Int ?? 1) == 1
+        // Mapping SIWA / jointure d'équipe (jeton non secret).
+        utilisateur.appleUserID = record["appleUserID"] as? String ?? ""
+        utilisateur.codeEquipe = record["codeEquipe"] as? String ?? ""
+        utilisateur.codeInvitation = record["codeInvitation"] as? String ?? ""
+
+        if let joueurIDStr = record["joueurEquipeID"] as? String {
+            utilisateur.joueurEquipeID = UUID(uuidString: joueurIDStr)
+        }
+        if let numero = record["numero"] as? Int {
+            utilisateur.numero = numero
+        }
+        if let posteRaw = record["posteRaw"] as? String {
+            utilisateur.posteRaw = posteRaw
+        }
+
+        context.insert(utilisateur)
+    }
 
     func importerJoueur(from record: CKRecord, context: ModelContext) {
         guard let idString = record["joueurID"] as? String,
@@ -652,6 +673,84 @@ final class CloudKitSharingService {
 
         context.insert(joueur)
     }
+
+    // MARK: - Rejoindre une équipe (Sign in with Apple, cross-Apple-ID)
+
+    /// Rejoint une équipe via son code + un code d'invitation, et RATTACHE
+    /// l'identité Sign in with Apple à la ligne de roster correspondante.
+    /// - Returns: l'`Utilisateur` local réclamé (à connecter via `AuthService.connexionApple`).
+    /// - Throws: `SharingError` si équipe/invitation introuvable ou déjà réclamée.
+    func rejoindreEquipe(codeEquipe: String, codeInvitation: String, appleUserID: String, context: ModelContext) async throws -> Utilisateur {
+        let code = codeEquipe.trimmingCharacters(in: .whitespaces).uppercased()
+        let invite = codeInvitation.trimmingCharacters(in: .whitespaces).uppercased()
+        let appleID = appleUserID.trimmingCharacters(in: .whitespaces)
+
+        guard !code.isEmpty, !invite.isEmpty, !appleID.isEmpty else {
+            throw SharingError.equipeNonTrouvee
+        }
+
+        // 1-2. Vérifier l'existence puis importer le roster localement.
+        guard await equipeExiste(codeEquipe: code) else { throw SharingError.equipeNonTrouvee }
+        try await recupererEtImporterEquipe(codeEquipe: code, context: context)
+
+        // 3-4. Réclamer la ligne de roster non liée (logique locale testable).
+        guard let membre = reclamerMembreLocal(codeEquipe: code, codeInvitation: invite, appleUserID: appleID, context: context) else {
+            throw SharingError.invitationInvalide
+        }
+        do {
+            try context.save()
+        } catch {
+            logger.error("rejoindreEquipe: échec sauvegarde: \(error.localizedDescription)")
+            throw SharingError.sauvegardeEchouee
+        }
+        await publierNouvelUtilisateur(membre, joueur: nil, codeEquipe: code)
+        logger.info("Membre rattaché à l'équipe \(code, privacy: .private) via invitation")
+        return membre
+    }
+
+    // MARK: - Réclamation locale (testable, sans CloudKit)
+
+    /// Trouve la ligne de roster non liée correspondant au code d'invitation et
+    /// lui rattache `appleUserID`. Logique purement locale (SwiftData) extraite
+    /// de `rejoindreEquipe` pour être testable sans CloudKit.
+    /// - Returns: l'`Utilisateur` réclamé (appleUserID renseigné, NON sauvegardé),
+    ///   ou `nil` si aucune ligne libre ne correspond.
+    func reclamerMembreLocal(codeEquipe: String, codeInvitation: String, appleUserID: String, context: ModelContext) -> Utilisateur? {
+        let code = codeEquipe.trimmingCharacters(in: .whitespaces).uppercased()
+        let invite = codeInvitation.trimmingCharacters(in: .whitespaces).uppercased()
+        let appleID = appleUserID.trimmingCharacters(in: .whitespaces)
+        guard !code.isEmpty, !invite.isEmpty, !appleID.isEmpty else { return nil }
+
+        // Idempotence + anti-doublon : si cet Apple ID est DÉJÀ lié à un membre actif
+        // de cette équipe, le retourner tel quel — ne JAMAIS créer un second
+        // rattachement (évite les doublons en cas de double-clic / course).
+        let descDejaLie = FetchDescriptor<Utilisateur>(
+            predicate: #Predicate {
+                $0.codeEquipe == code && $0.appleUserID == appleID && $0.estActif == true
+            }
+        )
+        if let dejaLie = try? context.fetch(descDejaLie).first {
+            return dejaLie
+        }
+
+        let descripteur = FetchDescriptor<Utilisateur>(
+            predicate: #Predicate {
+                $0.codeEquipe == code &&
+                $0.codeInvitation == invite &&
+                $0.appleUserID == "" &&
+                $0.estActif == true
+            }
+        )
+        guard let membre = try? context.fetch(descripteur).first else { return nil }
+        // Anti-escalade : on ne réclame JAMAIS une ligne coach/admin via jointure
+        // (seuls .etudiant/.assistantCoach rejoignent ; le coach crée l'équipe).
+        guard Self.roleJonctionAutorise(membre.roleRaw) != nil else { return nil }
+        membre.appleUserID = appleID
+        membre.dateModification = Date()
+        return membre
+    }
+
+    // MARK: - Partage Séances / Matchs (coach → athlète, lecture seule)
 
     /// Applique les stats cumulées d'un CKRecord JoueurPartage sur un JoueurEquipe.
     /// DRY — partagé par les branches update + création de `importerJoueur`.
@@ -741,9 +840,19 @@ final class CloudKitSharingService {
 
     // MARK: - Helpers CloudKit
 
+    /// Prédicat de recherche public (extrait pour test du backward-compat OR).
+    /// UtilisateurPartage : `codeEquipe OR codeEcole` (records v<2.0.1 indexés par
+    /// codeEcole). Les autres types : `codeEquipe` uniquement.
+    static func predicatRecherche(estUtilisateur: Bool, codeEquipe: String) -> NSPredicate {
+        estUtilisateur
+            ? NSPredicate(format: "codeEquipe == %@ OR codeEcole == %@", codeEquipe, codeEquipe)
+            : NSPredicate(format: "%K == %@", "codeEquipe", codeEquipe)
+    }
+
     private func fetchRecords(type: String, codeEquipe: String) async throws -> [CKRecord] {
-        let champ = type == RecordType.utilisateur ? "codeEcole" : "codeEquipe"
-        let predicate = NSPredicate(format: "%K == %@", champ, codeEquipe)
+        // Les deux champs (codeEquipe ET codeEcole) doivent être QUERYABLE dans le
+        // schéma CloudKit public pour UtilisateurPartage (action humaine ASC).
+        let predicate = Self.predicatRecherche(estUtilisateur: type == RecordType.utilisateur, codeEquipe: codeEquipe)
         let query = CKQuery(recordType: type, predicate: predicate)
 
         var allRecords: [CKRecord] = []
@@ -762,18 +871,16 @@ final class CloudKitSharingService {
 
     enum SharingError: LocalizedError {
         case equipeNonTrouvee
-        case utilisateurNonTrouve
-        case roleNonAutorise
         case importEchoue
         case sauvegardeEchouee
+        case invitationInvalide
 
         var errorDescription: String? {
             switch self {
             case .equipeNonTrouvee: return "Aucune équipe trouvée avec ce code."
-            case .utilisateurNonTrouve: return "Aucun membre trouvé avec cet identifiant dans cette équipe."
-            case .roleNonAutorise: return "Ce compte ne peut pas rejoindre une équipe de cette façon. Contacte ton coach."
             case .importEchoue: return "Impossible d'importer les données de l'équipe."
             case .sauvegardeEchouee: return "Impossible de sauvegarder les données importées."
+            case .invitationInvalide: return "Code d'invitation invalide ou déjà utilisé. Vérifie avec ton coach."
             }
         }
     }

@@ -4,6 +4,7 @@
 
 import SwiftUI
 import SwiftData
+import AuthenticationServices
 
 // MARK: - Rôle Login
 
@@ -54,6 +55,8 @@ enum RoleLogin: String, CaseIterable, Identifiable {
 
 struct LoginView: View {
     @Environment(AuthService.self) private var authService
+    @Environment(AppleSignInService.self) private var appleSignIn
+    @Environment(CloudKitSharingService.self) private var sharingService
     @Environment(\.modelContext) private var modelContext
 
     /// Callback optionnel : retour à l'écran précédent (utilisé depuis PlaycoApp
@@ -67,6 +70,19 @@ struct LoginView: View {
     @State private var motDePasse = ""
     @State private var afficherMotDePasse = false
     @State private var roleSelectionne: RoleLogin = .coach
+
+    /// Affiche le formulaire identifiant/mot de passe (chemin « ancien compte »
+    /// pour la transition Sign in with Apple). Masqué par défaut : SIWA primaire.
+    @State private var afficherFormulaireLegacy = false
+    /// `appleUserID` d'un Sign in with Apple non encore lié à un compte —
+    /// conservé pour le rattachement (lierCompteExistant, Phase 3) ou la jointure.
+    @State private var appleUserIDEnAttente: String?
+
+    // Rejoindre une équipe (athlète/assistant, cross-Apple-ID)
+    @State private var afficherRejoindre = false
+    @State private var codeEquipeSaisi = ""
+    @State private var codeInvitationSaisi = ""
+    @State private var rejoindreEnCours = false
 
     private var couleurActive: Color { roleSelectionne.couleur }
 
@@ -85,10 +101,19 @@ struct LoginView: View {
 
                     VStack(spacing: LiquidGlassKit.espaceLG) {
                         entete
-                        pickerRole
-                        formulaire
+                        boutonApple
                         bandeauErreur
-                        boutonConnexion
+                        if afficherFormulaireLegacy {
+                            if appleUserIDEnAttente != nil {
+                                boutonRejoindreEquipe
+                            }
+                            separateurLegacy
+                            pickerRole
+                            formulaire
+                            boutonConnexion
+                        } else {
+                            lienAncienCompte
+                        }
                     }
                     .padding(.horizontal, LiquidGlassKit.espaceXL)
                     .padding(.vertical, LiquidGlassKit.espaceXL)
@@ -146,6 +171,151 @@ struct LoginView: View {
             Text("Connectez-vous pour continuer")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    // MARK: - Sign in with Apple (connexion primaire)
+
+    private var boutonApple: some View {
+        SignInWithAppleButton(.signIn) { requete in
+            appleSignIn.configurerRequete(requete)
+        } onCompletion: { resultat in
+            traiterApple(resultat)
+        }
+        .signInWithAppleButtonStyle(.black)
+        .frame(height: 50)
+        .clipShape(RoundedRectangle(cornerRadius: LiquidGlassKit.rayonMoyen))
+    }
+
+    private var separateurLegacy: some View {
+        HStack(spacing: LiquidGlassKit.espaceSM) {
+            Rectangle().frame(height: 0.5).foregroundStyle(.secondary.opacity(0.3))
+            Text("ou ancien compte").font(.caption2).foregroundStyle(.secondary)
+            Rectangle().frame(height: 0.5).foregroundStyle(.secondary.opacity(0.3))
+        }
+    }
+
+    private var lienAncienCompte: some View {
+        Button {
+            withAnimation(LiquidGlassKit.springDefaut) { afficherFormulaireLegacy = true }
+        } label: {
+            Text("J'ai un identifiant Playco")
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.secondary)
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Traite le résultat Sign in with Apple : connecte si le compte est lié,
+    /// sinon révèle le formulaire « ancien compte » pour rattachement (Phase 3).
+    private func traiterApple(_ resultat: Result<ASAuthorization, Error>) {
+        authService.erreur = nil
+        guard let creds = appleSignIn.traiterResultat(resultat) else {
+            authService.erreur = "Connexion Apple impossible. Réessaie."
+            return
+        }
+        let etat = authService.connexionApple(
+            appleUserID: creds.user,
+            prenom: creds.prenom,
+            nom: creds.nom,
+            context: modelContext
+        )
+        switch etat {
+        case .connecte:
+            onConnecte?()
+        case .compteInconnu(let appleUserID, _, _):
+            appleUserIDEnAttente = appleUserID
+            authService.erreur = "Aucun compte lié à cet Apple ID. Rejoins ton équipe avec un code d'invitation, lie ton ancien identifiant, ou crée une équipe."
+            withAnimation(LiquidGlassKit.springDefaut) { afficherFormulaireLegacy = true }
+        }
+    }
+
+    // MARK: - Rejoindre une équipe (athlète / assistant)
+
+    private var boutonRejoindreEquipe: some View {
+        Button {
+            afficherRejoindre = true
+        } label: {
+            HStack(spacing: LiquidGlassKit.espaceSM) {
+                Image(systemName: "person.3.fill")
+                Text("Rejoindre mon équipe").fontWeight(.semibold)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .background(PaletteMat.orange, in: RoundedRectangle(cornerRadius: LiquidGlassKit.rayonMoyen))
+            .foregroundStyle(.white)
+        }
+        .buttonStyle(GlassButtonStyle())
+        .sheet(isPresented: $afficherRejoindre, onDismiss: {
+            codeEquipeSaisi = ""
+            codeInvitationSaisi = ""
+            rejoindreEnCours = false
+        }) { sheetRejoindre }
+    }
+
+    private var sheetRejoindre: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("Code d'équipe", text: $codeEquipeSaisi)
+                        .textInputAutocapitalization(.characters)
+                        .autocorrectionDisabled()
+                    TextField("Code d'invitation", text: $codeInvitationSaisi)
+                        .textInputAutocapitalization(.characters)
+                        .autocorrectionDisabled()
+                } header: {
+                    Text("Codes fournis par ton coach")
+                } footer: {
+                    Text("Ton coach te communique le code d'équipe et ton code d'invitation personnel.")
+                }
+                if let erreur = authService.erreur {
+                    Text(erreur).font(.caption).foregroundStyle(.red)
+                }
+            }
+            .navigationTitle("Rejoindre une équipe")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Annuler") { afficherRejoindre = false }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Rejoindre") { Task { await rejoindre() } }
+                        .disabled(codeEquipeSaisi.isEmpty || codeInvitationSaisi.isEmpty || rejoindreEnCours)
+                }
+            }
+        }
+    }
+
+    @MainActor
+    private func rejoindre() async {
+        guard let appleUserID = appleUserIDEnAttente else { return }
+        authService.erreur = nil
+        rejoindreEnCours = true
+        defer { rejoindreEnCours = false }
+        do {
+            let membre = try await sharingService.rejoindreEquipe(
+                codeEquipe: codeEquipeSaisi,
+                codeInvitation: codeInvitationSaisi,
+                appleUserID: appleUserID,
+                context: modelContext
+            )
+            // Reconnexion via l'identité Apple désormais rattachée.
+            let etat = authService.connexionApple(
+                appleUserID: membre.appleUserID,
+                prenom: membre.prenom,
+                nom: membre.nom,
+                context: modelContext
+            )
+            if case .connecte = etat {
+                appleUserIDEnAttente = nil
+                afficherRejoindre = false
+                onConnecte?()
+            } else {
+                authService.erreur = "Rattachement effectué mais connexion impossible. Réessaie."
+            }
+        } catch {
+            authService.erreur = (error as? CloudKitSharingService.SharingError)?.errorDescription
+                ?? "Impossible de rejoindre l'équipe. Vérifie ta connexion."
         }
     }
 
@@ -279,6 +449,24 @@ struct LoginView: View {
     /// sélectionné. Si mismatch : déconnexion immédiate + message explicite.
     private func connecter() {
         authService.erreur = nil
+
+        // Si un Sign in with Apple non lié est en attente, on RATTACHE le compte
+        // legacy à l'identité Apple (puis les secrets sont effacés).
+        if let appleUserID = appleUserIDEnAttente {
+            if let messageErreur = authService.lierCompteExistant(
+                appleUserID: appleUserID,
+                identifiant: identifiant,
+                motDePasse: motDePasse,
+                context: modelContext
+            ) {
+                authService.erreur = messageErreur
+                return
+            }
+            appleUserIDEnAttente = nil
+            onConnecte?()
+            return
+        }
+
         authService.connexion(
             identifiant: identifiant,
             motDePasse: motDePasse,

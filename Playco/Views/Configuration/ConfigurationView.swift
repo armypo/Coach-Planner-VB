@@ -364,6 +364,7 @@ struct ConfigurationView: View {
             utilisateur.sel = sel
             utilisateur.iterations = AuthService.iterationsParDefaut
             utilisateur.codeInvitation = Utilisateur.genererCodeUniqueInvitation(context: modelContext)
+            utilisateur.codeEquipe = codeEquipe
             modelContext.insert(utilisateur)
 
             let assistant = AssistantCoach(prenom: a.prenom, nom: a.nom)
@@ -376,12 +377,14 @@ struct ConfigurationView: View {
             assistant.codeEquipe = codeEquipe
             modelContext.insert(assistant)
 
-            // CredentialAthlete privé (mdp en clair pour récupération coach)
+            // CredentialAthlete = marqueur de membre (identifiant + équipe). SÉCURITÉ :
+            // on ne stocke PLUS de mot de passe en clair (connexion via SIWA + code
+            // d'invitation). motDePasseClair reste vide.
             let cred = CredentialAthlete(
                 utilisateurID: utilisateur.id,
                 joueurEquipeID: nil,
                 identifiant: idUnique,
-                motDePasseClair: a.motDePasse,
+                motDePasseClair: "",
                 codeEquipe: codeEquipe
             )
             modelContext.insert(cred)
@@ -389,7 +392,8 @@ struct ConfigurationView: View {
             recaps.append(CredentialRecap(
                 nomComplet: "\(a.prenom) \(a.nom)",
                 identifiant: idUnique,
-                motDePasse: a.motDePasse,
+                codeEquipe: codeEquipe,
+                codeInvitation: utilisateur.codeInvitation,
                 role: "Assistant"
             ))
         }
@@ -427,16 +431,18 @@ struct ConfigurationView: View {
             utilisateur.numero = j.numero
             utilisateur.posteRaw = j.poste.rawValue
             utilisateur.codeInvitation = Utilisateur.genererCodeUniqueInvitation(context: modelContext)
+            utilisateur.codeEquipe = codeEquipe
             modelContext.insert(utilisateur)
 
             joueur.utilisateurID = utilisateur.id
 
-            // CredentialAthlete privé
+            // CredentialAthlete = marqueur de membre. SÉCURITÉ : aucun mot de passe
+            // en clair stocké (connexion via SIWA + code d'invitation).
             let cred = CredentialAthlete(
                 utilisateurID: utilisateur.id,
                 joueurEquipeID: joueur.id,
                 identifiant: idJoueur,
-                motDePasseClair: j.motDePasse,
+                motDePasseClair: "",
                 codeEquipe: codeEquipe
             )
             modelContext.insert(cred)
@@ -444,7 +450,8 @@ struct ConfigurationView: View {
             recaps.append(CredentialRecap(
                 nomComplet: "\(j.prenom) \(j.nom)",
                 identifiant: idJoueur,
-                motDePasse: j.motDePasse,
+                codeEquipe: codeEquipe,
+                codeInvitation: utilisateur.codeInvitation,
                 role: "Athlète"
             ))
         }

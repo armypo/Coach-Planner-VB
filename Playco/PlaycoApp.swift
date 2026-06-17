@@ -12,6 +12,7 @@ private let logger = Logger(subsystem: "com.origotech.playco", category: "App")
 struct PlaycoApp: App {
     let container: ModelContainer
     @State private var authService = AuthService()
+    @State private var appleSignInService = AppleSignInService()
     @State private var syncService = CloudKitSyncService()
     @State private var sharingService = CloudKitSharingService()
     @State private var analyticsService = AnalyticsService()
@@ -109,8 +110,7 @@ struct PlaycoApp: App {
         case chargement
         case choixInitial      // premier lancement : configurer ou login
         case configuration     // wizard 6 étapes
-        case login             // login unifié (Coach / Assistant / Athlète)
-        case rejoindre         // jonction athlète/assistant via code équipe (cross-Apple-ID)
+        case login             // login unifié — Sign in with Apple (+ jointure par code)
         case app               // ContentView (sections)
     }
 
@@ -140,10 +140,13 @@ struct PlaycoApp: App {
                                 withAnimation { ecranActif = .login }
                             },
                             onRejoindre: {
-                                withAnimation { ecranActif = .rejoindre }
+                                // Jointure via Sign in with Apple : LoginView gère SIWA
+                                // puis propose « Rejoindre mon équipe » (code d'invitation).
+                                withAnimation { ecranActif = .login }
                             }
                         )
                         .environment(authService)
+                        .environment(appleSignInService)
                         .environment(syncService)
                         .environment(sharingService)
                         .modelContainer(container)
@@ -205,24 +208,10 @@ struct PlaycoApp: App {
                         .modelContainer(container)
                         .transition(.move(edge: .trailing).combined(with: .opacity))
 
-                    case .rejoindre:
-                        RejoindreEquipeView(
-                            onRetour: {
-                                withAnimation { ecranActif = .choixInitial }
-                            },
-                            onConnecte: {
-                                Task { await appliquerGateTier() }
-                            }
-                        )
-                        .environment(authService)
-                        .environment(syncService)
-                        .environment(sharingService)
-                        .modelContainer(container)
-                        .transition(.move(edge: .trailing).combined(with: .opacity))
-
                     case .app:
                         ContentView()
                             .environment(authService)
+                            .environment(appleSignInService)
                             .environment(syncService)
                             .environment(sharingService)
                             .environment(analyticsService)
@@ -249,6 +238,14 @@ struct PlaycoApp: App {
                                 Task {
                                     await syncService.attendreSyncInitiale()
                                     authService.restaurerSession(context: container.mainContext)
+                                    // Sécurité SIWA : révoquer la session si l'Apple ID lié n'est plus
+                                    // autorisé (app réinstallée, identité révoquée côté Apple).
+                                    if let appleID = authService.utilisateurConnecte?.appleUserID, !appleID.isEmpty {
+                                        if await appleSignInService.estRevoque(appleUserID: appleID) {
+                                            logger.info("Session SIWA révoquée/introuvable — déconnexion")
+                                            authService.deconnexion()
+                                        }
+                                    }
                                     if authService.utilisateurConnecte != nil {
                                         analyticsService.suivre(
                                             evenement: EvenementAnalytics.utilisateurConnecte,
@@ -292,54 +289,17 @@ struct PlaycoApp: App {
         }
     }
 
-/// Gate centrale paywall : applique les règles tier sur l'utilisateur connecté.
-    /// Appelée après chaque connexion réussie + au démarrage après restaurerSession.
+    /// Routage post-connexion vers l'app. Appelée après chaque connexion réussie
+    /// + au démarrage après `restaurerSession`.
     ///
-    /// Logique :
-    /// - Athlète : tier équipe doit être `.club` — sinon déconnexion immédiate
-    /// - Assistant : tier équipe doit être `.pro` ou `.club` — sinon déconnexion
-    /// - Coach/Admin : pas de gate (gérés par bannière + feature gating)
+    /// Modèle role-aware (v2.0.1/SIWA) : la connexion n'est JAMAIS bloquée selon le
+    /// tier — athlètes et assistants entrent toujours. Le paywall est appliqué in-app
+    /// et UNIQUEMENT pour le coach/admin (`paywallDoitBloquer`). Aucune confiance
+    /// accordée à un tier publié non signé (sécurité : pas de décision d'accès
+    /// basée sur la Public DB).
     private func appliquerGateTier() async {
-        guard let user = authService.utilisateurConnecte else { return }
-        let code = user.codeEcole
-        let desc = FetchDescriptor<Equipe>(predicate: #Predicate { $0.codeEquipe == code })
-        var tier = (try? container.mainContext.fetch(desc).first)?.tierAbonnement ?? .aucun
-
-        // Fallback Public DB : si le tier local est .aucun (équipe juste importée
-        // cross-Apple-ID, ou tier pas encore propagé), relire AbonnementPartage et
-        // rafraîchir l'Equipe locale. Sans ça l'athlète d'un coach Club resterait bloqué.
-        if tier == .aucun, !code.isEmpty,
-           let snap = await CloudKitPublicSyncAbonnement.shared.lire(codeEquipe: code) {
-            tier = snap.tier
-            if let eq = try? container.mainContext.fetch(desc).first, eq.tierAbonnement != tier {
-                eq.tierAbonnement = tier
-                try? container.mainContext.save()
-            }
-        }
-
-        switch user.role {
-        case .etudiant:
-            if tier != .club {
-                authService.deconnexion()
-                erreurGate = TextesPaywall.erreurAthleteBloque
-                withAnimation { ecranActif = .choixInitial }
-                return
-            }
-        case .assistantCoach:
-            if tier == .aucun {
-                authService.deconnexion()
-                erreurGate = TextesPaywall.erreurAssistantBloque
-                withAnimation { ecranActif = .choixInitial }
-                return
-            }
-        case .coach, .admin:
-            break  // pas de gate tier pour eux
-        }
-
-        // Gate franchie → entrer dans l'app (centralisé ici car la gate est async).
-        if authService.utilisateurConnecte != nil {
-            withAnimation(LiquidGlassKit.springDefaut) { ecranActif = .app }
-        }
+        guard authService.utilisateurConnecte != nil else { return }
+        withAnimation(LiquidGlassKit.springDefaut) { ecranActif = .app }
     }
 
     /// Vérifie si un ProfilCoach complété existe en base → route vers le bon écran

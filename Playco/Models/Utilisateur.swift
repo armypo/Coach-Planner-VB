@@ -79,6 +79,16 @@ final class Utilisateur {
     /// Code unique d'invitation (6 caractères alphanumériques)
     var codeInvitation: String = ""
 
+    /// Identifiant stable Sign in with Apple (`ASAuthorizationAppleIDCredential.user`).
+    /// Clé durable du compte cross-appareil (même Apple ID). Vide = compte non encore
+    /// lié à SIWA (legacy à migrer ou ligne de roster en attente de rattachement).
+    /// Défaut `""` = CloudKit-safe (migration additive).
+    var appleUserID: String = ""
+
+    /// Code de l'équipe à laquelle ce compte appartient — scope la publication et
+    /// la jointure CloudKit publique (requête par `codeEquipe`). Défaut `""` = CloudKit-safe.
+    var codeEquipe: String = ""
+
     // Données physiques
     var tailleCm: Int = 0          // cm
     var poidKg: Double = 0         // kg

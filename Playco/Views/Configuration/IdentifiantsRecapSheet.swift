@@ -7,12 +7,15 @@
 
 import SwiftUI
 
-/// Récapitulatif d'un credential créé pendant le wizard.
+/// Récapitulatif d'un accès créé pendant le wizard. Depuis v2.0.1 la connexion
+/// se fait par Sign in with Apple : le membre rejoint l'équipe avec le code
+/// d'équipe + son code d'invitation personnel (plus de mot de passe à partager).
 struct CredentialRecap: Identifiable {
     let id = UUID()
     let nomComplet: String
     let identifiant: String
-    let motDePasse: String
+    let codeEquipe: String
+    let codeInvitation: String
     /// "Athlète" ou "Assistant" — utilisé dans le template de partage.
     let role: String
 }
@@ -25,11 +28,11 @@ struct IdentifiantsRecapSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    Label("Note ces identifiants maintenant", systemImage: "exclamationmark.triangle.fill")
+                    Label("Partage ces codes à tes membres", systemImage: "ticket.fill")
                         .font(.headline)
                         .foregroundStyle(.orange)
 
-                    Text("Tu pourras aussi les retrouver dans Paramètres → Identifiants de l'équipe.")
+                    Text("Chaque membre rejoint l'équipe avec Sign in with Apple + son code d'invitation. Tu pourras retrouver les codes dans Paramètres → Identifiants de l'équipe.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
 
@@ -97,14 +100,14 @@ struct IdentifiantsRecapSheet: View {
                     )
             }
 
-            ligneCredentialDetail(label: "Identifiant", valeur: cred.identifiant, icone: "person.text.rectangle")
-            ligneCredentialDetail(label: "Mot de passe", valeur: cred.motDePasse, icone: "key.fill")
+            ligneCredentialDetail(label: "Code d'équipe", valeur: cred.codeEquipe, icone: "person.3.fill")
+            ligneCredentialDetail(label: "Code d'invitation", valeur: cred.codeInvitation, icone: "ticket.fill")
 
             HStack(spacing: 10) {
                 Button {
                     UIPasteboard.general.string = """
-                    Identifiant : \(cred.identifiant)
-                    Mot de passe : \(cred.motDePasse)
+                    Code d'équipe : \(cred.codeEquipe)
+                    Code d'invitation : \(cred.codeInvitation)
                     """
                 } label: {
                     Label("Copier", systemImage: "doc.on.doc")
@@ -141,11 +144,11 @@ struct IdentifiantsRecapSheet: View {
 
     private func templatePartage(cred: CredentialRecap) -> String {
         """
-        Salut ! Voici tes accès Playco :
-        Identifiant : \(cred.identifiant)
-        Mot de passe : \(cred.motDePasse)
+        Salut ! Voici comment rejoindre l'équipe sur Playco :
+        Code d'équipe : \(cred.codeEquipe)
+        Code d'invitation : \(cred.codeInvitation)
 
-        Ouvre l'app Playco, choisis « Connexion », sélectionne l'onglet « \(cred.role) », puis entre ces infos.
+        Ouvre l'app Playco, appuie sur « Se connecter avec Apple », puis « Rejoindre mon équipe » et entre ces deux codes.
         """
     }
 
@@ -153,8 +156,8 @@ struct IdentifiantsRecapSheet: View {
         creds.map { cred in
             """
             \(cred.nomComplet) (\(cred.role))
-            Identifiant : \(cred.identifiant)
-            Mot de passe : \(cred.motDePasse)
+            Code d'équipe : \(cred.codeEquipe)
+            Code d'invitation : \(cred.codeInvitation)
             """
         }.joined(separator: "\n\n")
     }

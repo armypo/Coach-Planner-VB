@@ -18,6 +18,7 @@ enum SectionApp: Hashable {
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(AuthService.self) private var authService
+    @Environment(AppleSignInService.self) private var appleSignInService
     @Environment(AbonnementService.self) private var abonnementService
     @Environment(StoreKitService.self) private var storeKitService
     @Environment(CloudKitSharingService.self) private var sharingService
@@ -117,6 +118,12 @@ struct ContentView: View {
             guard nouveau == .active, authService.estConnecte else { return }
             Task { @MainActor in
                 verifierEtatSessionForeground()
+                // Sécurité SIWA : révoquer la session au retour foreground si l'Apple ID
+                // n'est plus autorisé (révocation hors-app), pas seulement au lancement.
+                if let appleID = authService.utilisateurConnecte?.appleUserID, !appleID.isEmpty,
+                   await appleSignInService.estRevoque(appleUserID: appleID) {
+                    authService.deconnexion()
+                }
                 // Coach : re-évaluer le statut d'abonnement (renouvellement/refund Apple).
                 if let user = authService.utilisateurConnecte,
                    user.role == .coach || user.role == .admin {

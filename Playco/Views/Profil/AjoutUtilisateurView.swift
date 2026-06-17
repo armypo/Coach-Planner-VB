@@ -44,10 +44,14 @@ struct AjoutUtilisateurView: View {
     @State private var anneeNaissance = ""
 
     private var formulaireValide: Bool {
-        !prenom.trimmingCharacters(in: .whitespaces).isEmpty &&
-        !nom.trimmingCharacters(in: .whitespaces).isEmpty &&
-        !identifiant.trimmingCharacters(in: .whitespaces).isEmpty &&
-        motDePasse.count >= 6
+        // Pour les rôles auto-gen (athlète/assistant), le mot de passe interne est
+        // généré automatiquement à l'enregistrement — pas de saisie requise (la
+        // connexion se fait par Sign in with Apple + code d'invitation).
+        let mdpOK = estRoleAutoGen || motDePasse.count >= 6
+        return !prenom.trimmingCharacters(in: .whitespaces).isEmpty &&
+            !nom.trimmingCharacters(in: .whitespaces).isEmpty &&
+            !identifiant.trimmingCharacters(in: .whitespaces).isEmpty &&
+            mdpOK
     }
 
     var body: some View {
@@ -125,31 +129,47 @@ struct AjoutUtilisateurView: View {
                                 .background(RoundedRectangle(cornerRadius: 12).fill(Color(.systemGray6)))
                             }
 
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text("Mot de passe (min. 6 caractères)")
-                                    .font(.caption)
-                                    .fontWeight(.semibold)
-                                    .foregroundStyle(.secondary)
-                                    .textCase(.uppercase)
-
-                                HStack(spacing: 12) {
-                                    Image(systemName: "lock.fill")
+                            if estRoleAutoGen {
+                                // Rôles auto-gen (athlète/assistant) : connexion via Sign in
+                                // with Apple + code d'invitation. Pas de mot de passe à saisir —
+                                // le code d'invitation s'affiche après la création.
+                                HStack(spacing: 8) {
+                                    Image(systemName: "ticket.fill")
                                         .foregroundStyle(roleChoisi.couleur)
-                                        .frame(width: 20)
-
-                                    TextField("Mot de passe", text: $motDePasse)
-                                        .autocorrectionDisabled()
-                                        .textInputAutocapitalization(.never)
-
-                                    Button {
-                                        motDePasse = genererMotDePasse()
-                                    } label: {
-                                        Image(systemName: "dice.fill")
-                                            .foregroundStyle(roleChoisi.couleur)
-                                    }
+                                    Text("Un code d'invitation sera généré pour rejoindre l'équipe avec Sign in with Apple.")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
                                 }
-                                .padding(14)
-                                .background(RoundedRectangle(cornerRadius: 12).fill(Color(.systemGray6)))
+                                .padding(12)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(roleChoisi.couleur.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+                            } else {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text("Mot de passe (min. 6 caractères)")
+                                        .font(.caption)
+                                        .fontWeight(.semibold)
+                                        .foregroundStyle(.secondary)
+                                        .textCase(.uppercase)
+
+                                    HStack(spacing: 12) {
+                                        Image(systemName: "lock.fill")
+                                            .foregroundStyle(roleChoisi.couleur)
+                                            .frame(width: 20)
+
+                                        TextField("Mot de passe", text: $motDePasse)
+                                            .autocorrectionDisabled()
+                                            .textInputAutocapitalization(.never)
+
+                                        Button {
+                                            motDePasse = genererMotDePasse()
+                                        } label: {
+                                            Image(systemName: "dice.fill")
+                                                .foregroundStyle(roleChoisi.couleur)
+                                        }
+                                    }
+                                    .padding(14)
+                                    .background(RoundedRectangle(cornerRadius: 12).fill(Color(.systemGray6)))
+                                }
                             }
 
                             // Info code école
@@ -440,6 +460,9 @@ struct AjoutUtilisateurView: View {
                 predicate: #Predicate { $0.identifiant == idRecherche }
             )
             if let utilisateurPub = try? modelContext.fetch(descriptorPub).first {
+                // Scope l'utilisateur à l'équipe pour la jointure CloudKit publique.
+                if utilisateurPub.codeEquipe.isEmpty { utilisateurPub.codeEquipe = codeEcole }
+                try? modelContext.save()
                 var joueurPub: JoueurEquipe?
                 if let jID = utilisateurPub.joueurEquipeID {
                     let descJoueur = FetchDescriptor<JoueurEquipe>(
@@ -447,8 +470,9 @@ struct AjoutUtilisateurView: View {
                     )
                     joueurPub = try? modelContext.fetch(descJoueur).first
                 }
+                let codeEquipePub = codeEcole
                 Task {
-                    await sharingService.publierNouvelUtilisateur(utilisateurPub, joueur: joueurPub)
+                    await sharingService.publierNouvelUtilisateur(utilisateurPub, joueur: joueurPub, codeEquipe: codeEquipePub)
                 }
             }
 
@@ -460,12 +484,18 @@ struct AjoutUtilisateurView: View {
                 let descCred = FetchDescriptor<Utilisateur>(
                     predicate: #Predicate { $0.identifiant == idFinal }
                 )
+                // Code d'invitation pour la jointure Sign in with Apple (généré à
+                // l'init de l'Utilisateur). Fallback vide si l'utilisateur est introuvable.
+                var codeInvitationMembre = ""
                 if let utilisateur = try? modelContext.fetch(descCred).first {
+                    codeInvitationMembre = utilisateur.codeInvitation
+                    // CredentialAthlete = marqueur de membre. SÉCURITÉ : aucun mot de
+                    // passe en clair (connexion via SIWA + code d'invitation).
                     let cred = CredentialAthlete(
                         utilisateurID: utilisateur.id,
                         joueurEquipeID: utilisateur.joueurEquipeID,
                         identifiant: idFinal,
-                        motDePasseClair: motDePasse,
+                        motDePasseClair: "",
                         codeEquipe: codeEcole
                     )
                     modelContext.insert(cred)
@@ -475,7 +505,8 @@ struct AjoutUtilisateurView: View {
                 credACopier = [CredentialRecap(
                     nomComplet: "\(prenom) \(nom)",
                     identifiant: idFinal,
-                    motDePasse: motDePasse,
+                    codeEquipe: codeEcole,
+                    codeInvitation: codeInvitationMembre,
                     role: roleChoisi == .etudiant ? "Athlète" : "Assistant"
                 )]
                 afficherRecap = true

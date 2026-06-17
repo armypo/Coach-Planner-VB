@@ -20,7 +20,7 @@ struct ConfigMembresView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 titreEtape(numero: 5, titre: "Membres de l'équipe",
-                           description: "Identifiants et mots de passe sont générés automatiquement. Tu pourras les copier ou partager à la fin du wizard.")
+                           description: "Chaque membre reçoit un code d'invitation pour rejoindre l'équipe avec Sign in with Apple. Les codes sont générés et partageables à la fin du wizard.")
 
                 // Onglets
                 Picker("Section", selection: $onglet) {
@@ -103,13 +103,7 @@ struct ConfigMembresView: View {
                 .pickerStyle(.segmented)
             }
 
-            credentialAffichage(
-                identifiant: joueur.wrappedValue.identifiant,
-                motDePasse: joueur.wrappedValue.motDePasse,
-                onRegenerer: {
-                    joueur.wrappedValue.motDePasse = Utilisateur.genererMotDePasseAthlete()
-                }
-            )
+            credentialAffichage(identifiant: joueur.wrappedValue.identifiant)
         }
         .padding(14)
         .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14))
@@ -191,13 +185,7 @@ struct ConfigMembresView: View {
                 .tint(PaletteMat.bleu)
             }
 
-            credentialAffichage(
-                identifiant: assistant.wrappedValue.identifiant,
-                motDePasse: assistant.wrappedValue.motDePasse,
-                onRegenerer: {
-                    assistant.wrappedValue.motDePasse = Utilisateur.genererMotDePasseAthlete()
-                }
-            )
+            credentialAffichage(identifiant: assistant.wrappedValue.identifiant)
         }
         .padding(14)
         .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14))
@@ -215,13 +203,10 @@ struct ConfigMembresView: View {
 
     // MARK: - Affichage des credentials générés
 
-    /// Affichage monospace (read-only) de l'identifiant et du mdp auto-générés.
-    /// Le coach peut régénérer le mdp via le bouton dice.
-    private func credentialAffichage(
-        identifiant: String,
-        motDePasse: String,
-        onRegenerer: @escaping () -> Void
-    ) -> some View {
+    /// Affichage read-only de l'identifiant auto-généré. Le code d'invitation
+    /// (utilisé pour rejoindre via Sign in with Apple) est généré à la finalisation
+    /// du wizard et présenté dans le récapitulatif final.
+    private func credentialAffichage(identifiant: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
                 Image(systemName: "person.text.rectangle")
@@ -233,21 +218,13 @@ struct ConfigMembresView: View {
                 Spacer()
             }
             HStack(spacing: 8) {
-                Image(systemName: "key.fill")
+                Image(systemName: "ticket.fill")
                     .foregroundStyle(.secondary)
                     .font(.caption)
-                Text(motDePasse)
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundStyle(.secondary)
+                Text("Code d'invitation généré à la fin du wizard")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
                 Spacer()
-                Button {
-                    onRegenerer()
-                } label: {
-                    Image(systemName: "dice")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
             }
         }
         .padding(10)
