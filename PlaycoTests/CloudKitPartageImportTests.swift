@@ -79,31 +79,8 @@ struct CloudKitPartageImportTests {
         #expect(s.nom == "Local récent", "le local plus récent doit être préservé")
     }
 
-    // MARK: - Match calendrier
-
-    @Test("Importer un match du calendrier")
-    func importerMatch() throws {
-        let service = CloudKitSharingService()
-        let ctx = try contexte()
-        let id = UUID()
-        let record = CKRecord(recordType: "MatchCalendrierPartagee")
-        record["matchID"] = id.uuidString
-        record["codeEquipe"] = "EQU1"
-        record["date"] = Date(timeIntervalSince1970: 1_950_000_000)
-        record["adversaire"] = "Lions"
-        record["lieu"] = "Extérieur"
-        record["estDomicile"] = 0
-        record["dateModification"] = Date(timeIntervalSince1970: 1_900_000_000)
-
-        service.importerMatchCalendrier(from: record, context: ctx)
-        try ctx.save()
-
-        let m = try #require(try ctx.fetch(FetchDescriptor<MatchCalendrier>()).first)
-        #expect(m.id == id)
-        #expect(m.codeEquipe == "EQU1")
-        #expect(m.adversaire == "Lions")
-        #expect(m.estDomicile == false)
-    }
+    // NB v2.0.1/SIWA : le partage MatchCalendrier a été retiré (déprécié/dormant).
+    // Les matchs sont partagés en tant que Seance (type=.match) — cf. test importerSeance.
 
     // MARK: - Stats cumulées sur le joueur
 

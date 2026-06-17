@@ -42,7 +42,6 @@ final class CloudKitSharingService {
         static let joueur = "JoueurPartage"
         static let etablissement = "EtablissementPartage"
         static let seance = "SeancePartagee"
-        static let matchCalendrier = "MatchCalendrierPartagee"
     }
 
     // MARK: - Publication (côté Coach)
@@ -228,10 +227,8 @@ final class CloudKitSharingService {
                 if masquer && s.typeSeanceRaw == pratiqueRaw { continue }  // pratiques masquées
                 try await publierSeance(s)
             }
-            let descM = FetchDescriptor<MatchCalendrier>(predicate: #Predicate { $0.codeEquipe == codeEquipe })
-            for m in (try? context.fetch(descM)) ?? [] where m.dateModification > seuil {
-                try await publierMatchCalendrier(m)
-            }
+            // Les matchs sont publiés en tant que Seance (type=.match) ci-dessus.
+            // MatchCalendrier n'est plus partagé (déprécié/dormant).
             derniereSyncDate = Date()
         } catch {
             logger.error("publierMisesAJourCoach: \(error.localizedDescription)")
@@ -314,11 +311,9 @@ final class CloudKitSharingService {
             importerJoueur(from: record, context: context)
         }
 
-        // 7b. Importer séances + matchs du calendrier (lecture seule athlète).
+        // 7b. Importer les séances (incl. matchs type=.match — lecture seule athlète).
         let seanceRecords = try await fetchRecords(type: RecordType.seance, codeEquipe: codeEquipe)
         for record in seanceRecords { importerSeance(from: record, context: context) }
-        let matchCalRecords = try await fetchRecords(type: RecordType.matchCalendrier, codeEquipe: codeEquipe)
-        for record in matchCalRecords { importerMatchCalendrier(from: record, context: context) }
 
         // 8. Tier d'équipe INFORMATIONNEL depuis AbonnementPartage (Public DB).
         // SÉCURITÉ : cette valeur (non signée) ne sert QU'À l'affichage — elle
@@ -369,9 +364,6 @@ final class CloudKitSharingService {
 
             let seanceRecords = try await fetchRecords(type: RecordType.seance, codeEquipe: codeEquipe)
             for record in seanceRecords { importerSeance(from: record, context: context) }
-
-            let matchCalRecords = try await fetchRecords(type: RecordType.matchCalendrier, codeEquipe: codeEquipe)
-            for record in matchCalRecords { importerMatchCalendrier(from: record, context: context) }
 
             do {
                 try context.save()
@@ -513,20 +505,6 @@ final class CloudKitSharingService {
         record["resultatRaw"] = seance.resultatRaw as CKRecordValue
         record["estArchivee"] = (seance.estArchivee ? 1 : 0) as CKRecordValue
         record["dateModification"] = seance.dateModification as CKRecordValue
-        _ = try await publicDB.save(record)
-    }
-
-    /// Publie un match du calendrier en lecture seule pour les athlètes.
-    func publierMatchCalendrier(_ match: MatchCalendrier) async throws {
-        let recordID = CKRecord.ID(recordName: "matchcal-\(match.id.uuidString)")
-        let record = CKRecord(recordType: RecordType.matchCalendrier, recordID: recordID)
-        record["matchID"] = match.id.uuidString as CKRecordValue
-        record["codeEquipe"] = match.codeEquipe as CKRecordValue
-        record["date"] = match.date as CKRecordValue
-        record["adversaire"] = match.adversaire as CKRecordValue
-        record["lieu"] = match.lieu as CKRecordValue
-        record["estDomicile"] = (match.estDomicile ? 1 : 0) as CKRecordValue
-        record["dateModification"] = match.dateModification as CKRecordValue
         _ = try await publicDB.save(record)
     }
 
@@ -806,36 +784,6 @@ final class CloudKitSharingService {
         seance.estArchivee = (record["estArchivee"] as? Int ?? 0) == 1
         seance.dateModification = remoteDateMod
         context.insert(seance)
-    }
-
-    /// Importe un match du calendrier (merge `dateModification`). Lecture seule athlète.
-    func importerMatchCalendrier(from record: CKRecord, context: ModelContext) {
-        guard let idString = record["matchID"] as? String,
-              let uuid = UUID(uuidString: idString) else { return }
-        let remoteDateMod = record["dateModification"] as? Date ?? .distantPast
-        let code = record["codeEquipe"] as? String ?? ""
-        let descEq = FetchDescriptor<Equipe>(predicate: #Predicate { $0.codeEquipe == code })
-        let equipeLocale = try? context.fetch(descEq).first
-        let desc = FetchDescriptor<MatchCalendrier>(predicate: #Predicate { $0.id == uuid })
-        if let existant = try? context.fetch(desc).first {
-            guard remoteDateMod > existant.dateModification else { return }
-            existant.date = record["date"] as? Date ?? existant.date
-            existant.adversaire = record["adversaire"] as? String ?? existant.adversaire
-            existant.lieu = record["lieu"] as? String ?? existant.lieu
-            existant.estDomicile = (record["estDomicile"] as? Int ?? 1) == 1
-            existant.equipe = existant.equipe ?? equipeLocale
-            existant.dateModification = remoteDateMod
-            return
-        }
-        let match = MatchCalendrier(date: record["date"] as? Date ?? Date(),
-                                    adversaire: record["adversaire"] as? String ?? "")
-        match.id = uuid
-        match.codeEquipe = code
-        match.lieu = record["lieu"] as? String ?? ""
-        match.estDomicile = (record["estDomicile"] as? Int ?? 1) == 1
-        match.equipe = equipeLocale
-        match.dateModification = remoteDateMod
-        context.insert(match)
     }
 
     // MARK: - Helpers CloudKit

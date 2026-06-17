@@ -5,7 +5,11 @@
 import Foundation
 import SwiftData
 
-/// Match planifié dans le calendrier
+/// DÉPRÉCIÉ (v2.0.1/SIWA) — modèle DORMANT, conservé dans le schéma uniquement
+/// pour éviter une migration SwiftData+CloudKit destructive. N'est plus créé, ni
+/// publié, ni importé : les matchs sont représentés par `Seance` (type=.match),
+/// seule source lue par l'UI (coach + athlète). Suppression complète = étape de
+/// migration séparée (test réinstallation propre).
 @Model
 final class MatchCalendrier {
     var id: UUID = UUID()

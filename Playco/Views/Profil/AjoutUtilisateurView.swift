@@ -12,6 +12,7 @@ struct AjoutUtilisateurView: View {
 
     @Environment(AuthService.self) private var authService
     @Environment(CloudKitSharingService.self) private var sharingService
+    @Environment(AbonnementService.self) private var abonnementService
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
@@ -42,6 +43,12 @@ struct AjoutUtilisateurView: View {
     @State private var jourNaissance = ""
     @State private var moisNaissance = ""
     @State private var anneeNaissance = ""
+
+    /// Athlète (`.etudiant`) exige le tier Club (`peutConnecterAthletes`, StoreKit).
+    /// Les assistants/coachs ne sont jamais bloqués par ce gate.
+    private var clubRequisManquant: Bool {
+        roleChoisi == .etudiant && !abonnementService.peutConnecterAthletes
+    }
 
     private var formulaireValide: Bool {
         // Pour les rôles auto-gen (athlète/assistant), le mot de passe interne est
@@ -320,6 +327,19 @@ struct AjoutUtilisateurView: View {
                         .background(RoundedRectangle(cornerRadius: 10).fill(.green))
                     }
 
+                    // Défense en profondeur : un athlète exige le tier Club (le bouton
+                    // d'entrée dans ProfilView est déjà gaté, ceci couvre les autres accès).
+                    if clubRequisManquant {
+                        HStack(spacing: 8) {
+                            Image(systemName: "lock.fill").foregroundStyle(.secondary)
+                            Text("Passe à Playco Club pour ajouter des athlètes.")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        .padding(12)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color(.systemGray6), in: RoundedRectangle(cornerRadius: 10))
+                    }
+
                     // Bouton créer
                     Button {
                         creerCompte()
@@ -330,11 +350,11 @@ struct AjoutUtilisateurView: View {
                             .padding(.vertical, 14)
                             .background(
                                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .fill(formulaireValide ? roleChoisi.couleur : Color.gray.opacity(0.4))
+                                    .fill((formulaireValide && !clubRequisManquant) ? roleChoisi.couleur : Color.gray.opacity(0.4))
                             )
                             .foregroundStyle(.white)
                     }
-                    .disabled(!formulaireValide)
+                    .disabled(!formulaireValide || clubRequisManquant)
                 }
                 .padding(.horizontal, 24)
                 .padding(.vertical, 20)

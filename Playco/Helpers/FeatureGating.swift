@@ -55,3 +55,51 @@ extension View {
         modifier(BloqueSiNonPayant(source: source))
     }
 }
+
+// MARK: - Gate Club (connexion d'athlètes)
+
+/// Décision PURE (testable) : faut-il bloquer une action réservée au tier **Club**
+/// (ajout d'athlètes) ? Seul le coach/admin est concerné ; le gate s'appuie sur
+/// `peutConnecterAthletes` (Club-only, dérivé de StoreKit — jamais de la Public DB).
+/// Les autres rôles ne déclenchent pas ce gate (l'action ne leur est de toute façon
+/// pas exposée via `.siAutorise`).
+func clubRequisDoitBloquer(role: RoleUtilisateur?, peutConnecterAthletes: Bool) -> Bool {
+    guard let role, role == .coach || role == .admin else { return false }
+    return !peutConnecterAthletes
+}
+
+struct BloqueSiNonClub: ViewModifier {
+    @Environment(AbonnementService.self) private var service
+    @Environment(AuthService.self) private var authService
+    @State private var afficherPaywall = false
+    let source: String
+
+    func body(content: Content) -> some View {
+        if !clubRequisDoitBloquer(role: authService.utilisateurConnecte?.role,
+                                  peutConnecterAthletes: service.peutConnecterAthletes) {
+            content
+        } else {
+            content
+                .allowsHitTesting(false)
+                .opacity(0.45)
+                .overlay {
+                    Button { afficherPaywall = true } label: {
+                        Color.clear.contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+                .fullScreenCover(isPresented: $afficherPaywall) {
+                    PaywallBloquantView(source: source)
+                }
+        }
+    }
+}
+
+extension View {
+    /// Bloque l'interaction si le coach n'a pas le tier **Club** (requis pour
+    /// connecter des athlètes). Au tap : ouvre PaywallBloquantView. Réservé aux
+    /// actions coach déjà masquées par `.siAutorise` pour les autres rôles.
+    func bloqueSiNonClub(source: String) -> some View {
+        modifier(BloqueSiNonClub(source: source))
+    }
+}
