@@ -421,6 +421,15 @@ struct AjoutUtilisateurView: View {
         erreur = nil
         succes = false
 
+        // Gate Club appliqué au niveau de l'ACTION (pas seulement bouton désactivé) :
+        // créer un athlète exige le tier Club. Défense en profondeur — le gate de
+        // monétisation reste client-side (StoreKit, pas de serveur), cohérent avec
+        // l'architecture CloudKit-only de l'app.
+        guard !clubRequisManquant else {
+            erreur = "Passe à Playco Club pour ajouter des athlètes."
+            return
+        }
+
         // Générer un identifiant unique si vide
         let idFinal = identifiant.trimmingCharacters(in: .whitespaces).isEmpty
             ? Utilisateur.genererIdentifiantUnique(prenom: prenom, nom: nom, context: modelContext)

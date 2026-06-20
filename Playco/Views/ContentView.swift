@@ -178,8 +178,11 @@ struct ContentView: View {
         case .etudiant, .assistantCoach:
             await sharingService.syncDepuisPublic(codeEquipe: code, context: modelContext)
             // Statut d'abonnement de l'équipe (informationnel, lecture seule) pour
-            // afficher le plan du coach. Ne débloque AUCUNE fonctionnalité.
-            await abonnementService.chargerStatutEquipe(codeEquipe: code)
+            // afficher le plan du coach. Ne débloque AUCUNE fonctionnalité. Chargé
+            // pour l'athlète uniquement (seul rôle qui l'affiche, cf. MonProfilAthleteView).
+            if user.role == .etudiant {
+                await abonnementService.chargerStatutEquipe(codeEquipe: code)
+            }
         case .coach, .admin:
             await sharingService.publierMisesAJourCoach(codeEquipe: code, context: modelContext)
         }
