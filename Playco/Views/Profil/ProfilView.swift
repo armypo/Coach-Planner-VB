@@ -197,6 +197,7 @@ struct ProfilView: View {
                              couleur: PaletteMat.orange) {
                     afficherAjoutEleve = true
                 }
+                .bloqueSiNonClub(source: "creation_athlete")
                 boutonAction(icone: "figure.volleyball", titre: "Ajouter un coach",
                              couleur: PaletteMat.bleu) {
                     afficherAjoutCoach = true

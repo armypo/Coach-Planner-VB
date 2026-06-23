@@ -52,3 +52,29 @@ struct FeatureGatingTests {
         #expect(paywallDoitBloquer(role: nil, peutEcrire: false) == false)
     }
 }
+
+@Suite("FeatureGating — gate Club (connexion athlètes)")
+struct ClubGateTests {
+
+    @Test("Coach sans Club → bloqué")
+    func coachSansClubBloque() {
+        #expect(clubRequisDoitBloquer(role: .coach, peutConnecterAthletes: false) == true)
+    }
+
+    @Test("Admin sans Club → bloqué")
+    func adminSansClubBloque() {
+        #expect(clubRequisDoitBloquer(role: .admin, peutConnecterAthletes: false) == true)
+    }
+
+    @Test("Coach avec Club → autorisé")
+    func coachClubAutorise() {
+        #expect(clubRequisDoitBloquer(role: .coach, peutConnecterAthletes: true) == false)
+    }
+
+    @Test("Athlète / assistant / nil → jamais ce gate")
+    func autresRolesNonConcernes() {
+        #expect(clubRequisDoitBloquer(role: .etudiant, peutConnecterAthletes: false) == false)
+        #expect(clubRequisDoitBloquer(role: .assistantCoach, peutConnecterAthletes: false) == false)
+        #expect(clubRequisDoitBloquer(role: nil, peutConnecterAthletes: false) == false)
+    }
+}
