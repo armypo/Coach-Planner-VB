@@ -8,6 +8,7 @@
 
 import SwiftUI
 import StoreKit
+import SwiftData
 
 enum ModePaywall {
     case welcome     // sheet après wizard, dismissable uniquement via choix
