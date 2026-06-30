@@ -449,7 +449,7 @@ final class CloudKitSharingService {
         for (cle, valeur) in Self.champsPublicsUtilisateur(utilisateur, codeEquipe: codeEquipe) {
             record[cle] = valeur
         }
-        try await publicDB.save(record)
+        _ = try await publicDB.save(record)
     }
 
     private func publierJoueur(_ joueur: JoueurEquipe) async throws {

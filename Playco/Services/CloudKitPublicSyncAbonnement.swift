@@ -51,7 +51,7 @@ actor CloudKitPublicSyncAbonnement {
         record["dateModification"] = Date() as CKRecordValue
 
         do {
-            try await publicDB.save(record)
+            _ = try await publicDB.save(record)
             logger.info("Statut abonnement publié pour équipe \(codeEquipe, privacy: .private) — tier=\(tierRaw) actif=\(isActive)")
         } catch {
             logger.error("publierStatut: échec \(error.localizedDescription)")
