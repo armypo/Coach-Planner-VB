@@ -103,7 +103,12 @@ final class AbonnementService {
     // MARK: - Init
 
     init() {
+        #if EXPOSITION
+        // Build d'exposition : tout débloqué (tier Club) — aucun cache disque lu.
+        statut = .clubAnnuel(dateRenouvellement: .distantFuture)
+        #else
         chargerCache()
+        #endif
     }
 
     // MARK: - Cache UserDefaults
@@ -204,6 +209,11 @@ final class AbonnementService {
     /// vers les 10 cases de `Statut`. Sur transition de tier, déclenche la
     /// propagation vers les Équipes.
     func rafraichir(utilisateur: Utilisateur?, context: ModelContext, storeKit: StoreKitService) async {
+        #if EXPOSITION
+        // Build d'exposition : tout débloqué (tier Club). Aucun StoreKit, aucune
+        // publication Public DB, aucun cache disque (bundle id partagé avec la prod).
+        statut = .clubAnnuel(dateRenouvellement: .distantFuture)
+        #else
         let ancienTier = tierActif
         let ancienStatut = statut
 
@@ -278,6 +288,7 @@ final class AbonnementService {
 
         // Détection de transitions pour analytics (essai démarré / expiré).
         detecterTransitions(ancien: ancienStatut, nouveau: statut)
+        #endif
     }
 
     // MARK: - Sync statut équipe (CloudKit public, sans secret)

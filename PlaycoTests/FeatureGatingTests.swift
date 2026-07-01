@@ -78,3 +78,38 @@ struct ClubGateTests {
         #expect(clubRequisDoitBloquer(role: nil, peutConnecterAthletes: false) == false)
     }
 }
+
+/// Verrouille le contrat dont dépend le build EXPOSITION : sous `#if EXPOSITION`,
+/// `AbonnementService` force `statut = .clubAnnuel`. Un tier Club actif DOIT donner
+/// tout débloqué et aucune bannière. Si une refonte future casse ce mapping, elle
+/// casse aussi la démo partenaire — ces tests l'attrapent (compilés en Debug).
+@Suite("AbonnementService — contrat statut Club (invariant EXPOSITION)")
+@MainActor
+struct AbonnementStatutClubTests {
+
+    private func serviceClub() -> AbonnementService {
+        let service = AbonnementService()
+        service.statut = .clubAnnuel(dateRenouvellement: .distantFuture)
+        return service
+    }
+
+    @Test("Club annuel → peut écrire")
+    func clubPeutEcrire() {
+        #expect(serviceClub().peutEcrire == true)
+    }
+
+    @Test("Club annuel → peut connecter des athlètes")
+    func clubPeutConnecterAthletes() {
+        #expect(serviceClub().peutConnecterAthletes == true)
+    }
+
+    @Test("Club annuel → tier actif = Club")
+    func clubTierActif() {
+        #expect(serviceClub().tierActif == .club)
+    }
+
+    @Test("Club annuel → aucune bannière d'abonnement")
+    func clubAucuneBanniere() {
+        #expect(serviceClub().doitAfficherBanniere == false)
+    }
+}
