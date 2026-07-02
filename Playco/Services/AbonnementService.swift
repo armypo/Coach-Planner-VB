@@ -103,8 +103,8 @@ final class AbonnementService {
     // MARK: - Init
 
     init() {
-        #if EXPOSITION
-        // Build d'exposition : tout débloqué (tier Club) — aucun cache disque lu.
+        #if DEMO
+        // Build démo : tout débloqué (tier Club) — aucun cache disque lu.
         statut = .clubAnnuel(dateRenouvellement: .distantFuture)
         #else
         chargerCache()
@@ -209,8 +209,8 @@ final class AbonnementService {
     /// vers les 10 cases de `Statut`. Sur transition de tier, déclenche la
     /// propagation vers les Équipes.
     func rafraichir(utilisateur: Utilisateur?, context: ModelContext, storeKit: StoreKitService) async {
-        #if EXPOSITION
-        // Build d'exposition : tout débloqué (tier Club). Aucun StoreKit, aucune
+        #if DEMO
+        // Build démo : tout débloqué (tier Club). Aucun StoreKit, aucune
         // publication Public DB, aucun cache disque (bundle id partagé avec la prod).
         statut = .clubAnnuel(dateRenouvellement: .distantFuture)
         #else

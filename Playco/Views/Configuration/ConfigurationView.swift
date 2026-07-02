@@ -129,7 +129,7 @@ struct ConfigurationView: View {
         .sheet(isPresented: $afficherRecap) {
             IdentifiantsRecapSheet(creds: credsRecap) {
                 afficherRecap = false
-                // Après les identifiants → paywall de bienvenue (prod) ou fin directe (exposition)
+                // Après les identifiants → paywall de bienvenue (prod) ou fin directe (démo)
                 presenterFinConfiguration()
             }
             .interactiveDismissDisabled(true)
@@ -569,7 +569,7 @@ struct ConfigurationView: View {
     /// Termine la configuration : présente le paywall de bienvenue (prod) ou
     /// va directement à l'app (build d'exposition, sans paywall).
     private func presenterFinConfiguration() {
-        #if EXPOSITION
+        #if DEMO
         onTermine()
         #else
         afficherBienvenuePaywall = true

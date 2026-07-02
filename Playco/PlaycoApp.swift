@@ -235,6 +235,7 @@ struct PlaycoApp: App {
                                         await sharing.rejouerFileAttente(context: containerRef.mainContext)
                                     }.value
                                 }
+                                #if !DEMO
                                 Task {
                                     await syncService.attendreSyncInitiale()
                                     authService.restaurerSession(context: container.mainContext)
@@ -267,11 +268,19 @@ struct PlaycoApp: App {
                                         observerTransactionsTask = storeKitService.observerTransactions()
                                     }
                                 }
+                                #endif
+                                #if DEMO
+                                // Build démo : tutoriel complet à chaque lancement.
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                                    afficherTutorielInitial = true
+                                }
+                                #else
                                 if !tutorielVu {
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
                                         afficherTutorielInitial = true
                                     }
                                 }
+                                #endif
                             }
                             .fullScreenCover(isPresented: $afficherTutorielInitial) {
                                 TutorielView()
@@ -304,6 +313,13 @@ struct PlaycoApp: App {
 
     /// Vérifie si un ProfilCoach complété existe en base → route vers le bon écran
     private func verifierConfiguration() {
+        #if DEMO
+        // Build démo : provisionne coach + équipe démo (vides) et ouvre la
+        // session, puis va directement à l'app (ni login ni onboarding).
+        DemoBootstrap.demarrer(authService: authService, context: container.mainContext)
+        ecranActif = .app
+        return
+        #else
         let descriptor = FetchDescriptor<ProfilCoach>(
             predicate: #Predicate { $0.configurationCompletee == true }
         )
@@ -321,6 +337,7 @@ struct PlaycoApp: App {
             wizardEnCours = false
             ecranActif = .app
         }
+        #endif
     }
 
     // MARK: - Remise à neuf complète

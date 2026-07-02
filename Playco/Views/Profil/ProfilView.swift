@@ -600,17 +600,17 @@ extension Notification.Name {
 
 extension ProfilView {
     var sectionAbonnement: some View {
-        #if EXPOSITION
-        // Build d'exposition : badge visible à la place de l'abonnement — signale
+        #if DEMO
+        // Build démo : badge visible à la place de l'abonnement — signale
         // clairement que ce build a le paywall désactivé (évite toute confusion prod).
         VStack(alignment: .leading, spacing: 12) {
             Label("Version démo", systemImage: "wrench.and.screwdriver.fill")
                 .font(.headline)
                 .foregroundStyle(PaletteMat.violet)
             HStack(spacing: 8) {
-                Text("EXPOSITION")
+                Text("DÉMO")
                     .glassChip(couleur: PaletteMat.violet)
-                Text("Accès complet — build partenaire")
+                Text("Accès complet — build vitrine coach")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()

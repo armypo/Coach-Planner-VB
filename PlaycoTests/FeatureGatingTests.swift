@@ -79,11 +79,11 @@ struct ClubGateTests {
     }
 }
 
-/// Verrouille le contrat dont dépend le build EXPOSITION : sous `#if EXPOSITION`,
+/// Verrouille le contrat dont dépend le build DÉMO : sous `#if DEMO`,
 /// `AbonnementService` force `statut = .clubAnnuel`. Un tier Club actif DOIT donner
 /// tout débloqué et aucune bannière. Si une refonte future casse ce mapping, elle
-/// casse aussi la démo partenaire — ces tests l'attrapent (compilés en Debug).
-@Suite("AbonnementService — contrat statut Club (invariant EXPOSITION)")
+/// casse aussi le build démo — ces tests l'attrapent (compilés en Debug).
+@Suite("AbonnementService — contrat statut Club (invariant DÉMO)")
 @MainActor
 struct AbonnementStatutClubTests {
 
