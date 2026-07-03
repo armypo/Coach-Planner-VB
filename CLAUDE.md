@@ -92,7 +92,9 @@ ContentView (routeur)
 ### Services (`Services/`)
 | Fichier | Description |
 |---------|-------------|
-| `AuthService.swift` | @Observable : connexion(identifiant + motDePasse), creerCompte(), deconnexion(), restaurerSession(), hashage SHA256 avec sel, verrouillage 5 tentatives, creerAdminParDefaut() |
+| `AuthService.swift` | @Observable **SIWA strict (v2.1)** : connexionApple(appleUserID:) → .connecte/.compteInconnu/.echec, restaurerSession(), deconnexion(), verifierEtatSession(). AUCUN mot de passe (PasswordPolicy/LockoutManager/KeyDerivation SUPPRIMÉS — champs hash conservés vides dans les @Model pour le schéma CloudKit) |
+| `MembreFactory.swift` | @MainActor enum : creerMembre(prenom:nom:role:codeEquipe:joueur:identifiantSouhaite:context:exclusions:) — création unifiée Utilisateur + CredentialAthlete SANS secret (codeInvitation généré). Utilisé par wizard, AjoutUtilisateurView, NouveauJoueurView |
+| `CloudKitSharingService.swift` | Coquille (état, RecordType, SharingError avec .reseauIndisponible, extension CKRecord.chaineSecurisee — sanitisation des records publics). Découpé en : `+Publication.swift` (côté coach), `+Import.swift` (côté athlète, fetchRecords paginé par curseur), `+Jointure.swift` (rejoindreEquipe/reclamerMembreLocal SIWA) |
 | `CalendarSyncService.swift` | Sync EventKit : ajouterAuCalendrier(), demanderPermission() |
 | `CloudKitSyncService.swift` | @Observable : statut sync (inactif/sync/syncPausee/erreur), vérification compte iCloud, NWPathMonitor connectivité réseau, journal sync (EvenementSync buffer 50 UserDefaults), mode match (pause/reprise sync), compteur modifications, indicateur visuel SyncIndicateurView |
 | `PDFExportService.swift` | Enum statique : genererPDFMatch(seance:joueurs:statsMatch:) — résumé PDF match (score par set, box score, stats), format Letter UIGraphicsPDFRenderer |
@@ -105,7 +107,6 @@ ContentView (routeur)
 | `FiltreEquipe.swift` | Protocole `FiltreParEquipe` + `.filtreEquipe()` — 12+ conformances (Seance, JoueurEquipe, StrategieCollective, PointMatch, etc.) |
 | `EquipeContext.swift` | EnvironmentKey `codeEquipeActif` pour filtrage données par équipe |
 | `PermissionsRole.swift` | `PermissionModifier` + `.siAutorise()` — masque UI selon le rôle |
-| `ValidationService.swift` | Unicité numéro joueur + formation personnalisée |
 | `BibliothequeDefauts.swift` | CategorieBibliotheque (8 catégories), peuplerSiVide() |
 | `DiagrammesBibliotheque.swift` | Diagrammes pré-dessinés pour exercices par défaut |
 | `LiquidGlassKit.swift` | Constantes Design System centralisées : rayons (12/16/22/28pt), espacement (système 4pt : XS 4/SM 8/MD 16/LG 24/XL 32/XXL 40), animations spring (défaut/rebond/douce), bordures glass, ombres (subtile/douce/moyenne), opacités, constantes courtside (bouton 60/grille 120/score 72/police 18) |
@@ -129,9 +130,8 @@ ContentView (routeur)
 ### Authentification (`Views/Auth/`)
 | Fichier | Description |
 |---------|-------------|
-| `ChoixInitialView.swift` | Premier lancement : "Créer mon équipe" ou "Rejoindre une équipe" |
-| `LoginView.swift` | Connexion identifiant + mot de passe (pas de code école), sélecteur Coach/Athlète, bouton vers ChoixInitialView |
-| `RejoindreEquipeView.swift` | Connexion avec **code équipe** + identifiant + mot de passe, validation appartenance équipe |
+| `ChoixInitialView.swift` | Premier lancement : "Créer mon équipe", "Se connecter" ou "Rejoindre une équipe" |
+| `LoginView.swift` | **SIWA-only** : bouton Sign in with Apple + sheet « Rejoindre mon équipe » (code équipe + code d'invitation) si Apple ID inconnu, lien « Créer ou rejoindre une équipe ». Plus aucun formulaire identifiant/mot de passe |
 | `SelectionEquipeView.swift` | Sélection d'équipe si accès multi-équipes, callback onSelection(Equipe) |
 
 ### Configuration / Onboarding (`Views/Configuration/`)
@@ -241,12 +241,14 @@ ContentView (routeur)
 
 ## Conventions & patterns critiques
 
-### Authentification
-- **Connexion coach** : identifiant (prenom.nom) + mot de passe (LoginView)
-- **Rejoindre équipe (athlète)** : code équipe + identifiant + mot de passe (RejoindreEquipeView) — valide que le code équipe existe ET que l'utilisateur appartient à cette équipe
-- **Identifiant auto-généré** : `Utilisateur.genererIdentifiantUnique(prenom:nom:context:)` — `prenom.nom` sans accents, minuscules, suffixe numérique si doublon (prenom.nom2, prenom.nom3)
-- **Hash** : SHA256 avec sel (CryptoKit), migration auto des anciens hash sans sel
-- **Verrouillage** : 5 tentatives → blocage 5 minutes
+### Authentification — SIWA STRICT (v2.1)
+- **Sign in with Apple est l'UNIQUE méthode de connexion.** Aucun identifiant+mot de passe nulle part dans l'UI. Les comptes legacy par mot de passe ne peuvent plus se connecter (décision assumée, pré-lancement).
+- **Coach (wizard étape 3)** : bouton SIWA dans `ConfigProfilCoachView` → `appleUserID` capturé + pré-remplissage prénom/nom/courriel Apple ; finalisation crée (ou RÉUTILISE si même Apple ID — anti-doublon multi-équipes) l'Utilisateur coach sans hash + auto-login `connexionApple`.
+- **Athlète/assistant** : créés via `MembreFactory` (wizard, AjoutUtilisateurView, NouveauJoueurView) — identifiant auto + `codeInvitation`, AUCUN mot de passe. Jonction : LoginView → SIWA → « Rejoindre mon équipe » (code équipe + code d'invitation) → `rejoindreEquipe`/`reclamerMembreLocal` rattache l'appleUserID.
+- **Code d'invitation** : affiché dans IdentifiantsRecapSheet (wizard), IdentifiantsEquipeView (profil) et la fiche joueur (JoueurDetailView — remplace l'ancien reset de mot de passe).
+- **Identifiant auto-généré** : `Utilisateur.genererIdentifiantUnique(prenom:nom:context:exclusions:)` — username d'affichage uniquement (plus de connexion par identifiant), minuscules.
+- **Champs hash conservés au schéma** : `motDePasseHash/sel/iterations/motDePasseClair` restent dans les @Model (suppression = migration CloudKit destructive) mais ne sont JAMAIS écrits ni lus.
+- **Révocation SIWA** : vérifiée au lancement (PlaycoApp) + retour foreground (ContentView) → déconnexion forcée.
 - **Rôles** : `.admin` (coach créateur), `.coach` (assistant), `.etudiant` (athlète)
 - **Permissions** : `PermissionsRole.swift` — `.siAutorise()` masque les éléments selon le rôle
 
@@ -330,7 +332,16 @@ Xcode 27.0 beta est dans `~/Downloads/Xcode-beta.app` (pas le `xcode-select` glo
 DEVELOPER_DIR="/Users/armypo/Downloads/Xcode-beta.app/Contents/Developer" \
 xcodebuild build -scheme Playco -destination 'platform=iOS Simulator,name=iPad Air 13-inch (M4),OS=27.0'
 ```
-⚠️ **Tests sous Xcode 27 beta** : lancer avec `-parallel-testing-enabled NO` — les clones de test parallèles font crasher le host CloudKit du simulateur iOS 27 beta (cascade de faux échecs 0.000 s). En série : **132/132 verts**.
+⚠️ **Tests sous Xcode 27 beta** : lancer avec `-parallel-testing-enabled NO` — les clones de test parallèles font crasher le host CloudKit du simulateur iOS 27 beta (cascade de faux échecs 0.000 s).
+
+🛑 **RÉGRESSION runtime simulateur iOS 27 beta (constatée 2026-07-03, runtime `24A5355p`)** : TOUS les tests SwiftData in-memory crashent au premier `context.save()` avec `NSInternalInconsistencyException: No eligible connection available` — y compris sur `main` NON modifié et simulateur vierge (bissection prouvée ; Xcode beta inchangé `27A5194q`, c'est le runtime qui s'est mis à jour). **Valider les tests sur la toolchain stable** :
+```bash
+# Xcode 26.6 (xcode-select par défaut) — 181/181 verts (2026-07-03)
+xcodebuild test -scheme Playco \
+  -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5),OS=26.5' \
+  -parallel-testing-enabled NO
+```
+(Plus d'iPad Air dans les runtimes 26.x installés — utiliser iPad Pro 13-inch M5.)
 
 ## État actuel — v1.9.0
 - ✅ Build réussi — **0 erreur, 0 warning**
@@ -419,6 +430,7 @@ L'interface est entièrement en **français**. Noms de variables, commentaires e
 | **partage/connexion/paywall** (juin 2026) | **Partage coach→athlète + login cross-Apple-ID + paywall** — Correction de 3 bugs bloquants à l'intersection partage/login/paywall. (1) **Login athlète cross-Apple-ID** : recréation de `RejoindreEquipeView` (code+identifiant+mdp → `equipeExiste` → `recupererEtImporterEquipe` → `connexion` → vérif appartenance) + 3e carte `ChoixInitialView` + écran `.rejoindre` dans `PlaycoApp`. (2) **Tier dans la gate** : `EquipePartagee` ne porte pas le tier → `recupererEtImporterEquipe` + `appliquerGateTier` (rendue **async**) sourcent le tier depuis `CloudKitPublicSyncAbonnement.lire` (sinon athlète d'un coach Club bloqué). (3) **Paywall rafraîchi** : `rafraichir()` après achat/restore (PaywallView) + au foreground coach (ContentView). **Données partagées lecture seule** : record types `SeancePartagee` + `MatchCalendrierPartagee` + stats cumulées (~16) sur `JoueurPartage` (publier/importer + merge `dateModification`). **Sweep coach unique** `publierMisesAJourCoach` (foreground/appear, respecte `masquerPratiquesAthletes`) + `syncDepuisPublic` athlète câblé, via `ContentView.synchroniserDonneesPartagees()` role-aware. Champs CloudKit-safe ajoutés : `Seance.dateModification`, `MatchCalendrier.codeEquipe`+`dateModification`. Lecture seule athlète (`.siAutorise` sur création séance). **150/150 tests** série (18 nouveaux), build 0/0 iOS 27 + iOS 26.3. Sécurité : aucune PII sur les nouveaux types ; rôle d'écriture créateur-seul = action Dashboard (`docs/Securite_AbonnementPublicDB.md`). Détails : `docs/TODO_PartageConnexionPaywall.md`. |
 | **audit/xcode27** (juin 2026) | **Audit Xcode 27 beta** — Build sous Xcode 27.0 beta (`27A5194q`, SDK iOS 27.0) via `DEVELOPER_DIR`, cible iOS 26.2 inchangée. **Résultat : 0 erreur / 0 warning, 132/132 tests (en série).** Concurrence : 12 warnings baseline corrigés sans risque (`JSONCoderCache`/`KeychainService`/`PolitiqueRetry` → `nonisolated` ; `_ = …save()`). **`SWIFT_STRICT_CONCURRENCY = complete` testé puis ABANDONNÉ** : force des `@Model nonisolated` qui crashent SwiftData+CloudKit au runtime iOS 27 (`NSManagedObjectContext.save()` / migration métadonnées) — diagnostic prouvé par bissection. Mode approachable conservé ; flip Swift 6 + strict reportés post-lancement. Correctness : force-unwraps URL éliminés (helper `AppConstants.url(_:)`). TelemetryDeck : placeholder nettoyé (logger-only volontaire). **Liquid Glass natif** : `GlassCard`/`GlassSection`/`GlassChip` → `.glassEffect(.regular.tint(:),in:)` (API iOS 26.0, compat cible 26.2 sans garde), 15 sites héritent. ⚠️ Tests parallèles instables sous Xcode 27 beta (clones + host CloudKit) → `-parallel-testing-enabled NO`. Détails : `docs/Audit_Xcode27_Synthese_Juin_2026.md` + `docs/TODO_Audit_Xcode27.md`. **NB v2.0.1/SIWA** : le `CloudKitPublicSyncAbonnement` de cette branche est remplacé par la version informationnelle SIWA (pas d'accès accordé depuis la Public DB). |
 | **audit/prelaunch** (mai 2026) | **Audit pré-lancement App Store** — Branche dédiée `audit/prelaunch` (7 commits). W1 inventaire : 30 @Model recensés (vs 23 dans doc), 8 fichiers > 600 lignes (splits justifiés reportés). W2 vérif `JSONCoderCache` propre. W3 design tokens : `.padding(24)` → `LiquidGlassKit.espaceLG` (6 occurrences mécaniques), 0 occurrence `.easeInOut`/`.foregroundColor(`. W4 a11y partiel : Canvas PencilKit (`UIViewRepresentable` traits + label dynamique selon mode), DockBar (`accessibilityValue` sur badges Messages/Profil), BarreOutilsDessin (`.accessibilityLabel/Hint` sur outils + menus formation). W5 tests : **+32 nouveaux tests passants** (`FiltreParEquipeTests` 7, `TypeActionPointTests` 12, `JoueurEquipeStatsTests` 13). **Fix `7fb4dd9` : 7 tests `MultiUtilisateurTests` pré-existants verts** — 3 causes racines identifiées : (1) `creerAuthIsole()` purgeait seulement `SessionManager.cleKeychain`, manquait `LockoutManager.cleKeychain` (isolation Keychain entre tests sérialisés), (2) `Utilisateur.iterations` par défaut = 1 → verifier choisissait branche SHA256 legacy au lieu de PBKDF2 600k → mismatch hash, (3) `motdepasse1` rejeté par nouvelle `PasswordPolicy` (12 chars min + check mots communs). **Tests : 123/123 ✅**. Items humains W6/W8 (sandbox StoreKit, VoiceOver iPad physique, AppIcon prod, TestFlight 48h, ASC assets) documentés dans `docs/Audit_Synthese_Pre_Launch_Mai_2026.md`. |
+| **audit complet + SIWA strict** (juil. 2026) | **Audit complet du code + alignement SIWA strict (v2.1)** — 6 agents d'exploration (~115 trouvailles brutes), vérification adversariale (~25 faux positifs écartés). **Bugs corrigés** : `Seance.dupliquer` copiait sans `codeEquipe` (fuite inter-équipes — extraction `Seance+Duplication.swift` + tests) ; `equipeExiste` confondait hors-ligne et code invalide (→ `throws` + `SharingError.reseauIndisponible`) ; `PalmaresRecordsView` n'affichait JAMAIS les records (`@State records` jamais rempli) ; `TerrainEditeurViewModel.sauvegarderEtapeActive` → Bool + guards (perte de travail sur échec d'encodage) ; crash latent (AppleSignInService non injecté sur `.login`/`.configuration`) ; reset mdp « volleyball123 » hardcodé supprimé. **SIWA strict** : wizard étape 3 = SignInWithAppleButton (réutilisation du compte si même Apple ID), `MembreFactory` (création membre sans secret, DRY ×3), LoginView SIWA-only, TOUTES les surfaces mdp supprimées (`connexion()`/`creerCompte()`/`lierCompteExistant()`/`PasswordPolicy`/`LockoutManager`/`KeyDerivation` + leurs tests) ; champs hash conservés au schéma CloudKit. **Perf** : cache `@Transient` sur `Seance.sets` (invalidation par comparaison du Data — compatible sync CloudKit), suppression d'équipe par `#Predicate` (fini le fetch de toute la table), journal sync batché (write UserDefaults ~5 s/10 evts + flush background), pagination CloudKit par curseur (plafond 25 pages), caches @State (Calendrier/Messagerie [signature `lecteurIDsData` pour les non-lus]/Bibliothèque/Comparaison/Palmarès). **Robustesse** : sanitisation `CKRecord.chaineSecurisee` (50 lectures de records publics), dédup `Abonnement`, Keychain `SecItemUpdate` atomique, `publierStatut` distingue erreur réseau. **DRY** : `CloudKitSharingService` découpé (+Publication/+Import/+Jointure, signatures inchangées), `terrainPostes(estAdversaire:)` (RotationLive), `labelCelluleStat` (StatsLive), `GestionStaffView` ForEach, `routerVersApp()` (ex-appliquerGateTier). **Tests** : suites mdp supprimées, +9 suites nouvelles/refondues (SeanceDuplication, TerrainEditeurViewModel, SeanceSetsCache, MembreFactory, MatchLiveViewModel 15, PaywallViewModel 7 [statiques `ctaLabel`/`ctaEstActif` extraits], CSV 7, PDF 4, MultiUtilisateur refondu SIWA). Conventions hitting % documentées (fraction 0-1 modèles vs % 0-100 dashboard). NON retenus (risque > bénéfice) : découpage des 4 grosses vues, batch delete SwiftData, SKTestSession, migration SessionManager → appleUserID. |
 
 <!-- code-review-graph MCP tools -->
 ## MCP Tools: code-review-graph
