@@ -3,18 +3,25 @@
 //
 
 import SwiftUI
+import AuthenticationServices
 
-/// Étape 3 — Profil du coach
+/// Étape 3 — Profil du coach.
+///
+/// SIWA strict : la connexion du coach passe par Sign in with Apple — aucun
+/// identifiant ni mot de passe saisi. `appleUserID` est capturé ici et
+/// utilisé à la finalisation (création du compte + auto-login).
 struct ConfigProfilCoachView: View {
+    @Environment(AppleSignInService.self) private var appleSignIn
+
     @Binding var prenom: String
     @Binding var nom: String
     @Binding var courriel: String
     @Binding var telephone: String
     @Binding var role: RoleCoach
     @Binding var photo: Data?
-    @Binding var identifiant: String
-    @Binding var motDePasse: String
-    @Binding var confirmerMotDePasse: String
+    @Binding var appleUserID: String
+
+    @State private var erreurApple: String?
 
     var body: some View {
         ScrollView {
@@ -100,82 +107,49 @@ struct ConfigProfilCoachView: View {
 
                 Divider().padding(.vertical, 4)
 
-                // MARK: - Identifiants
-                Text("IDENTIFIANTS DE CONNEXION")
+                // MARK: - Connexion (Sign in with Apple)
+                Text("CONNEXION")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(PaletteMat.orange)
                     .tracking(0.8)
 
-                // Code école (identifiant)
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("CODE ÉCOLE (identifiant) *")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .tracking(0.5)
-                    TextField("ex : christopher.dionne", text: $identifiant)
-                        .autocapitalization(.none)
-                        .autocorrectionDisabled()
-                        .textContentType(.username)
-                        .padding(14)
-                        .background(Color(.secondarySystemGroupedBackground),
-                                    in: RoundedRectangle(cornerRadius: 12))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .strokeBorder(identifiant.trimmingCharacters(in: .whitespaces).isEmpty ? Color.clear : .green.opacity(0.4), lineWidth: 1)
-                        )
-                    Text("Cet identifiant servira à vous connecter à l'application.")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                }
-                .onChange(of: prenom) { genererIdentifiant() }
-                .onChange(of: nom) { genererIdentifiant() }
+                if appleUserID.isEmpty {
+                    VStack(alignment: .leading, spacing: 10) {
+                        SignInWithAppleButton(.signUp) { requete in
+                            appleSignIn.configurerRequete(requete)
+                        } onCompletion: { resultat in
+                            traiterApple(resultat)
+                        }
+                        .signInWithAppleButtonStyle(.black)
+                        .frame(height: 50)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
 
-                // Mot de passe
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("MOT DE PASSE *")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .tracking(0.5)
-                    SecureField("Minimum 6 caractères", text: $motDePasse)
-                        .textContentType(.newPassword)
-                        .padding(14)
-                        .background(Color(.secondarySystemGroupedBackground),
-                                    in: RoundedRectangle(cornerRadius: 12))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .strokeBorder(motDePasse.count >= 6 ? .green.opacity(0.4) : Color.clear, lineWidth: 1)
-                        )
-                    if !motDePasse.isEmpty && motDePasse.count < 6 {
-                        Text("Le mot de passe doit contenir au moins 6 caractères")
+                        Text("Ton compte coach utilise Sign in with Apple — aucun mot de passe à retenir.")
                             .font(.caption2)
-                            .foregroundStyle(.red)
-                    }
-                }
+                            .foregroundStyle(.tertiary)
 
-                // Confirmer mot de passe
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("CONFIRMER LE MOT DE PASSE *")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .tracking(0.5)
-                    SecureField("Retapez le mot de passe", text: $confirmerMotDePasse)
-                        .textContentType(.newPassword)
-                        .padding(14)
-                        .background(Color(.secondarySystemGroupedBackground),
-                                    in: RoundedRectangle(cornerRadius: 12))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .strokeBorder(
-                                    !confirmerMotDePasse.isEmpty && confirmerMotDePasse == motDePasse
-                                        ? .green.opacity(0.4) : Color.clear,
-                                    lineWidth: 1
-                                )
-                        )
-                    if !confirmerMotDePasse.isEmpty && confirmerMotDePasse != motDePasse {
-                        Text("Les mots de passe ne correspondent pas")
-                            .font(.caption2)
-                            .foregroundStyle(.red)
+                        if let erreurApple {
+                            Text(erreurApple)
+                                .font(.caption2)
+                                .foregroundStyle(.red)
+                        }
                     }
+                } else {
+                    HStack(spacing: 10) {
+                        Image(systemName: "checkmark.seal.fill")
+                            .foregroundStyle(.green)
+                        Text("Compte Apple lié")
+                            .font(.subheadline.weight(.semibold))
+                        Spacer()
+                        Button("Changer") {
+                            appleUserID = ""
+                        }
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                    }
+                    .padding(14)
+                    .background(Color.green.opacity(0.08),
+                                in: RoundedRectangle(cornerRadius: 12))
                 }
 
                 Spacer(minLength: 20)
@@ -184,26 +158,23 @@ struct ConfigProfilCoachView: View {
         }
     }
 
-    /// Auto-génère l'identifiant depuis prénom.nom (sans accents, minuscules)
-    private func genererIdentifiant() {
-        // Ne pas écraser si l'utilisateur a modifié manuellement
-        let p = prenom.trimmingCharacters(in: .whitespaces)
-        let n = nom.trimmingCharacters(in: .whitespaces)
-        guard !p.isEmpty || !n.isEmpty else { return }
-
-        let candidat = "\(p).\(n)"
-            .lowercased()
-            .folding(options: .diacriticInsensitive, locale: Locale(identifier: "fr_FR"))
-            .replacingOccurrences(of: " ", with: "-")
-            .filter { $0.isLetter || $0 == "." || $0 == "-" }
-
-        // Ne mettre à jour que si l'identifiant est vide ou correspond au format auto-généré
-        if identifiant.isEmpty || identifiant == candidat
-            || identifiant == ancienIdentifiantAuto {
-            identifiant = candidat
+    /// Capture l'identité Apple et pré-remplit prénom/nom/courriel si Apple
+    /// les fournit (uniquement à la toute première autorisation).
+    private func traiterApple(_ resultat: Result<ASAuthorization, Error>) {
+        erreurApple = nil
+        guard let creds = appleSignIn.traiterResultat(resultat) else {
+            erreurApple = "Connexion Apple impossible. Réessaie."
+            return
         }
-        ancienIdentifiantAuto = candidat
+        appleUserID = creds.user
+        if prenom.trimmingCharacters(in: .whitespaces).isEmpty, !creds.prenom.isEmpty {
+            prenom = creds.prenom
+        }
+        if nom.trimmingCharacters(in: .whitespaces).isEmpty, !creds.nom.isEmpty {
+            nom = creds.nom
+        }
+        if courriel.trimmingCharacters(in: .whitespaces).isEmpty, let email = creds.email {
+            courriel = email
+        }
     }
-
-    @State private var ancienIdentifiantAuto = ""
 }

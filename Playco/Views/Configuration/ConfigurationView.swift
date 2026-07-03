@@ -38,16 +38,14 @@ struct ConfigurationView: View {
     // Étape 2 — Sport
     @State var sportChoisi: SportType = .indoor
 
-    // Étape 3 — Profil coach
+    // Étape 3 — Profil coach (SIWA strict : identité Apple, aucun mot de passe)
     @State var prenomCoach = ""
     @State var nomCoach = ""
     @State var courrielCoach = ""
     @State var telephoneCoach = ""
     @State var roleCoach: RoleCoach = .entraineurChef
     @State var photoCoach: Data? = nil
-    @State var identifiantCoach = ""
-    @State var motDePasseCoach = ""
-    @State var confirmerMotDePasseCoach = ""
+    @State var appleUserIDCoach = ""
 
     // Étape 4 — Équipe
     @State var nomEquipe = ""
@@ -80,9 +78,7 @@ struct ConfigurationView: View {
         case 2: return true // sélection par défaut
         case 3: return !prenomCoach.trimmingCharacters(in: .whitespaces).isEmpty &&
                        !nomCoach.trimmingCharacters(in: .whitespaces).isEmpty &&
-                       !identifiantCoach.trimmingCharacters(in: .whitespaces).isEmpty &&
-                       motDePasseCoach.count >= 6 &&
-                       motDePasseCoach == confirmerMotDePasseCoach
+                       !appleUserIDCoach.isEmpty
         case 4: return !nomEquipe.trimmingCharacters(in: .whitespaces).isEmpty
         case 5: return true // optionnel
         case 6: return true // optionnel
@@ -192,8 +188,7 @@ struct ConfigurationView: View {
                 prenom: $prenomCoach, nom: $nomCoach,
                 courriel: $courrielCoach, telephone: $telephoneCoach,
                 role: $roleCoach, photo: $photoCoach,
-                identifiant: $identifiantCoach, motDePasse: $motDePasseCoach,
-                confirmerMotDePasse: $confirmerMotDePasseCoach
+                appleUserID: $appleUserIDCoach
             )
         case 4:
             ConfigEquipeView(
@@ -342,118 +337,39 @@ struct ConfigurationView: View {
         // Accumulateur pour le sheet récap final
         var recaps: [CredentialRecap] = []
 
-        // 4. Assistants → Utilisateur + CredentialAthlete
+        // 4. Assistants → Utilisateur + CredentialAthlete (SIWA : aucun mot de passe)
         for a in assistants {
-            let sel = authService.genererSel()
-            let hash = authService.hashMotDePasse(a.motDePasse, sel: sel)
-            let idUnique = Utilisateur.genererIdentifiantUnique(
-                prenom: a.prenom,
-                nom: a.nom,
-                context: modelContext,
-                exclusions: idsCreesEnMemoire
+            let membre = MembreFactory.creerMembre(
+                prenom: a.prenom, nom: a.nom,
+                role: .assistantCoach, codeEquipe: codeEquipe,
+                context: modelContext, exclusions: &idsCreesEnMemoire
             )
-            idsCreesEnMemoire.insert(idUnique)
-            let utilisateur = Utilisateur(
-                identifiant: idUnique,
-                motDePasseHash: hash,
-                prenom: a.prenom,
-                nom: a.nom,
-                role: .assistantCoach,
-                codeEcole: codeEquipe
-            )
-            utilisateur.sel = sel
-            utilisateur.iterations = AuthService.iterationsParDefaut
-            utilisateur.codeInvitation = Utilisateur.genererCodeUniqueInvitation(context: modelContext)
-            utilisateur.codeEquipe = codeEquipe
-            modelContext.insert(utilisateur)
 
             let assistant = AssistantCoach(prenom: a.prenom, nom: a.nom)
             assistant.courriel = a.courriel
             assistant.roleAssistant = a.role
-            assistant.identifiant = idUnique
-            assistant.motDePasseHash = hash
-            assistant.sel = sel
+            assistant.identifiant = membre.utilisateur.identifiant
             assistant.equipe = equipe
             assistant.codeEquipe = codeEquipe
             modelContext.insert(assistant)
 
-            // CredentialAthlete = marqueur de membre (identifiant + équipe). SÉCURITÉ :
-            // on ne stocke PLUS de mot de passe en clair (connexion via SIWA + code
-            // d'invitation). motDePasseClair reste vide.
-            let cred = CredentialAthlete(
-                utilisateurID: utilisateur.id,
-                joueurEquipeID: nil,
-                identifiant: idUnique,
-                motDePasseClair: "",
-                codeEquipe: codeEquipe
-            )
-            modelContext.insert(cred)
-
-            recaps.append(CredentialRecap(
-                nomComplet: "\(a.prenom) \(a.nom)",
-                identifiant: idUnique,
-                codeEquipe: codeEquipe,
-                codeInvitation: utilisateur.codeInvitation,
-                role: "Assistant"
-            ))
+            recaps.append(membre.recap)
         }
 
-        // 5. Joueurs → JoueurEquipe + Utilisateur + CredentialAthlete
+        // 5. Joueurs → JoueurEquipe + Utilisateur + CredentialAthlete (SIWA)
         for j in joueursTemp {
             let joueur = JoueurEquipe(nom: j.nom, prenom: j.prenom, numero: j.numero, poste: j.poste)
             joueur.codeEquipe = codeEquipe
             joueur.equipe = equipe
-            let sel = authService.genererSel()
-            let hash = authService.hashMotDePasse(j.motDePasse, sel: sel)
-            let idJoueur = Utilisateur.genererIdentifiantUnique(
-                prenom: j.prenom,
-                nom: j.nom,
-                context: modelContext,
-                exclusions: idsCreesEnMemoire
-            )
-            idsCreesEnMemoire.insert(idJoueur)
-            joueur.identifiant = idJoueur
-            joueur.motDePasseHash = hash
-            joueur.sel = sel
             modelContext.insert(joueur)
 
-            let utilisateur = Utilisateur(
-                identifiant: idJoueur,
-                motDePasseHash: hash,
-                prenom: j.prenom,
-                nom: j.nom,
-                role: .etudiant,
-                codeEcole: codeEquipe
+            let membre = MembreFactory.creerMembre(
+                prenom: j.prenom, nom: j.nom,
+                role: .etudiant, codeEquipe: codeEquipe,
+                joueur: joueur,
+                context: modelContext, exclusions: &idsCreesEnMemoire
             )
-            utilisateur.sel = sel
-            utilisateur.iterations = AuthService.iterationsParDefaut
-            utilisateur.joueurEquipeID = joueur.id
-            utilisateur.numero = j.numero
-            utilisateur.posteRaw = j.poste.rawValue
-            utilisateur.codeInvitation = Utilisateur.genererCodeUniqueInvitation(context: modelContext)
-            utilisateur.codeEquipe = codeEquipe
-            modelContext.insert(utilisateur)
-
-            joueur.utilisateurID = utilisateur.id
-
-            // CredentialAthlete = marqueur de membre. SÉCURITÉ : aucun mot de passe
-            // en clair stocké (connexion via SIWA + code d'invitation).
-            let cred = CredentialAthlete(
-                utilisateurID: utilisateur.id,
-                joueurEquipeID: joueur.id,
-                identifiant: idJoueur,
-                motDePasseClair: "",
-                codeEquipe: codeEquipe
-            )
-            modelContext.insert(cred)
-
-            recaps.append(CredentialRecap(
-                nomComplet: "\(j.prenom) \(j.nom)",
-                identifiant: idJoueur,
-                codeEquipe: codeEquipe,
-                codeInvitation: utilisateur.codeInvitation,
-                role: "Athlète"
-            ))
+            recaps.append(membre.recap)
         }
 
         // 6. Créneaux récurrents → Séances pour 4 semaines
@@ -496,27 +412,43 @@ struct ConfigurationView: View {
         // Sauvegarder et créer admin coach
         try? modelContext.save()
 
-        // Créer l'utilisateur coach admin avec les identifiants choisis
-        let sel = authService.genererSel()
-        let hash = authService.hashMotDePasse(motDePasseCoach, sel: sel)
-        let identifiantFinal = identifiantCoach.lowercased().trimmingCharacters(in: .whitespaces)
-        let coachUser = Utilisateur(
-            identifiant: identifiantFinal,
-            motDePasseHash: hash,
-            prenom: prenomCoach,
-            nom: nomCoach,
-            role: .coach,
-            codeEcole: codeEquipe
+        // Créer (ou réutiliser) l'utilisateur coach lié à l'identité Apple.
+        // Réutilisation : un même Apple ID qui relance le wizard (2e équipe)
+        // ne doit PAS créer un second compte — connexionApple matcherait
+        // arbitrairement l'un des deux.
+        let appleID = appleUserIDCoach
+        let descCoachExistant = FetchDescriptor<Utilisateur>(
+            predicate: #Predicate { $0.appleUserID == appleID && $0.estActif == true }
         )
-        coachUser.sel = sel
-        coachUser.iterations = AuthService.iterationsParDefaut
-        modelContext.insert(coachUser)
+        if (try? modelContext.fetch(descCoachExistant).first) == nil {
+            let identifiantFinal = Utilisateur.genererIdentifiantUnique(
+                prenom: prenomCoach, nom: nomCoach,
+                context: modelContext, exclusions: idsCreesEnMemoire
+            )
+            let coachUser = Utilisateur(
+                identifiant: identifiantFinal,
+                motDePasseHash: "",   // SIWA strict : aucun secret stocké
+                prenom: prenomCoach,
+                nom: nomCoach,
+                role: .coach,
+                codeEcole: codeEquipe
+            )
+            coachUser.appleUserID = appleID
+            coachUser.codeInvitation = Utilisateur.genererCodeUniqueInvitation(context: modelContext)
+            modelContext.insert(coachUser)
+        }
         try? modelContext.save()
 
-        // Auto-login du coach
-        authService.connexion(identifiant: identifiantFinal,
-                              motDePasse: motDePasseCoach,
-                              context: modelContext)
+        // Auto-login du coach via l'identité Apple capturée à l'étape 3
+        let etatConnexion = authService.connexionApple(
+            appleUserID: appleID,
+            prenom: prenomCoach,
+            nom: nomCoach,
+            context: modelContext
+        )
+        if case .connecte = etatConnexion {} else {
+            loggerConfig.error("Auto-login SIWA post-wizard échoué — l'utilisateur devra se reconnecter")
+        }
 
         // Publier les données d'équipe vers CloudKit public (async, ne bloque pas)
         let equipeAPublier = equipe
@@ -589,8 +521,6 @@ struct AssistantTemp: Identifiable {
     var courriel = ""
     var role: RoleAssistant = .assistantCoach
     var identifiant = ""
-    // Mdp auto-généré dès la création — pas saisi par le coach.
-    var motDePasse = Utilisateur.genererMotDePasseAthlete()
 }
 
 struct JoueurTemp: Identifiable {
@@ -600,8 +530,6 @@ struct JoueurTemp: Identifiable {
     var numero: Int = 1
     var poste: PosteJoueur = .recepteur
     var identifiant = ""
-    // Mdp auto-généré dès la création — pas saisi par le coach.
-    var motDePasse = Utilisateur.genererMotDePasseAthlete()
 }
 
 struct CreneauTemp: Identifiable {

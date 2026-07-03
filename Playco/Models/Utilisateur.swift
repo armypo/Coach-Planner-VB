@@ -253,18 +253,6 @@ final class Utilisateur {
         return base + "." + String(UUID().uuidString.prefix(4)).lowercased()
     }
 
-    /// Génère un mot de passe athlète/assistant au format `LLLLL_DD` :
-    /// 5 lettres safe (sans I/L/O) + underscore + 2 chiffres safe (sans 0/1).
-    /// Évite les caractères ambigus visuellement pour faciliter la communication
-    /// du mot de passe à l'utilisateur.
-    static func genererMotDePasseAthlete() -> String {
-        let lettres = "ABCDEFGHJKMNPQRSTUVWXYZ"  // sans I, L, O
-        let chiffres = "23456789"                 // sans 0, 1
-        let partieLettres = String((0..<5).compactMap { _ in lettres.randomElement() })
-        let partieChiffres = String((0..<2).compactMap { _ in chiffres.randomElement() })
-        return "\(partieLettres)_\(partieChiffres)"
-    }
-
     /// Vérifie si un identifiant est disponible
     static func identifiantDisponible(_ identifiant: String, context: ModelContext) -> Bool {
         let descriptor = FetchDescriptor<Utilisateur>(

@@ -1,23 +1,26 @@
 //  Playco
 //  Copyright © 2025 Christopher Dionne. Tous droits réservés.
 //
+//  Tests du flux multi-utilisateur coach/athlète en SIWA strict (v2.1) :
+//  le coach crée les membres via MembreFactory (aucun secret), l'athlète
+//  rejoint par code d'équipe + code d'invitation (reclamerMembreLocal) puis
+//  se connecte par Sign in with Apple.
+//
 
 import Testing
 import Foundation
 import SwiftData
-import CryptoKit
 @testable import Playco
 
-/// Tests sérialisés : partage de Keychain global iOS.
+/// Tests sérialisés : partage de Keychain global iOS (session).
 @Suite("Multi-utilisateur — Coach / Athlète", .serialized)
 @MainActor
 struct MultiUtilisateurTests {
 
     private func creerAuthIsole() -> AuthService {
-        // Purger TOUS les Keychain partagés iOS (session + lockout) pour garantir l'isolation
-        // entre tests sérialisés — sinon un lockout résiduel bloque les connexions suivantes.
+        // Purger le Keychain de session partagé iOS pour garantir l'isolation
+        // entre tests sérialisés.
         KeychainService.supprimer(cle: SessionManager.cleKeychain)
-        KeychainService.supprimer(cle: LockoutManager.cleKeychain)
         let suite = UserDefaults(suiteName: "playco-test-\(UUID().uuidString)")!
         return AuthService(userDefaults: suite)
     }
@@ -32,33 +35,32 @@ struct MultiUtilisateurTests {
             FormationPersonnalisee.self, Presence.self, Evaluation.self,
             ProgrammeMuscu.self, ExerciceMuscu.self, SeanceMuscu.self,
             TestPhysique.self, ExerciceBibliotheque.self,
-            ScoutingReport.self, PhaseSaison.self, ObjectifJoueur.self
+            ScoutingReport.self, PhaseSaison.self, ObjectifJoueur.self,
+            CredentialAthlete.self
         ])
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
         let container = try ModelContainer(for: schema, configurations: [config])
         return ModelContext(container)
     }
 
-    // MARK: - Simulation complète du flux
+    // MARK: - Simulation complète du flux SIWA
 
-    @Test("Flux complet : Coach crée équipe, athlète rejoint, permissions correctes")
+    @Test("Flux complet SIWA : coach crée l'équipe, athlète rejoint par code d'invitation, permissions correctes")
     func fluxCompletCoachAthlete() throws {
         let auth = creerAuthIsole()
         let context = try creerContexteEnMemoire()
 
-        // ── 1. Coach crée son compte ──
-        let selCoach = auth.genererSel()
-        let hashCoach = auth.hashMotDePasse("coach123", sel: selCoach)
+        // ── 1. Coach crée son compte (lié à son Apple ID) ──
         let coach = Utilisateur(
             identifiant: "chris.dionne",
-            motDePasseHash: hashCoach,
+            motDePasseHash: "",   // SIWA strict : aucun secret
             prenom: "Christopher",
             nom: "Dionne",
-            role: .admin
+            role: .admin,
+            codeEcole: "ELANS01"
         )
-        coach.sel = selCoach
-        coach.codeEcole = "ELANS01"
-        coach.iterations = AuthService.iterationsParDefaut
+        coach.appleUserID = "001.coach.apple"
+        coach.codeEquipe = "ELANS01"
         context.insert(coach)
 
         // ── 2. Coach crée l'équipe ──
@@ -67,32 +69,25 @@ struct MultiUtilisateurTests {
         equipe.categorieRaw = CategorieEquipe.masculin.rawValue
         context.insert(equipe)
 
-        // ── 3. Coach crée un joueur + utilisateur athlète ──
+        // ── 3. Coach crée un joueur + membre athlète via MembreFactory ──
         let joueur = JoueurEquipe(nom: "Tremblay", prenom: "Jean", numero: 7, poste: .passeur)
         joueur.codeEquipe = "ELANS01"
         context.insert(joueur)
 
-        let selAthlete = auth.genererSel()
-        let hashAthlete = auth.hashMotDePasse("athlete123", sel: selAthlete)
-        let athlete = Utilisateur(
-            identifiant: "jean.tremblay",
-            motDePasseHash: hashAthlete,
-            prenom: "Jean",
-            nom: "Tremblay",
-            role: .etudiant,
-            codeEcole: "ELANS01"
+        var exclusions: Set<String> = []
+        let membre = MembreFactory.creerMembre(
+            prenom: "Jean", nom: "Tremblay", role: .etudiant,
+            codeEquipe: "ELANS01", joueur: joueur,
+            context: context, exclusions: &exclusions
         )
-        athlete.sel = selAthlete
-        athlete.iterations = AuthService.iterationsParDefaut
-        athlete.joueurEquipeID = joueur.id
-        joueur.utilisateurID = athlete.id
-        context.insert(athlete)
-
         try context.save()
 
-        // ── 4. Connexion coach → vérifier permissions ──
-        auth.connexion(identifiant: "chris.dionne", motDePasse: "coach123", context: context)
-        #expect(auth.estConnecte, "Coach doit être connecté")
+        // ── 4. Connexion coach via SIWA → vérifier permissions ──
+        let etatCoach = auth.connexionApple(appleUserID: "001.coach.apple", prenom: "", nom: "", context: context)
+        guard case .connecte = etatCoach else {
+            Issue.record("Le coach doit être connecté via SIWA")
+            return
+        }
         #expect(auth.utilisateurConnecte?.role == .admin)
         #expect(auth.utilisateurConnecte?.role.peutModifierSeances == true)
         #expect(auth.utilisateurConnecte?.role.peutGererEquipe == true)
@@ -102,9 +97,23 @@ struct MultiUtilisateurTests {
         #expect(auth.utilisateurConnecte?.role.peutCreerComptes == true)
         auth.deconnexion()
 
-        // ── 5. Connexion athlète → vérifier permissions restreintes ──
-        auth.connexion(identifiant: "jean.tremblay", motDePasse: "athlete123", context: context)
-        #expect(auth.estConnecte, "Athlète doit être connecté")
+        // ── 5. Athlète rejoint depuis SON Apple ID : code équipe + code d'invitation ──
+        let sharing = CloudKitSharingService()
+        let reclame = sharing.reclamerMembreLocal(
+            codeEquipe: "ELANS01",
+            codeInvitation: membre.recap.codeInvitation,
+            appleUserID: "002.athlete.apple",
+            context: context
+        )
+        #expect(reclame?.id == membre.utilisateur.id, "La jonction doit réclamer la ligne roster de l'athlète")
+        #expect(reclame?.appleUserID == "002.athlete.apple")
+
+        // ── 6. Connexion athlète via SIWA → vérifier permissions restreintes ──
+        let etatAthlete = auth.connexionApple(appleUserID: "002.athlete.apple", prenom: "", nom: "", context: context)
+        guard case .connecte = etatAthlete else {
+            Issue.record("L'athlète doit être connecté via SIWA après jonction")
+            return
+        }
         #expect(auth.utilisateurConnecte?.role == .etudiant)
         #expect(auth.utilisateurConnecte?.role.peutModifierSeances == false)
         #expect(auth.utilisateurConnecte?.role.peutGererEquipe == false)
@@ -115,6 +124,7 @@ struct MultiUtilisateurTests {
 
         // Vérifier que le lien joueur est correct
         #expect(auth.utilisateurConnecte?.joueurEquipeID == joueur.id)
+        #expect(joueur.utilisateurID == membre.utilisateur.id)
         #expect(auth.utilisateurConnecte?.codeEcole == "ELANS01")
         auth.deconnexion()
     }
@@ -215,12 +225,10 @@ struct MultiUtilisateurTests {
         let auth = creerAuthIsole()
         let context = try creerContexteEnMemoire()
 
-        // Coach
-        let sel = auth.genererSel()
-        let hash = auth.hashMotDePasse("pass", sel: sel)
-        let coach = Utilisateur(identifiant: "coach.multi", motDePasseHash: hash, prenom: "Coach", nom: "Multi", role: .admin, codeEcole: "EQ1")
-        coach.sel = sel
-        coach.iterations = AuthService.iterationsParDefaut
+        // Coach (SIWA)
+        let coach = Utilisateur(identifiant: "coach.multi", motDePasseHash: "",
+                                prenom: "Coach", nom: "Multi", role: .admin, codeEcole: "EQ1")
+        coach.appleUserID = "010.coach.multi"
         context.insert(coach)
 
         // Deux équipes
@@ -240,8 +248,11 @@ struct MultiUtilisateurTests {
         context.insert(j2)
         try context.save()
 
-        auth.connexion(identifiant: "coach.multi", motDePasse: "pass", context: context)
-        #expect(auth.estConnecte)
+        let etat = auth.connexionApple(appleUserID: "010.coach.multi", prenom: "", nom: "", context: context)
+        guard case .connecte = etat else {
+            Issue.record("Le coach doit être connecté via SIWA")
+            return
+        }
 
         // Vérifier le filtrage par équipe
         let desc = FetchDescriptor<JoueurEquipe>()
@@ -254,72 +265,8 @@ struct MultiUtilisateurTests {
         let equipe2 = tous.filtreEquipe("EQ2")
         #expect(equipe2.count == 1)
         #expect(equipe2.first?.nom == "Joueur2")
-    }
 
-    // MARK: - Connexion verrouillée
-
-    @Test("Connexion verrouillée après 5 échecs — reset après succès")
-    func verrouillageEtReset() throws {
-        let auth = creerAuthIsole()
-        let context = try creerContexteEnMemoire()
-
-        let sel = auth.genererSel()
-        let hash = auth.hashMotDePasse("correct", sel: sel)
-        let user = Utilisateur(identifiant: "lock.test", motDePasseHash: hash, prenom: "L", nom: "T", role: .etudiant)
-        user.sel = sel
-        user.iterations = AuthService.iterationsParDefaut
-        context.insert(user)
-        try context.save()
-
-        // 4 échecs → pas encore verrouillé
-        for _ in 0..<4 {
-            auth.connexion(identifiant: "lock.test", motDePasse: "mauvais", context: context)
-        }
-        #expect(!auth.estVerrouille)
-        #expect(auth.tentativesEchouees == 4)
-
-        // 5ème échec → verrouillé
-        auth.connexion(identifiant: "lock.test", motDePasse: "mauvais", context: context)
-        #expect(auth.estVerrouille)
-
-        // Tenter connexion pendant verrouillage
-        auth.connexion(identifiant: "lock.test", motDePasse: "correct", context: context)
-        #expect(!auth.estConnecte, "Ne doit pas se connecter pendant le verrouillage")
-    }
-
-    // MARK: - Création de compte
-
-    @Test("Création de compte — validations")
-    func creationCompteValidations() throws {
-        let auth = creerAuthIsole()
-        let context = try creerContexteEnMemoire()
-
-        // Politique (PasswordPolicy) : identifiant ≥ 3 chars, mot de passe ≥ 12 chars + 1 chiffre + pas commun
-        let motDePasseValide = "Xq7-volley-2026!"  // 16 chars, complexe + non-commun
-
-        // Identifiant trop court
-        let err1 = auth.creerCompte(identifiant: "ab", motDePasse: motDePasseValide, prenom: "A", nom: "B", role: .etudiant, context: context)
-        #expect(err1 != nil)
-
-        // Mot de passe trop court (<12 chars)
-        let err2 = auth.creerCompte(identifiant: "abc.def", motDePasse: "pass1", prenom: "A", nom: "B", role: .etudiant, context: context)
-        #expect(err2 != nil)
-
-        // Mot de passe sans chiffre (12+ chars mais pas de chiffre)
-        let errSansChiffre = auth.creerCompte(identifiant: "abc.def", motDePasse: "motdepasselong", prenom: "A", nom: "B", role: .etudiant, context: context)
-        #expect(errSansChiffre != nil, "Un mot de passe sans chiffre doit être refusé")
-
-        // Prénom vide
-        let err3 = auth.creerCompte(identifiant: "abc.def", motDePasse: motDePasseValide, prenom: "", nom: "B", role: .etudiant, context: context)
-        #expect(err3 != nil)
-
-        // Succès
-        let err4 = auth.creerCompte(identifiant: "abc.def", motDePasse: motDePasseValide, prenom: "Abc", nom: "Def", role: .etudiant, context: context)
-        #expect(err4 == nil, "La création doit réussir avec un mot de passe valide (≥12 chars + chiffre)")
-
-        // Doublon
-        let err5 = auth.creerCompte(identifiant: "abc.def", motDePasse: motDePasseValide, prenom: "Abc", nom: "Def", role: .etudiant, context: context)
-        #expect(err5 != nil, "L'identifiant en doublon doit échouer")
+        auth.deconnexion()
     }
 
     // MARK: - Matchs et score
@@ -370,36 +317,6 @@ struct MultiUtilisateurTests {
 
         // Points par set = 58 / 15 ≈ 3.87
         #expect(abs(joueur.pointsParSet - 3.867) < 0.01)
-    }
-
-    // MARK: - Migration hash sans sel
-
-    @Test("Migration automatique hash sans sel vers hash avec sel")
-    func migrationHashSansSel() throws {
-        let auth = creerAuthIsole()
-        let context = try creerContexteEnMemoire()
-
-        // Ancien utilisateur sans sel — calculé directement en SHA256 brut
-        let motDePasseAncien = "ancien123"
-        let donnees = Data(motDePasseAncien.utf8)
-        let hashAncien = SHA256.hash(data: donnees)
-            .compactMap { String(format: "%02x", $0) }.joined()
-        let user = Utilisateur(identifiant: "ancien.user", motDePasseHash: hashAncien, prenom: "A", nom: "U", role: .coach)
-        // Pas de sel !
-        context.insert(user)
-        try context.save()
-
-        // Connexion → doit migrer automatiquement
-        auth.connexion(identifiant: "ancien.user", motDePasse: "ancien123", context: context)
-        #expect(auth.estConnecte, "Doit se connecter avec l'ancien hash")
-
-        // Vérifier que le sel a été ajouté
-        #expect(user.sel != nil && !user.sel!.isEmpty, "Le sel doit être ajouté après migration")
-
-        // Vérifier que le nouveau hash fonctionne
-        auth.deconnexion()
-        auth.connexion(identifiant: "ancien.user", motDePasse: "ancien123", context: context)
-        #expect(auth.estConnecte, "Doit se connecter avec le nouveau hash migré")
     }
 
     // MARK: - Code invitation unique
