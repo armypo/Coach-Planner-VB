@@ -279,14 +279,27 @@ final class Seance {
     /// Horodatage de dernière modification — merge Public DB (partage athlètes cross-Apple-ID).
     var dateModification: Date = Date()
 
-    /// Computed : score par set décodé
+    /// Cache transient du décodage de `sets` — invalidé par comparaison du `Data`
+    /// source, ce qui résiste aux mutations in-place de `setsData` par la sync
+    /// CloudKit (qui ne passe pas par le setter). `@Transient` = hors schéma.
+    @Transient @ObservationIgnored private var _setsCacheData: Data? = nil
+    @Transient @ObservationIgnored private var _setsCacheValeur: [SetScore] = []
+
+    /// Computed : score par set décodé (avec cache — décodage JSON sinon répété
+    /// à chaque accès sur les écrans de stats)
     var sets: [SetScore] {
         get {
             guard let d = setsData else { return [] }
-            return (try? JSONCoderCache.decoder.decode([SetScore].self, from: d)) ?? []
+            if _setsCacheData == d { return _setsCacheValeur }
+            let decode = (try? JSONCoderCache.decoder.decode([SetScore].self, from: d)) ?? []
+            _setsCacheData = d
+            _setsCacheValeur = decode
+            return decode
         }
         set {
             setsData = try? JSONCoderCache.encoder.encode(newValue)
+            _setsCacheData = setsData
+            _setsCacheValeur = newValue
             // Recalculer le score global (sets gagnés/perdus)
             let gagnes = newValue.filter { $0.scoreEquipe > $0.scoreAdversaire }.count
             let perdus = newValue.filter { $0.scoreEquipe < $0.scoreAdversaire }.count
