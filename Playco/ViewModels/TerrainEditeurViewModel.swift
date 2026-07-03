@@ -195,20 +195,30 @@ final class TerrainEditeurViewModel {
 
     // MARK: - Gestion des étapes
 
-    func sauvegarderEtapeActive(dessinData: inout Data?, elementsData: inout Data?) {
+    /// Sauvegarde l'étape active. Retourne `false` si l'encodage échoue ou si
+    /// l'étape active n'existe plus — l'appelant ne doit alors PAS changer
+    /// d'étape, sous peine de perdre le travail en cours.
+    @discardableResult
+    func sauvegarderEtapeActive(dessinData: inout Data?, elementsData: inout Data?) -> Bool {
         let dessin = drawing.dataRepresentation()
-        let elems = try? JSONCoderCache.encoder.encode(elements)
+        guard let elems = try? JSONCoderCache.encoder.encode(elements) else {
+            logger.warning("Encodage des éléments échoué — étape active non sauvegardée")
+            return false
+        }
 
         if etapeActive == 0 {
             dessinData = dessin
             elementsData = elems
-        } else {
-            let idx = etapeActive - 1
-            if idx < etapes.count {
-                etapes[idx].dessinData = dessin
-                etapes[idx].elementsData = elems
-            }
+            return true
         }
+        let idx = etapeActive - 1
+        guard idx < etapes.count else {
+            logger.warning("Étape active \(self.etapeActive) hors bornes (\(self.etapes.count) étapes)")
+            return false
+        }
+        etapes[idx].dessinData = dessin
+        etapes[idx].elementsData = elems
+        return true
     }
 
     func chargerEtapeActive(dessinData: Data?, elementsData: Data?) {
@@ -244,7 +254,7 @@ final class TerrainEditeurViewModel {
     }
 
     func ajouterEtape(dessinData: inout Data?, elementsData: inout Data?) {
-        sauvegarderEtapeActive(dessinData: &dessinData, elementsData: &elementsData)
+        guard sauvegarderEtapeActive(dessinData: &dessinData, elementsData: &elementsData) else { return }
         etapes.append(EtapeExercice(nom: ""))
         etapeActive = etapes.count
         chargerEtapeActive(dessinData: dessinData, elementsData: elementsData)
@@ -252,7 +262,7 @@ final class TerrainEditeurViewModel {
 
     func changerEtape(index: Int, dessinData: inout Data?, elementsData: inout Data?) {
         guard etapeActive != index else { return }
-        sauvegarderEtapeActive(dessinData: &dessinData, elementsData: &elementsData)
+        guard sauvegarderEtapeActive(dessinData: &dessinData, elementsData: &elementsData) else { return }
         etapeActive = index
         chargerEtapeActive(dessinData: dessinData, elementsData: elementsData)
     }

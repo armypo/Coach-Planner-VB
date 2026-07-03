@@ -100,7 +100,7 @@ struct DockBarView: View {
 
             // Reset après un court délai
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                withAnimation(.easeOut(duration: 0.2)) {
+                withAnimation(LiquidGlassKit.springDouce) {
                     indexActif = nil
                 }
             }

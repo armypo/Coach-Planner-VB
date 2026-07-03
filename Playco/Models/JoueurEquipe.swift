@@ -133,7 +133,8 @@ final class JoueurEquipe {
     // MARK: - Computed — Attaque
 
     /// Pourcentage d'attaque (Hitting %) = (Kills - Erreurs) / Tentatives
-    /// La statistique offensive la plus importante en volleyball
+    /// La statistique offensive la plus importante en volleyball.
+    /// FRACTION 0-1 (convention des modèles — × 100 pour l'affichage).
     var pourcentageAttaque: Double {
         guard attaquesTotales > 0 else { return 0 }
         return Double(attaquesReussies - erreursAttaque) / Double(attaquesTotales)

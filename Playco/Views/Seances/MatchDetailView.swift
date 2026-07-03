@@ -45,6 +45,7 @@ struct MatchDetailView: View {
 
     /// Cherche ou crée l'exercice terrain lié à cette séance
     private func chargerExerciceTerrain() {
+        guard exerciceTerrain == nil else { return }
         // 1. Chercher dans la relation directe
         if let existant = (seance.exercices ?? []).first(where: { !$0.estArchive }) {
             exerciceTerrain = existant
