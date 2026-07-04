@@ -9,6 +9,9 @@
 #if DEMO
 import Foundation
 import SwiftData
+import os
+
+private let logger = Logger(subsystem: "com.origotech.playco", category: "DemoBootstrap")
 
 enum DemoBootstrap {
     /// Identifiant stable du coach démo (create-if-absent, idempotent).
@@ -28,7 +31,13 @@ enum DemoBootstrap {
         let descripteur = FetchDescriptor<Utilisateur>(
             predicate: #Predicate { $0.identifiant == identifiant && $0.estActif == true }
         )
-        return try? context.fetch(descripteur).first
+        do {
+            return try context.fetch(descripteur).first
+        } catch {
+            // Échec de lecture : on retombe sur la création d'un coach démo neuf.
+            logger.error("Fetch du coach démo échoué: \(error.localizedDescription)")
+            return nil
+        }
     }
 
     /// Crée l'ensemble minimal cohérent : établissement + équipe (code généré)
@@ -62,7 +71,13 @@ enum DemoBootstrap {
         coach.sessionCreeeLe = Date()
         context.insert(coach)
 
-        try? context.save()
+        do {
+            try context.save()
+        } catch {
+            // Le coach reste utilisable dans le contexte en mémoire pour la session
+            // en cours ; seule la persistance a échoué.
+            logger.error("Sauvegarde du bootstrap démo échouée: \(error.localizedDescription)")
+        }
         return coach
     }
 }

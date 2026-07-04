@@ -48,6 +48,39 @@ struct PlaycoApp: App {
     ]
 
     init() {
+        #if DEMO
+        // Démo : stockage local pur — même bundle id que la prod,
+        // ne JAMAIS toucher son container CloudKit.
+        do {
+            let schema = Schema(PlaycoApp.modeles)
+            let localConfig = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+            container = try ModelContainer(for: schema, configurations: [localConfig])
+            logger.info("ModelContainer démo (local pur) initialisé")
+        } catch {
+            // Fallback mémoire — la vitrine fonctionne sans persistance.
+            logger.critical("ModelContainer démo local échoué: \(error.localizedDescription). Passage en mémoire.")
+            let schema = Schema(PlaycoApp.modeles)
+            let memConfig = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+            do {
+                container = try ModelContainer(for: schema, configurations: [memConfig])
+            } catch {
+                logger.critical("ModelContainer démo mémoire échoué: \(error.localizedDescription)")
+                do {
+                    // Ultime fallback — schéma vide en mémoire + écran d'erreur (comme en prod).
+                    let schemaVide = Schema([])
+                    let configVide = ModelConfiguration(isStoredInMemoryOnly: true)
+                    container = try ModelContainer(for: schemaVide, configurations: [configVide])
+                    _erreurInitialisation = State(initialValue:
+                        "Impossible d'initialiser la base de données. " +
+                        "Redémarre l'application ou contacte le support si le problème persiste."
+                    )
+                } catch {
+                    logger.critical("Échec init ModelContainer démo schéma vide: \(error.localizedDescription)")
+                    fatalError("Impossible d'initialiser la base de données (schema vide). Erreur système critique.")
+                }
+            }
+        }
+        #else
         // Tentative 1 — CloudKit (sync inter-appareil via container nommé)
         do {
             let schema = Schema(PlaycoApp.modeles)
@@ -96,6 +129,7 @@ struct PlaycoApp: App {
                 }
             }
         }
+        #endif
         // Peupler les exercices de musculation par défaut
         ExercicesMusculationDefauts.peuplerSiVide(context: container.mainContext)
     }
@@ -222,6 +256,9 @@ struct PlaycoApp: App {
                             .onAppear {
                                 analyticsService.initialiser()
                                 analyticsService.suivre(evenement: EvenementAnalytics.appLancee)
+                                #if !DEMO
+                                // Démo : ni suivi iCloud ni surveillance réseau — stockage
+                                // local pur, aucun rejeu de file de publication.
                                 syncService.demarrerSuivi()
                                 syncService.demarrerSurveillanceReseau()
                                 // Brancher le rejeu automatique de la file de publication
@@ -236,7 +273,6 @@ struct PlaycoApp: App {
                                         await sharing.rejouerFileAttente(context: containerRef.mainContext)
                                     }.value
                                 }
-                                #if !DEMO
                                 Task {
                                     await syncService.attendreSyncInitiale()
                                     authService.restaurerSession(context: container.mainContext)

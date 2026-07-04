@@ -176,6 +176,10 @@ struct ContentView: View {
     /// (athlète/assistant) importent depuis la Public DB, le coach publie ses
     /// mises à jour. Idempotent, sûr hors-ligne.
     private func synchroniserDonneesPartagees() async {
+        #if DEMO
+        // Démo : stockage local pur — aucun échange avec la Public DB de prod.
+        return
+        #else
         guard let user = authService.utilisateurConnecte else { return }
         let code = codeEquipeActif
         guard !code.isEmpty else { return }
@@ -191,6 +195,7 @@ struct ContentView: View {
         case .coach, .admin:
             await sharingService.publierMisesAJourCoach(codeEquipe: code, context: modelContext)
         }
+        #endif
     }
 
     /// Affiche le toast et programme sa disparition à 4s.

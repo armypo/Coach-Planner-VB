@@ -23,6 +23,13 @@ extension CloudKitSharingService {
         joueurs: [JoueurEquipe],
         context: ModelContext
     ) async {
+        #if DEMO
+        // Démo : ne JAMAIS publier dans la Public DB de production (même bundle id,
+        // même container CloudKit que la prod). Défense en profondeur : chaque point
+        // d'entrée public de publication est neutralisé en build démo, même si une
+        // UI future rappelle ces fonctions.
+        return
+        #else
         estEnCoursDePublication = true
         erreur = nil
 
@@ -65,12 +72,16 @@ extension CloudKitSharingService {
         }
 
         estEnCoursDePublication = false
+        #endif
     }
 
     /// Rejoue les utilisateurs en attente dans `FileReplicationUtilisateur`.
     /// Appelé depuis CloudKitSyncService quand le réseau revient en ligne.
     /// `context` sert à récupérer les @Model Utilisateur frais depuis SwiftData.
     func rejouerFileAttente(context: ModelContext) async {
+        #if DEMO
+        return
+        #else
         let ids = await FileReplicationUtilisateur.shared.listerPrets()
         guard !ids.isEmpty else { return }
 
@@ -94,6 +105,7 @@ extension CloudKitSharingService {
                 logger.warning("Retry publication utilisateur \(id.uuidString, privacy: .private) échoué : \(error.localizedDescription)")
             }
         }
+        #endif
     }
 
     /// Publie un seul utilisateur (quand le coach ajoute un athlète après la config
@@ -101,6 +113,9 @@ extension CloudKitSharingService {
     /// dans `FileReplicationUtilisateur` pour re-publication automatique au retour
     /// réseau — sinon le membre resterait introuvable à la jointure (échec silencieux).
     func publierNouvelUtilisateur(_ utilisateur: Utilisateur, joueur: JoueurEquipe?, codeEquipe: String) async {
+        #if DEMO
+        return
+        #else
         do {
             try await publierUtilisateur(utilisateur, codeEquipe: codeEquipe)
             await FileReplicationUtilisateur.shared.marquerPublie(utilisateur.id)
@@ -112,6 +127,7 @@ extension CloudKitSharingService {
             await FileReplicationUtilisateur.shared.enregistrer(utilisateur.id)
             logger.warning("Publication utilisateur \(utilisateur.id.uuidString, privacy: .private) échouée, enfilé pour retry : \(error.localizedDescription)")
         }
+        #endif
     }
 
     /// Publie uniquement les records modifiés depuis la dernière sync
@@ -122,6 +138,9 @@ extension CloudKitSharingService {
         joueurs: [JoueurEquipe],
         context: ModelContext
     ) async {
+        #if DEMO
+        return
+        #else
         estEnCoursDePublication = true
         erreur = nil
         let seuil = derniereSyncDate
@@ -158,6 +177,7 @@ extension CloudKitSharingService {
         }
 
         estEnCoursDePublication = false
+        #endif
     }
 
     /// Sweep de publication côté coach : republie tout ce qui a changé depuis la
@@ -166,6 +186,9 @@ extension CloudKitSharingService {
     /// couvre toutes les créations/éditions sans triggers éparpillés.
     /// Respecte `masquerPratiquesAthletes` : les pratiques ne sont pas publiées si activé.
     func publierMisesAJourCoach(codeEquipe: String, context: ModelContext) async {
+        #if DEMO
+        return
+        #else
         guard !codeEquipe.isEmpty else { return }
         estEnCoursDePublication = true
         defer { estEnCoursDePublication = false }
@@ -203,6 +226,7 @@ extension CloudKitSharingService {
             logger.error("publierMisesAJourCoach: \(error.localizedDescription)")
             self.erreur = error.localizedDescription
         }
+        #endif
     }
 
     // MARK: - Publication détaillée (privé)
@@ -319,6 +343,9 @@ extension CloudKitSharingService {
 
     /// Publie une séance (pratique ou match) en lecture seule pour les athlètes.
     func publierSeance(_ seance: Seance) async throws {
+        #if DEMO
+        return
+        #else
         let recordID = CKRecord.ID(recordName: "seance-\(seance.id.uuidString)")
         let record = CKRecord(recordType: RecordType.seance, recordID: recordID)
         record["seanceID"] = seance.id.uuidString as CKRecordValue
@@ -334,5 +361,6 @@ extension CloudKitSharingService {
         record["estArchivee"] = (seance.estArchivee ? 1 : 0) as CKRecordValue
         record["dateModification"] = seance.dateModification as CKRecordValue
         _ = try await publicDB.save(record)
+        #endif
     }
 }

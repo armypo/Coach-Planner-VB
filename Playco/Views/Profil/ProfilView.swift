@@ -58,8 +58,11 @@ struct ProfilView: View {
                         // Légal (politique confidentialité + conditions d'utilisation)
                         sectionLegal
 
-                        // Déconnexion
+                        // Déconnexion (masquée en démo : sans Apple ID rattaché,
+                        // se déconnecter serait un cul-de-sac)
+                        #if !DEMO
                         boutonDeconnexion
+                        #endif
                     }
                 }
                 .padding(.horizontal, 20)
