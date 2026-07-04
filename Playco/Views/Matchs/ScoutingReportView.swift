@@ -7,7 +7,17 @@ import SwiftData
 
 // MARK: - ScoutingReportView
 
-/// Editeur complet de rapport de scouting pour un adversaire
+/// Éditeur complet de rapport de scouting pour un adversaire.
+///
+/// Refonte Phase 6 :
+/// - sections repliables (chevron par section, « Autres notes » repliée par défaut) ;
+/// - tendances service/attaque saisies sur 2 mini-terrains 6 zones (tap = cycle
+///   du niveau de menace 0→1→2→3→0) + une note texte courte par catégorie ;
+/// - lien optionnel vers un match du calendrier (`seanceID`) ;
+/// - sauvegarde DEBOUNCÉE : les frappes clavier planifient une écriture unique
+///   (délai `delaiSauvegarde`) au lieu de ré-encoder le JSON à chaque caractère ;
+///   flush garanti au `onDisappear`. Les ajouts/suppressions structurels
+///   persistent immédiatement.
 struct ScoutingReportView: View {
     @Bindable var rapport: ScoutingReport
 
@@ -20,7 +30,27 @@ struct ScoutingReportView: View {
     @State private var forces: [String] = []
     @State private var faiblesses: [String] = []
     @State private var strategies: [StrategieRecommandee] = []
+    @State private var tendancesZonales = TendancesZonales()
     @State private var joueurDeplie: UUID?
+
+    // Sauvegarde debouncée
+    @State private var sauvegardeTask: Task<Void, Never>?
+    @State private var aDesModifications = false
+    private static let delaiSauvegarde: Duration = .milliseconds(600)
+
+    // Sections repliables — « Autres notes » repliée par défaut
+    private enum SectionRapport: Hashable {
+        case joueurs, forces, faiblesses, tendances, strategies, notes, autresNotes
+    }
+    @State private var sectionsRepliees: Set<SectionRapport> = [.autresNotes]
+
+    /// Matchs du calendrier liables au rapport (non archivés, équipe active).
+    @Query(filter: #Predicate<Seance> { $0.estArchivee == false && $0.typeSeanceRaw == "Match" },
+           sort: \Seance.date, order: .reverse) private var tousMatchs: [Seance]
+
+    private var matchsEquipe: [Seance] {
+        tousMatchs.filtreEquipe(codeEquipeActif)
+    }
 
     private var peutModifier: Bool {
         authService.utilisateurConnecte?.role.peutModifierStrategies ?? false
@@ -30,12 +60,11 @@ struct ScoutingReportView: View {
 
     private let systemesJeu = ["5-1", "6-2", "4-2", "Autre"]
     private let stylesJeu = ["Offensif", "Défensif", "Équilibré"]
-    private let postes = ["Attaquant", "Passeur", "Central", "Libéro", "Réceptionneur-attaquant", "Opposé", "Autre"]
     private let categoriesStrategie = ["Service", "Attaque", "Bloc", "Réception", "Général"]
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 20) {
+            VStack(spacing: LiquidGlassKit.espaceLG - 4) {
                 sectionEntete
                 sectionJoueursCles
                 sectionForces
@@ -43,6 +72,7 @@ struct ScoutingReportView: View {
                 sectionTendances
                 sectionStrategies
                 sectionNotes
+                sectionAutresNotes
             }
             .padding(LiquidGlassKit.espaceLG)
         }
@@ -53,16 +83,53 @@ struct ScoutingReportView: View {
             forces = rapport.forces
             faiblesses = rapport.faiblesses
             strategies = rapport.strategies
+            tendancesZonales = rapport.tendancesZonales
         }
+        .onDisappear {
+            // Flush : on annule le debounce en cours et on persiste tout de suite.
+            sauvegardeTask?.cancel()
+            persisterTout()
+        }
+    }
+
+    // MARK: - Repli / dépli
+
+    private func estRepliee(_ section: SectionRapport) -> Bool {
+        sectionsRepliees.contains(section)
+    }
+
+    private func basculerSection(_ section: SectionRapport) {
+        withAnimation(LiquidGlassKit.springDefaut) {
+            if sectionsRepliees.contains(section) {
+                sectionsRepliees.remove(section)
+            } else {
+                sectionsRepliees.insert(section)
+            }
+        }
+    }
+
+    private func boutonRepli(_ section: SectionRapport) -> some View {
+        Button {
+            basculerSection(section)
+        } label: {
+            Image(systemName: "chevron.down")
+                .font(.subheadline.weight(.semibold))
+                .rotationEffect(.degrees(estRepliee(section) ? -90 : 0))
+                .foregroundStyle(PaletteMat.texteSecondaire)
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(estRepliee(section) ? "Déplier la section" : "Replier la section")
     }
 
     // MARK: - 1. En-tête
 
     private var sectionEntete: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: LiquidGlassKit.espaceMD) {
             titreSectionAvecIcone("Informations générales", icone: "info.circle.fill", couleur: .red)
 
-            HStack(spacing: 16) {
+            HStack(spacing: LiquidGlassKit.espaceMD) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Adversaire")
                         .font(.caption.weight(.medium))
@@ -82,16 +149,39 @@ struct ScoutingReportView: View {
                 .frame(width: 180)
             }
 
-            // Adversaire observé (contre qui jouait l'équipe scoutée)
+            // Match du calendrier lié à ce rapport (optionnel)
             VStack(alignment: .leading, spacing: 6) {
-                Text("Adversaire observé (contre qui jouait l'équipe scoutée)")
+                Text("Match lié")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(PaletteMat.texteSecondaire)
+                Picker("Match lié", selection: $rapport.seanceID) {
+                    Text("Aucun").tag(UUID?.none)
+                    ForEach(matchsEquipe) { match in
+                        Text("\(match.adversaire.isEmpty ? match.nom : "vs \(match.adversaire)") — \(match.date.formatCourt())")
+                            .tag(Optional(match.id))
+                    }
+                    // Sélection existante hors liste (match archivé/autre équipe)
+                    if let lie = rapport.seanceID, !matchsEquipe.contains(where: { $0.id == lie }) {
+                        Text("Match archivé").tag(Optional(lie))
+                    }
+                }
+                .pickerStyle(.menu)
+                .tint(.red)
+            }
+
+            // Match observé (contexte de l'observation)
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Match observé")
                     .font(.caption.weight(.medium))
                     .foregroundStyle(PaletteMat.texteSecondaire)
                 TextField("ex : Équipe X vs Équipe Y", text: $rapport.adversaireObserve)
                     .textFieldStyle(.roundedBorder)
+                Text("Le match durant lequel vous avez observé cet adversaire (contre qui il jouait).")
+                    .font(.caption2)
+                    .foregroundStyle(PaletteMat.texteTertiaire)
             }
 
-            HStack(spacing: 16) {
+            HStack(spacing: LiquidGlassKit.espaceMD) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Système de jeu")
                         .font(.caption.weight(.medium))
@@ -129,216 +219,106 @@ struct ScoutingReportView: View {
     // MARK: - 2. Joueurs clés
 
     private var sectionJoueursCles: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: LiquidGlassKit.espaceMD) {
             HStack {
                 titreSectionAvecIcone("Joueurs clés adverses", icone: "person.3.fill", couleur: .red)
                 Spacer()
-                Button {
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-                        let nouveau = JoueurAdverse()
-                        joueurs.append(nouveau)
-                        joueurDeplie = nouveau.id
-                        sauvegarderJoueurs()
+                if !estRepliee(.joueurs) {
+                    Button {
+                        withAnimation(LiquidGlassKit.springDefaut) {
+                            let nouveau = JoueurAdverse()
+                            joueurs.append(nouveau)
+                            joueurDeplie = nouveau.id
+                            sauvegarderImmediatement()
+                        }
+                    } label: {
+                        Label("Ajouter", systemImage: "plus.circle.fill")
+                            .font(.subheadline.weight(.semibold))
                     }
-                } label: {
-                    Label("Ajouter", systemImage: "plus.circle.fill")
-                        .font(.subheadline.weight(.semibold))
+                    .buttonStyle(GlassButtonStyle())
+                    .siAutorise(peutModifier)
                 }
-                .buttonStyle(GlassButtonStyle())
-                .siAutorise(peutModifier)
+                boutonRepli(.joueurs)
             }
 
-            if joueurs.isEmpty {
-                placeholderVide("Aucun joueur clé identifié", icone: "person.crop.circle.badge.questionmark")
-            } else {
-                ForEach(Array(joueurs.enumerated()), id: \.element.id) { index, joueur in
-                    carteJoueur(index: index, joueur: joueur)
+            if !estRepliee(.joueurs) {
+                if joueurs.isEmpty {
+                    placeholderVide("Aucun joueur clé identifié", icone: "person.crop.circle.badge.questionmark")
+                } else {
+                    ForEach(Array(joueurs.enumerated()), id: \.element.id) { index, joueur in
+                        CarteJoueurAdverseEditable(
+                            joueur: $joueurs[index],
+                            estDeplie: joueurDeplie == joueur.id,
+                            peutModifier: peutModifier,
+                            onFrappe: { planifierSauvegarde() },
+                            onChangementImmediat: { sauvegarderImmediatement() },
+                            onBasculerDepli: {
+                                withAnimation(LiquidGlassKit.springDefaut) {
+                                    joueurDeplie = joueurDeplie == joueur.id ? nil : joueur.id
+                                }
+                            },
+                            onSupprimer: {
+                                withAnimation(LiquidGlassKit.springDefaut) {
+                                    joueurs.remove(at: index)
+                                    sauvegarderImmediatement()
+                                }
+                            }
+                        )
+                    }
                 }
             }
         }
         .glassSection()
     }
 
-    private func carteJoueur(index: Int, joueur: JoueurAdverse) -> some View {
-        let estDeplie = joueurDeplie == joueur.id
-
-        return VStack(alignment: .leading, spacing: 12) {
-            // Ligne résumé — toujours visible
-            HStack(spacing: 12) {
-                // Numéro
-                Text("#\(joueur.numero)")
-                    .font(.title3.weight(.bold).monospacedDigit())
-                    .foregroundStyle(.red)
-                    .frame(width: 50)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(joueur.nom.isEmpty ? "Nouveau joueur" : joueur.nom)
-                        .font(.headline)
-                    if !joueur.poste.isEmpty {
-                        Text(joueur.poste)
-                            .font(.caption)
-                            .foregroundStyle(PaletteMat.texteSecondaire)
-                    }
-                }
-
-                Spacer()
-
-                // Étoiles de menace
-                etoilesMenace(niveau: joueur.menaceNiveau) { nouveau in
-                    joueurs[index].menaceNiveau = nouveau
-                    sauvegarderJoueurs()
-                }
-
-                Button {
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-                        joueurDeplie = estDeplie ? nil : joueur.id
-                    }
-                } label: {
-                    Image(systemName: "chevron.down")
-                        .font(.caption.weight(.semibold))
-                        .rotationEffect(.degrees(estDeplie ? 180 : 0))
-                        .foregroundStyle(PaletteMat.texteSecondaire)
-                }
-
-                Button(role: .destructive) {
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-                        joueurs.remove(at: index)
-                        sauvegarderJoueurs()
-                    }
-                } label: {
-                    Image(systemName: "trash")
-                        .font(.caption)
-                        .foregroundStyle(.red.opacity(0.7))
-                }
-                .siAutorise(peutModifier)
-            }
-
-            // Détails — dépliable
-            if estDeplie {
-                VStack(alignment: .leading, spacing: 12) {
-                    Divider()
-
-                    HStack(spacing: 16) {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Numéro")
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(PaletteMat.texteSecondaire)
-                            TextField("#", value: $joueurs[index].numero, format: .number)
-                                .textFieldStyle(.roundedBorder)
-                                .frame(width: 80)
-                                .onChange(of: joueurs[index].numero) { _, _ in sauvegarderJoueurs() }
-                        }
-
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Nom")
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(PaletteMat.texteSecondaire)
-                            TextField("Nom du joueur", text: $joueurs[index].nom)
-                                .textFieldStyle(.roundedBorder)
-                                .onChange(of: joueurs[index].nom) { _, _ in sauvegarderJoueurs() }
-                        }
-
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Poste")
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(PaletteMat.texteSecondaire)
-                            Picker("Poste", selection: $joueurs[index].poste) {
-                                Text("Non défini").tag("")
-                                ForEach(postes, id: \.self) { p in
-                                    Text(p).tag(p)
-                                }
-                            }
-                            .pickerStyle(.menu)
-                            .tint(.red)
-                            .onChange(of: joueurs[index].poste) { _, _ in sauvegarderJoueurs() }
-                        }
-                    }
-
-                    HStack(spacing: 16) {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Label("Points forts", systemImage: "hand.thumbsup.fill")
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(PaletteMat.vert)
-                            TextEditor(text: $joueurs[index].pointsForts)
-                                .frame(minHeight: 60)
-                                .scrollContentBackground(.hidden)
-                                .background(Color(.tertiarySystemBackground))
-                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                                .onChange(of: joueurs[index].pointsForts) { _, _ in sauvegarderJoueurs() }
-                        }
-
-                        VStack(alignment: .leading, spacing: 6) {
-                            Label("Points faibles", systemImage: "hand.thumbsdown.fill")
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(.red)
-                            TextEditor(text: $joueurs[index].pointsFaibles)
-                                .frame(minHeight: 60)
-                                .scrollContentBackground(.hidden)
-                                .background(Color(.tertiarySystemBackground))
-                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                                .onChange(of: joueurs[index].pointsFaibles) { _, _ in sauvegarderJoueurs() }
-                        }
-                    }
-
-                    HStack(spacing: 8) {
-                        Text("Niveau de menace :")
-                            .font(.subheadline.weight(.medium))
-                        etoilesMenace(niveau: joueurs[index].menaceNiveau) { nouveau in
-                            joueurs[index].menaceNiveau = nouveau
-                            sauvegarderJoueurs()
-                        }
-                    }
-                }
-                .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-        }
-        .padding(12)
-        .glassCard(teinte: .red, cornerRadius: 14, ombre: true)
-    }
-
     // MARK: - 3. Forces
 
     private var sectionForces: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: LiquidGlassKit.espaceMD) {
             HStack {
                 titreSectionAvecIcone("Forces de l'adversaire", icone: "bolt.fill", couleur: PaletteMat.vert)
                 Spacer()
-                Button {
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-                        forces.append("")
-                        sauvegarderForces()
+                if !estRepliee(.forces) {
+                    Button {
+                        withAnimation(LiquidGlassKit.springDefaut) {
+                            forces.append("")
+                            sauvegarderImmediatement()
+                        }
+                    } label: {
+                        Label("Ajouter", systemImage: "plus.circle.fill")
+                            .font(.subheadline.weight(.semibold))
                     }
-                } label: {
-                    Label("Ajouter", systemImage: "plus.circle.fill")
-                        .font(.subheadline.weight(.semibold))
+                    .buttonStyle(GlassButtonStyle())
+                    .siAutorise(peutModifier)
                 }
-                .buttonStyle(GlassButtonStyle())
-                .siAutorise(peutModifier)
+                boutonRepli(.forces)
             }
 
-            if forces.isEmpty {
-                placeholderVide("Aucune force identifiée", icone: "bolt.slash")
-            } else {
-                ForEach(Array(forces.enumerated()), id: \.offset) { index, _ in
-                    HStack(spacing: 12) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(PaletteMat.vert)
-                            .font(.body)
+            if !estRepliee(.forces) {
+                if forces.isEmpty {
+                    placeholderVide("Aucune force identifiée", icone: "bolt.slash")
+                } else {
+                    ForEach(Array(forces.enumerated()), id: \.offset) { index, _ in
+                        HStack(spacing: 12) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(PaletteMat.vert)
+                                .font(.body)
 
-                        TextField("Force de l'adversaire", text: $forces[index])
-                            .textFieldStyle(.roundedBorder)
-                            .onChange(of: forces[index]) { _, _ in sauvegarderForces() }
+                            TextField("Force de l'adversaire", text: $forces[index])
+                                .textFieldStyle(.roundedBorder)
+                                .onChange(of: forces[index]) { _, _ in planifierSauvegarde() }
 
-                        Button(role: .destructive) {
-                            withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-                                forces.remove(at: index)
-                                sauvegarderForces()
+                            Button(role: .destructive) {
+                                withAnimation(LiquidGlassKit.springDefaut) {
+                                    forces.remove(at: index)
+                                    sauvegarderImmediatement()
+                                }
+                            } label: {
+                                Image(systemName: "minus.circle.fill")
+                                    .foregroundStyle(.red.opacity(0.6))
                             }
-                        } label: {
-                            Image(systemName: "minus.circle.fill")
-                                .foregroundStyle(.red.opacity(0.6))
+                            .siAutorise(peutModifier)
                         }
-                        .siAutorise(peutModifier)
                     }
                 }
             }
@@ -349,46 +329,51 @@ struct ScoutingReportView: View {
     // MARK: - 4. Faiblesses
 
     private var sectionFaiblesses: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: LiquidGlassKit.espaceMD) {
             HStack {
                 titreSectionAvecIcone("Faiblesses de l'adversaire", icone: "exclamationmark.triangle.fill", couleur: .orange)
                 Spacer()
-                Button {
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-                        faiblesses.append("")
-                        sauvegarderFaiblesses()
+                if !estRepliee(.faiblesses) {
+                    Button {
+                        withAnimation(LiquidGlassKit.springDefaut) {
+                            faiblesses.append("")
+                            sauvegarderImmediatement()
+                        }
+                    } label: {
+                        Label("Ajouter", systemImage: "plus.circle.fill")
+                            .font(.subheadline.weight(.semibold))
                     }
-                } label: {
-                    Label("Ajouter", systemImage: "plus.circle.fill")
-                        .font(.subheadline.weight(.semibold))
+                    .buttonStyle(GlassButtonStyle())
+                    .siAutorise(peutModifier)
                 }
-                .buttonStyle(GlassButtonStyle())
-                .siAutorise(peutModifier)
+                boutonRepli(.faiblesses)
             }
 
-            if faiblesses.isEmpty {
-                placeholderVide("Aucune faiblesse identifiée", icone: "exclamationmark.triangle")
-            } else {
-                ForEach(Array(faiblesses.enumerated()), id: \.offset) { index, _ in
-                    HStack(spacing: 12) {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.orange)
-                            .font(.body)
+            if !estRepliee(.faiblesses) {
+                if faiblesses.isEmpty {
+                    placeholderVide("Aucune faiblesse identifiée", icone: "exclamationmark.triangle")
+                } else {
+                    ForEach(Array(faiblesses.enumerated()), id: \.offset) { index, _ in
+                        HStack(spacing: 12) {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(.orange)
+                                .font(.body)
 
-                        TextField("Faiblesse de l'adversaire", text: $faiblesses[index])
-                            .textFieldStyle(.roundedBorder)
-                            .onChange(of: faiblesses[index]) { _, _ in sauvegarderFaiblesses() }
+                            TextField("Faiblesse de l'adversaire", text: $faiblesses[index])
+                                .textFieldStyle(.roundedBorder)
+                                .onChange(of: faiblesses[index]) { _, _ in planifierSauvegarde() }
 
-                        Button(role: .destructive) {
-                            withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-                                faiblesses.remove(at: index)
-                                sauvegarderFaiblesses()
+                            Button(role: .destructive) {
+                                withAnimation(LiquidGlassKit.springDefaut) {
+                                    faiblesses.remove(at: index)
+                                    sauvegarderImmediatement()
+                                }
+                            } label: {
+                                Image(systemName: "minus.circle.fill")
+                                    .foregroundStyle(.red.opacity(0.6))
                             }
-                        } label: {
-                            Image(systemName: "minus.circle.fill")
-                                .foregroundStyle(.red.opacity(0.6))
+                            .siAutorise(peutModifier)
                         }
-                        .siAutorise(peutModifier)
                     }
                 }
             }
@@ -396,94 +381,103 @@ struct ScoutingReportView: View {
         .glassSection()
     }
 
-    // MARK: - 5. Tendances
+    // MARK: - 5. Tendances zonales (service + attaque)
 
     private var sectionTendances: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            titreSectionAvecIcone("Tendances observées", icone: "chart.line.uptrend.xyaxis", couleur: PaletteMat.bleu)
+        VStack(alignment: .leading, spacing: LiquidGlassKit.espaceMD) {
+            HStack {
+                titreSectionAvecIcone("Tendances observées", icone: "chart.line.uptrend.xyaxis", couleur: PaletteMat.bleu)
+                Spacer()
+                boutonRepli(.tendances)
+            }
 
-            LazyVGrid(columns: [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)], spacing: 16) {
-                champTendance(
-                    titre: "Service",
-                    icone: "figure.volleyball",
-                    texte: $rapport.tendanceService,
-                    placeholder: "Ex : Sert principalement zone 1 et 5..."
-                )
+            if !estRepliee(.tendances) {
+                Text("Touchez une zone pour faire monter son niveau de menace (0 → 3).")
+                    .font(.caption)
+                    .foregroundStyle(PaletteMat.texteSecondaire)
 
-                champTendance(
-                    titre: "Attaque",
-                    icone: "flame.fill",
-                    texte: $rapport.tendanceAttaque,
-                    placeholder: "Ex : Attaque rapide au centre..."
-                )
+                // NB : les notes courtes ci-dessous sont liées directement au
+                // modèle (String simple, pas de ré-encodage JSON par frappe) —
+                // SwiftData coalesce ces écritures, pas besoin de debounce.
 
-                champTendance(
-                    titre: "Réception",
-                    icone: "arrow.down.to.line",
-                    texte: $rapport.tendanceReception,
-                    placeholder: "Ex : Faiblesse en réception zone 6..."
-                )
+                HStack(alignment: .top, spacing: LiquidGlassKit.espaceLG) {
+                    VStack(alignment: .leading, spacing: LiquidGlassKit.espaceSM) {
+                        MiniTerrainZonesMenace(
+                            titre: "Service adverse",
+                            niveaux: tendancesZonales.service,
+                            estInteractif: peutModifier,
+                            onCycleZone: { zone in cyclerZone(zone, service: true) }
+                        )
+                        TextField("Note courte (ex : sert surtout zone 1 et 5)", text: $rapport.tendanceService)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.footnote)
+                    }
+                    .frame(maxWidth: .infinity)
 
-                champTendance(
-                    titre: "Bloc",
-                    icone: "hand.raised.fill",
-                    texte: $rapport.tendanceBloc,
-                    placeholder: "Ex : Bloc double sur l'extérieur..."
-                )
+                    VStack(alignment: .leading, spacing: LiquidGlassKit.espaceSM) {
+                        MiniTerrainZonesMenace(
+                            titre: "Attaque adverse",
+                            niveaux: tendancesZonales.attaque,
+                            estInteractif: peutModifier,
+                            onCycleZone: { zone in cyclerZone(zone, service: false) }
+                        )
+                        TextField("Note courte (ex : attaque rapide au centre)", text: $rapport.tendanceAttaque)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.footnote)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+
+                Text(MiniTerrainZonesMenace.legendeNiveaux)
+                    .font(.caption2)
+                    .foregroundStyle(PaletteMat.texteTertiaire)
             }
         }
         .glassSection()
     }
 
-    private func champTendance(titre: String, icone: String, texte: Binding<String>, placeholder: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label(titre, systemImage: icone)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(PaletteMat.bleu)
-
-            TextEditor(text: texte)
-                .frame(minHeight: 80)
-                .scrollContentBackground(.hidden)
-                .background(Color(.tertiarySystemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .overlay {
-                    if texte.wrappedValue.isEmpty {
-                        Text(placeholder)
-                            .font(.footnote)
-                            .foregroundStyle(PaletteMat.texteTertiaire)
-                            .padding(8)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                            .allowsHitTesting(false)
-                    }
-                }
+    /// Cycle le niveau de menace d'une zone (copie immuable puis réassignation).
+    private func cyclerZone(_ zone: Int, service: Bool) {
+        var nouvelles = tendancesZonales
+        if service {
+            nouvelles.service[zone] = TendancesZonales.niveauSuivant(nouvelles.service[zone] ?? 0)
+        } else {
+            nouvelles.attaque[zone] = TendancesZonales.niveauSuivant(nouvelles.attaque[zone] ?? 0)
         }
+        tendancesZonales = nouvelles
+        planifierSauvegarde()
     }
 
     // MARK: - 6. Stratégies recommandées
 
     private var sectionStrategies: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: LiquidGlassKit.espaceMD) {
             HStack {
                 titreSectionAvecIcone("Stratégies recommandées", icone: "lightbulb.fill", couleur: PaletteMat.violet)
                 Spacer()
-                Button {
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-                        strategies.append(StrategieRecommandee())
-                        sauvegarderStrategies()
+                if !estRepliee(.strategies) {
+                    Button {
+                        withAnimation(LiquidGlassKit.springDefaut) {
+                            strategies.append(StrategieRecommandee())
+                            sauvegarderImmediatement()
+                        }
+                    } label: {
+                        Label("Ajouter", systemImage: "plus.circle.fill")
+                            .font(.subheadline.weight(.semibold))
                     }
-                } label: {
-                    Label("Ajouter", systemImage: "plus.circle.fill")
-                        .font(.subheadline.weight(.semibold))
+                    .buttonStyle(GlassButtonStyle())
+                    .siAutorise(peutModifier)
                 }
-                .buttonStyle(GlassButtonStyle())
-                .siAutorise(peutModifier)
+                boutonRepli(.strategies)
             }
 
-            if strategies.isEmpty {
-                placeholderVide("Aucune stratégie recommandée", icone: "lightbulb.slash")
-            } else {
-                ForEach(Array(strategies.enumerated()), id: \.element.id) { index, strategie in
-                    carteStrategie(index: index, strategie: strategie)
+            if !estRepliee(.strategies) {
+                if strategies.isEmpty {
+                    placeholderVide("Aucune stratégie recommandée", icone: "lightbulb.slash")
+                } else {
+                    ForEach(Array(strategies.enumerated()), id: \.element.id) { index, strategie in
+                        carteStrategie(index: index, strategie: strategie)
+                    }
                 }
             }
         }
@@ -499,7 +493,7 @@ struct ScoutingReportView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     TextField("Titre de la stratégie", text: $strategies[index].titre)
                         .font(.headline)
-                        .onChange(of: strategies[index].titre) { _, _ in sauvegarderStrategies() }
+                        .onChange(of: strategies[index].titre) { _, _ in planifierSauvegarde() }
 
                     HStack(spacing: 12) {
                         Picker("Priorité", selection: $strategies[index].priorite) {
@@ -509,7 +503,7 @@ struct ScoutingReportView: View {
                         }
                         .pickerStyle(.segmented)
                         .frame(width: 260)
-                        .onChange(of: strategies[index].priorite) { _, _ in sauvegarderStrategies() }
+                        .onChange(of: strategies[index].priorite) { _, _ in planifierSauvegarde() }
 
                         Picker("Catégorie", selection: $strategies[index].categorie) {
                             Text("Catégorie").tag("")
@@ -519,16 +513,16 @@ struct ScoutingReportView: View {
                         }
                         .pickerStyle(.menu)
                         .tint(PaletteMat.violet)
-                        .onChange(of: strategies[index].categorie) { _, _ in sauvegarderStrategies() }
+                        .onChange(of: strategies[index].categorie) { _, _ in planifierSauvegarde() }
                     }
                 }
 
                 Spacer()
 
                 Button(role: .destructive) {
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                    withAnimation(LiquidGlassKit.springDefaut) {
                         strategies.remove(at: index)
-                        sauvegarderStrategies()
+                        sauvegarderImmediatement()
                     }
                 } label: {
                     Image(systemName: "trash")
@@ -542,18 +536,18 @@ struct ScoutingReportView: View {
                 .frame(minHeight: 60)
                 .scrollContentBackground(.hidden)
                 .background(Color(.tertiarySystemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: LiquidGlassKit.rayonMini * 2, style: .continuous))
                 .overlay {
                     if strategies[index].description.isEmpty {
                         Text("Description de la stratégie...")
                             .font(.footnote)
                             .foregroundStyle(PaletteMat.texteTertiaire)
-                            .padding(8)
+                            .padding(LiquidGlassKit.espaceSM)
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                             .allowsHitTesting(false)
                     }
                 }
-                .onChange(of: strategies[index].description) { _, _ in sauvegarderStrategies() }
+                .onChange(of: strategies[index].description) { _, _ in planifierSauvegarde() }
         }
         .padding(12)
         .glassCard(teinte: PaletteMat.violet, cornerRadius: 14, ombre: true)
@@ -563,25 +557,81 @@ struct ScoutingReportView: View {
 
     private var sectionNotes: some View {
         VStack(alignment: .leading, spacing: 12) {
-            titreSectionAvecIcone("Notes générales", icone: "note.text", couleur: PaletteMat.texteSecondaire)
+            HStack {
+                titreSectionAvecIcone("Notes générales", icone: "note.text", couleur: PaletteMat.texteSecondaire)
+                Spacer()
+                boutonRepli(.notes)
+            }
 
-            TextEditor(text: $rapport.notes)
-                .frame(minHeight: 120)
+            if !estRepliee(.notes) {
+                TextEditor(text: $rapport.notes)
+                    .frame(minHeight: 120)
+                    .scrollContentBackground(.hidden)
+                    .background(Color(.tertiarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: LiquidGlassKit.rayonPetit - 2, style: .continuous))
+                    .overlay {
+                        if rapport.notes.isEmpty {
+                            Text("Notes supplémentaires sur l'adversaire, le contexte du match, les enjeux...")
+                                .font(.footnote)
+                                .foregroundStyle(PaletteMat.texteTertiaire)
+                                .padding(LiquidGlassKit.espaceSM)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                                .allowsHitTesting(false)
+                        }
+                    }
+            }
+        }
+        .glassSection()
+    }
+
+    // MARK: - 8. Autres notes (réception + bloc) — repliée par défaut
+
+    private var sectionAutresNotes: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                titreSectionAvecIcone("Autres notes (réception, bloc)", icone: "text.alignleft", couleur: PaletteMat.texteSecondaire)
+                Spacer()
+                boutonRepli(.autresNotes)
+            }
+
+            if !estRepliee(.autresNotes) {
+                champTendanceTexte(
+                    titre: "Réception",
+                    texte: $rapport.tendanceReception,
+                    placeholder: "Ex : Faiblesse en réception zone 6..."
+                )
+                champTendanceTexte(
+                    titre: "Bloc",
+                    texte: $rapport.tendanceBloc,
+                    placeholder: "Ex : Bloc double sur l'extérieur..."
+                )
+            }
+        }
+        .glassSection()
+    }
+
+    private func champTendanceTexte(titre: String, texte: Binding<String>, placeholder: String) -> some View {
+        VStack(alignment: .leading, spacing: LiquidGlassKit.espaceSM) {
+            Text(titre)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(PaletteMat.bleu)
+
+            TextEditor(text: texte)
+                .frame(minHeight: 80)
                 .scrollContentBackground(.hidden)
                 .background(Color(.tertiarySystemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: LiquidGlassKit.rayonPetit - 2, style: .continuous))
                 .overlay {
-                    if rapport.notes.isEmpty {
-                        Text("Notes supplémentaires sur l'adversaire, le contexte du match, les enjeux...")
+                    if texte.wrappedValue.isEmpty {
+                        Text(placeholder)
                             .font(.footnote)
                             .foregroundStyle(PaletteMat.texteTertiaire)
-                            .padding(8)
+                            .padding(LiquidGlassKit.espaceSM)
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                             .allowsHitTesting(false)
                     }
                 }
         }
-        .glassSection()
     }
 
     // MARK: - Composants réutilisables
@@ -594,7 +644,7 @@ struct ScoutingReportView: View {
     }
 
     private func placeholderVide(_ texte: String, icone: String) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: LiquidGlassKit.espaceSM) {
             Image(systemName: icone)
                 .font(.title3)
                 .foregroundStyle(PaletteMat.texteTertiaire)
@@ -603,22 +653,7 @@ struct ScoutingReportView: View {
                 .foregroundStyle(PaletteMat.texteTertiaire)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 24)
-    }
-
-    private func etoilesMenace(niveau: Int, onTap: @escaping (Int) -> Void) -> some View {
-        HStack(spacing: 4) {
-            ForEach(1...5, id: \.self) { etoile in
-                Image(systemName: etoile <= niveau ? "star.fill" : "star")
-                    .font(.caption)
-                    .foregroundStyle(etoile <= niveau ? .orange : PaletteMat.texteTertiaire)
-                    .onTapGesture {
-                        withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) {
-                            onTap(etoile)
-                        }
-                    }
-            }
-        }
+        .padding(.vertical, LiquidGlassKit.espaceLG)
     }
 
     private func badgePriorite(_ priorite: Int) -> some View {
@@ -638,21 +673,41 @@ struct ScoutingReportView: View {
             }
     }
 
-    // MARK: - Sauvegarde
+    // MARK: - Sauvegarde (debounce)
 
-    private func sauvegarderJoueurs() {
+    /// Planifie une écriture unique après `delaiSauvegarde` : les frappes
+    /// rapprochées annulent la tâche précédente, on n'encode donc le JSON
+    /// qu'une fois la saisie stabilisée (au lieu d'à chaque caractère).
+    private func planifierSauvegarde() {
+        aDesModifications = true
+        sauvegardeTask?.cancel()
+        sauvegardeTask = Task {
+            try? await Task.sleep(for: Self.delaiSauvegarde)
+            guard !Task.isCancelled else { return }
+            persisterTout()
+        }
+    }
+
+    /// Changement structurel (ajout/suppression, étoiles, zones) : marque le
+    /// rapport modifié et persiste immédiatement (pas de debounce — ces
+    /// interactions sont ponctuelles, contrairement aux frappes clavier).
+    private func sauvegarderImmediatement() {
+        aDesModifications = true
+        persisterTout()
+    }
+
+    /// Écrit l'état local dans le modèle (encodage JSON). Appelé à l'échéance
+    /// du debounce, sur `sauvegarderImmediatement()` et au `onDisappear`
+    /// (flush). No-op si rien n'a changé depuis la dernière écriture — évite
+    /// de re-salir l'enregistrement CloudKit inutilement.
+    private func persisterTout() {
+        sauvegardeTask?.cancel()
+        guard aDesModifications else { return }
         rapport.joueurs = joueurs
-    }
-
-    private func sauvegarderForces() {
         rapport.forces = forces
-    }
-
-    private func sauvegarderFaiblesses() {
         rapport.faiblesses = faiblesses
-    }
-
-    private func sauvegarderStrategies() {
         rapport.strategies = strategies
+        rapport.tendancesZonales = tendancesZonales
+        aDesModifications = false
     }
 }
