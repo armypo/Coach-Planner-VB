@@ -5,7 +5,9 @@
 import SwiftUI
 import SwiftData
 
-/// Comparaison des stats d'un joueur vs la moyenne de l'équipe
+/// Comparaison des stats d'un joueur vs la moyenne de son poste.
+/// Fallback : moyenne de l'équipe entière si le poste compte trop peu de
+/// joueurs avec des matchs joués.
 struct ComparaisonView: View {
     let joueur: JoueurEquipe
     /// Vrai quand la vue est incorporée dans la fiche joueur (pas de ScrollView propre).
@@ -15,11 +17,31 @@ struct ComparaisonView: View {
            sort: \JoueurEquipe.numero) private var tousJoueurs: [JoueurEquipe]
     @Environment(\.codeEquipeActif) private var codeEquipeActif
 
-    /// Moyennes d'équipe pré-calculées — cache @State (pattern perfo projet) :
-    /// évite 12 reduce sur les joueurs à chaque render.
+    // MARK: - Constantes
+
+    /// Nombre minimal de joueurs du poste (matchs joués > 0) pour comparer
+    /// au poste plutôt qu'à l'équipe entière.
+    private static let minimumJoueursPoste = 2
+    /// Seuil sous lequel la moyenne est considérée nulle (protection ÷ 0).
+    private static let epsilonMoyenne = 0.0001
+    /// Valeur plancher pour normaliser les barres (évite ÷ 0).
+    private static let plancherNormalisation = 0.01
+    /// `JoueurEquipe.efficaciteReception` est déjà en échelle 0-100.
+    private static let echellePourcentage = 100.0
+    private static let largeurBarreMinimale: CGFloat = 4
+    private static let hauteurBarre: CGFloat = 12
+    private static let largeurRepereMoyenne: CGFloat = 2
+    private static let largeurColonneValeurs: CGFloat = 84
+    private static let tailleAvatar: CGFloat = 50
+
+    // MARK: - Cache moyennes
+
+    /// Moyennes de référence pré-calculées — cache @State (pattern perfo
+    /// projet) : évite 12 reduce sur les joueurs à chaque render.
     private struct MoyennesEquipe: Equatable {
         var kills = 0.0
-        var hittingPct = 0.0
+        /// Fraction 0-1 (convention D1 — formatée « .350 » à l'affichage).
+        var rendementAttaque = 0.0
         var erreursAttaque = 0.0
         var aces = 0.0
         var erreursService = 0.0
@@ -27,9 +49,14 @@ struct ComparaisonView: View {
         var blocsSeuls = 0.0
         var blocsAssistes = 0.0
         var receptionsReussies = 0.0
+        /// Échelle 0-100 (convention `JoueurEquipe.efficaciteReception`).
         var efficaciteReception = 0.0
         var passesDecisives = 0.0
         var manchettes = 0.0
+        /// Nombre de joueurs entrant dans la moyenne de référence.
+        var nombreJoueurs = 0
+        /// Vrai si la référence est le poste du joueur (sinon équipe entière).
+        var estParPoste = false
     }
 
     @State private var moyennes = MoyennesEquipe()
@@ -45,19 +72,27 @@ struct ComparaisonView: View {
         }
     }
 
+    /// Invalide le cache si un poste change : la référence de comparaison
+    /// dépend du poste du joueur ET de celui de ses coéquipiers.
+    private var signaturePostes: String {
+        tousJoueurs.map(\.posteRaw).joined(separator: "|")
+    }
+
     var body: some View {
         Group {
             if estIncorporee {
                 // Incorporée dans la fiche joueur (segmenté 2.3) : le parent
                 // fournit déjà le ScrollView, l'en-tête joueur est redondant.
-                VStack(spacing: 20) {
+                VStack(spacing: LiquidGlassKit.espaceLG) {
+                    noteReference
                     categoriesStats
                 }
             } else {
                 ScrollView {
-                    VStack(spacing: 20) {
+                    VStack(spacing: LiquidGlassKit.espaceLG) {
                         enteteJoueurComparaison
                         Divider()
+                        noteReference
                         categoriesStats
                     }
                     .padding(.vertical)
@@ -69,54 +104,81 @@ struct ComparaisonView: View {
         .onAppear { mettreAJourMoyennes() }
         .onChange(of: tousJoueurs) { mettreAJourMoyennes() }
         .onChange(of: signatureStats) { mettreAJourMoyennes() }
+        .onChange(of: signaturePostes) { mettreAJourMoyennes() }
         .onChange(of: codeEquipeActif) { mettreAJourMoyennes() }
     }
 
+    // MARK: - En-tête joueur
+
     private var enteteJoueurComparaison: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: LiquidGlassKit.espaceSM + 4) {
             ZStack {
                 Circle()
-                    .fill(Color.red.opacity(0.1))
-                    .frame(width: 50, height: 50)
+                    .fill(PaletteMat.vert.opacity(LiquidGlassKit.badgeFond))
+                    .frame(width: Self.tailleAvatar, height: Self.tailleAvatar)
                 Text("#\(joueur.numero)")
                     .font(.title3.weight(.bold))
-                    .foregroundStyle(.red)
+                    .foregroundStyle(PaletteMat.vert)
             }
             VStack(alignment: .leading, spacing: 2) {
-                Text("\(joueur.prenom) \(joueur.nom)")
+                Text(joueur.nomComplet)
                     .font(.headline)
                 Text(joueur.poste.rawValue)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Text("\(joueur.matchsJoues) matchs")
+            Text(libelleMatchs(joueur.matchsJoues))
                 .font(.caption.weight(.medium))
                 .foregroundStyle(.secondary)
         }
         .padding(.horizontal)
     }
 
+    /// Note expliquant la référence de comparaison (poste ou équipe).
+    private var noteReference: some View {
+        Text(texteReference)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal)
+    }
+
+    private var texteReference: String {
+        guard moyennes.nombreJoueurs > 0 else {
+            return "Aucune moyenne disponible — aucun joueur n'a encore de match joué."
+        }
+        if moyennes.estParPoste {
+            return "Moyenne des \(moyennes.nombreJoueurs) joueurs au poste \(joueur.poste.rawValue)"
+        }
+        return "Moyenne de l'équipe (\(moyennes.nombreJoueurs) joueurs)"
+    }
+
     @ViewBuilder
     private var categoriesStats: some View {
-        categorieSection(titre: "Attaque", icone: "flame.fill", couleur: .red, stats: statsAttaque)
-        categorieSection(titre: "Service", icone: "arrow.up.forward", couleur: .blue, stats: statsService)
-        categorieSection(titre: "Bloc", icone: "shield.fill", couleur: .purple, stats: statsBloc)
-        categorieSection(titre: "Réception", icone: "hand.raised.fill", couleur: .green, stats: statsReception)
-        categorieSection(titre: "Jeu", icone: "sportscourt.fill", couleur: .orange, stats: statsJeu)
+        categorieSection(titre: "Attaque", teinte: PaletteMat.orange, stats: statsAttaque)
+        categorieSection(titre: "Service", teinte: PaletteMat.bleu, stats: statsService)
+        categorieSection(titre: "Bloc", teinte: PaletteMat.violet, stats: statsBloc)
+        categorieSection(titre: "Réception", teinte: PaletteMat.vert, stats: statsReception)
+        categorieSection(titre: "Jeu", teinte: PaletteMat.bleu, stats: statsJeu)
     }
 
     // MARK: - Mise à jour du cache
 
+    /// Moyenne par poste (>= `minimumJoueursPoste` joueurs du poste avec des
+    /// matchs joués), sinon fallback sur la moyenne de l'équipe entière.
     private func mettreAJourMoyennes() {
         let equipe = tousJoueurs.filtreEquipe(codeEquipeActif).filter { $0.matchsJoues > 0 }
-        let nb = max(1, Double(equipe.count))
+        let memePoste = equipe.filter { $0.poste == joueur.poste }
+        let estParPoste = memePoste.count >= Self.minimumJoueursPoste
+        let reference = estParPoste ? memePoste : equipe
+        let nb = max(1, Double(reference.count))
         func moyenne(_ valeur: (JoueurEquipe) -> Double) -> Double {
-            equipe.reduce(0.0) { $0 + valeur($1) } / nb
+            reference.reduce(0.0) { $0 + valeur($1) } / nb
         }
         moyennes = MoyennesEquipe(
             kills: moyenne { Double($0.attaquesReussies) },
-            hittingPct: moyenne { $0.pourcentageAttaque },
+            rendementAttaque: moyenne { $0.pourcentageAttaque },
             erreursAttaque: moyenne { Double($0.erreursAttaque) },
             aces: moyenne { Double($0.aces) },
             erreursService: moyenne { Double($0.erreursService) },
@@ -126,123 +188,180 @@ struct ComparaisonView: View {
             receptionsReussies: moyenne { Double($0.receptionsReussies) },
             efficaciteReception: moyenne { $0.efficaciteReception },
             passesDecisives: moyenne { Double($0.passesDecisives) },
-            manchettes: moyenne { Double($0.manchettes) }
+            manchettes: moyenne { Double($0.manchettes) },
+            nombreJoueurs: reference.count,
+            estParPoste: estParPoste
         )
     }
 
     // MARK: - Section catégorie
 
-    private func categorieSection(titre: String, icone: String, couleur: Color, stats: [(label: String, joueur: Double, equipe: Double, format: String)]) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 6) {
-                Image(systemName: icone)
-                    .font(.caption)
-                    .foregroundStyle(couleur)
-                Text(titre.uppercased())
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(.secondary)
-                    .tracking(0.5)
-            }
-            .padding(.horizontal)
-
-            ForEach(stats, id: \.label) { stat in
-                barreComparaison(label: stat.label, valeurJoueur: stat.joueur, moyenneEquipe: stat.equipe, format: stat.format, couleur: couleur)
-            }
-        }
-    }
-
-    private func barreComparaison(label: String, valeurJoueur: Double, moyenneEquipe: Double, format: String, couleur: Color) -> some View {
-        let maxVal = max(valeurJoueur, moyenneEquipe, 0.01)
-        let ratioJoueur = valeurJoueur / maxVal
-        let ratioEquipe = moyenneEquipe / maxVal
-        let estAuDessus = valeurJoueur >= moyenneEquipe
-
-        return VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text(label)
-                    .font(.caption.weight(.medium))
-                Spacer()
-                // Indicateur
-                Image(systemName: estAuDessus ? "arrow.up.right" : "arrow.down.right")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(estAuDessus ? .green : .red)
-            }
-
-            // Barre joueur
-            HStack(spacing: 8) {
-                Text("Joueur")
-                    .font(.system(size: 9))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 44, alignment: .leading)
-                GeometryReader { geo in
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(couleur)
-                        .frame(width: max(4, geo.size.width * ratioJoueur))
-                }
-                .frame(height: 10)
-                Text(String(format: format, valeurJoueur))
-                    .font(.caption2.weight(.bold).monospacedDigit())
-                    .frame(width: 44, alignment: .trailing)
-            }
-
-            // Barre moyenne
-            HStack(spacing: 8) {
-                Text("Moy.")
-                    .font(.system(size: 9))
-                    .foregroundStyle(.tertiary)
-                    .frame(width: 44, alignment: .leading)
-                GeometryReader { geo in
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(Color(.systemGray4))
-                        .frame(width: max(4, geo.size.width * ratioEquipe))
-                }
-                .frame(height: 10)
-                Text(String(format: format, moyenneEquipe))
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                    .frame(width: 44, alignment: .trailing)
+    private func categorieSection(titre: String, teinte: Color, stats: [StatComparee]) -> some View {
+        VStack(alignment: .leading, spacing: LiquidGlassKit.espaceSM + 4) {
+            EnTeteSection(titre: titre)
+            ForEach(stats) { stat in
+                ligneComparaison(stat, teinte: teinte)
             }
         }
         .padding(.horizontal)
-        .padding(.vertical, 4)
+    }
+
+    // MARK: - Ligne de comparaison
+
+    /// Une ligne : label + écart % vs moyenne, barre du joueur avec repère
+    /// vertical de moyenne, valeurs formatées (joueur en gras, moyenne dessous).
+    private func ligneComparaison(_ stat: StatComparee, teinte: Color) -> some View {
+        let maxVal = max(stat.valeurJoueur, stat.moyenne, Self.plancherNormalisation)
+        let ratioJoueur = min(1, max(0, stat.valeurJoueur / maxVal))
+        let ratioMoyenne = min(1, max(0, stat.moyenne / maxVal))
+
+        return VStack(alignment: .leading, spacing: LiquidGlassKit.espaceXS) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(stat.label)
+                    .font(.caption.weight(.medium))
+                Spacer()
+                etiquetteEcart(valeurJoueur: stat.valeurJoueur, moyenne: stat.moyenne)
+            }
+
+            HStack(spacing: LiquidGlassKit.espaceSM) {
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        // Piste
+                        RoundedRectangle(cornerRadius: LiquidGlassKit.rayonMini, style: .continuous)
+                            .fill(teinte.opacity(LiquidGlassKit.badgeFond))
+                        // Barre joueur
+                        RoundedRectangle(cornerRadius: LiquidGlassKit.rayonMini, style: .continuous)
+                            .fill(teinte)
+                            .frame(width: max(Self.largeurBarreMinimale, geo.size.width * ratioJoueur))
+                        // Repère de moyenne : trait vertical sur la barre du joueur
+                        RoundedRectangle(cornerRadius: Self.largeurRepereMoyenne / 2)
+                            .fill(PaletteMat.textePrincipal)
+                            .frame(width: Self.largeurRepereMoyenne)
+                            .offset(x: positionRepere(largeur: geo.size.width, ratio: ratioMoyenne))
+                    }
+                }
+                .frame(height: Self.hauteurBarre)
+
+                VStack(alignment: .trailing, spacing: 1) {
+                    Text(stat.formatter(stat.valeurJoueur))
+                        .font(.caption.weight(.bold).monospacedDigit())
+                        .contentTransition(.numericText())
+                    Text("moy. \(stat.formatter(stat.moyenne))")
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+                .frame(width: Self.largeurColonneValeurs, alignment: .trailing)
+            }
+        }
+        .padding(.vertical, LiquidGlassKit.espaceXS)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibiliteLigne(stat))
+    }
+
+    /// Position x du repère de moyenne, borné aux limites de la piste.
+    private func positionRepere(largeur: CGFloat, ratio: Double) -> CGFloat {
+        min(max(largeur * ratio - Self.largeurRepereMoyenne / 2, 0),
+            largeur - Self.largeurRepereMoyenne)
+    }
+
+    // MARK: - Écart vs moyenne
+
+    /// Écart relatif : « +18 % » (PaletteMat.positif) ou « −12 % »
+    /// (PaletteMat.negatif). Masqué quand la moyenne est (quasi) nulle (÷ 0).
+    @ViewBuilder
+    private func etiquetteEcart(valeurJoueur: Double, moyenne: Double) -> some View {
+        if let ecart = ecartRelatif(valeurJoueur: valeurJoueur, moyenne: moyenne) {
+            Text(formaterEcart(ecart))
+                .font(TypographieStats.delta)
+                .monospacedDigit()
+                .foregroundStyle(ecart >= 0 ? PaletteMat.positif : PaletteMat.negatif)
+        }
+    }
+
+    /// (joueur − moyenne) ÷ |moyenne| — nil si la moyenne est (quasi) nulle.
+    private func ecartRelatif(valeurJoueur: Double, moyenne: Double) -> Double? {
+        guard abs(moyenne) > Self.epsilonMoyenne else { return nil }
+        return (valeurJoueur - moyenne) / abs(moyenne)
+    }
+
+    private func formaterEcart(_ ecart: Double) -> String {
+        let pct = Int((abs(ecart) * Self.echellePourcentage).rounded())
+        return (ecart >= 0 ? "+" : "−") + "\(pct) %"
+    }
+
+    private func accessibiliteLigne(_ stat: StatComparee) -> String {
+        var texte = "\(stat.label) : \(stat.formatter(stat.valeurJoueur)), moyenne \(stat.formatter(stat.moyenne))"
+        if let ecart = ecartRelatif(valeurJoueur: stat.valeurJoueur, moyenne: stat.moyenne) {
+            texte += ecart >= 0 ? ", au-dessus de la moyenne" : ", en dessous de la moyenne"
+        }
+        return texte
+    }
+
+    private func libelleMatchs(_ nombre: Int) -> String {
+        nombre > 1 ? "\(nombre) matchs" : "\(nombre) match"
     }
 
     // MARK: - Données comparatives
 
-    private var statsAttaque: [(label: String, joueur: Double, equipe: Double, format: String)] {
+    /// Une ligne de comparaison : valeur du joueur vs moyenne de référence,
+    /// avec formatage canonique (D2 : rendement « .350 », % « 85,0 % »).
+    private struct StatComparee: Identifiable {
+        let label: String
+        let valeurJoueur: Double
+        let moyenne: Double
+        let formatter: (Double) -> String
+        var id: String { label }
+    }
+
+    private var statsAttaque: [StatComparee] {
         [
-            ("Kills", Double(joueur.attaquesReussies), moyennes.kills, "%.0f"),
-            ("Hitting %", joueur.pourcentageAttaque * 100, moyennes.hittingPct * 100, "%.1f%%"),
-            ("Erreurs attaque", Double(joueur.erreursAttaque), moyennes.erreursAttaque, "%.0f"),
+            StatComparee(label: "Kills", valeurJoueur: Double(joueur.attaquesReussies),
+                         moyenne: moyennes.kills, formatter: FormatMetriques.points),
+            // D2 : rendement attaque en convention volleyball (« .350 »).
+            StatComparee(label: "Rendement attaque", valeurJoueur: joueur.pourcentageAttaque,
+                         moyenne: moyennes.rendementAttaque, formatter: FormatMetriques.hittingVolley),
+            StatComparee(label: "Erreurs attaque", valeurJoueur: Double(joueur.erreursAttaque),
+                         moyenne: moyennes.erreursAttaque, formatter: FormatMetriques.points),
         ]
     }
 
-    private var statsService: [(label: String, joueur: Double, equipe: Double, format: String)] {
+    private var statsService: [StatComparee] {
         [
-            ("Aces", Double(joueur.aces), moyennes.aces, "%.0f"),
-            ("Erreurs service", Double(joueur.erreursService), moyennes.erreursService, "%.0f"),
-            ("Total services", Double(joueur.servicesTotaux), moyennes.servicesTotaux, "%.0f"),
+            StatComparee(label: "Aces", valeurJoueur: Double(joueur.aces),
+                         moyenne: moyennes.aces, formatter: FormatMetriques.points),
+            StatComparee(label: "Erreurs service", valeurJoueur: Double(joueur.erreursService),
+                         moyenne: moyennes.erreursService, formatter: FormatMetriques.points),
+            StatComparee(label: "Total services", valeurJoueur: Double(joueur.servicesTotaux),
+                         moyenne: moyennes.servicesTotaux, formatter: FormatMetriques.points),
         ]
     }
 
-    private var statsBloc: [(label: String, joueur: Double, equipe: Double, format: String)] {
+    private var statsBloc: [StatComparee] {
         [
-            ("Blocs seuls", Double(joueur.blocsSeuls), moyennes.blocsSeuls, "%.0f"),
-            ("Blocs assistés", Double(joueur.blocsAssistes), moyennes.blocsAssistes, "%.0f"),
+            StatComparee(label: "Blocs seuls", valeurJoueur: Double(joueur.blocsSeuls),
+                         moyenne: moyennes.blocsSeuls, formatter: FormatMetriques.points),
+            StatComparee(label: "Blocs assistés", valeurJoueur: Double(joueur.blocsAssistes),
+                         moyenne: moyennes.blocsAssistes, formatter: FormatMetriques.points),
         ]
     }
 
-    private var statsReception: [(label: String, joueur: Double, equipe: Double, format: String)] {
+    private var statsReception: [StatComparee] {
         [
-            ("Réceptions réussies", Double(joueur.receptionsReussies), moyennes.receptionsReussies, "%.0f"),
-            ("Efficacité réception", joueur.efficaciteReception, moyennes.efficaciteReception, "%.1f%%"),
+            StatComparee(label: "Réceptions réussies", valeurJoueur: Double(joueur.receptionsReussies),
+                         moyenne: moyennes.receptionsReussies, formatter: FormatMetriques.points),
+            // `efficaciteReception` est déjà en échelle 0-100 — ne pas re-multiplier.
+            StatComparee(label: "Réception (eff.)", valeurJoueur: joueur.efficaciteReception,
+                         moyenne: moyennes.efficaciteReception,
+                         formatter: { FormatMetriques.pourcentage($0 / Self.echellePourcentage) }),
         ]
     }
 
-    private var statsJeu: [(label: String, joueur: Double, equipe: Double, format: String)] {
+    private var statsJeu: [StatComparee] {
         [
-            ("Passes décisives", Double(joueur.passesDecisives), moyennes.passesDecisives, "%.0f"),
-            ("Manchettes", Double(joueur.manchettes), moyennes.manchettes, "%.0f"),
+            StatComparee(label: "Passes décisives", valeurJoueur: Double(joueur.passesDecisives),
+                         moyenne: moyennes.passesDecisives, formatter: FormatMetriques.points),
+            StatComparee(label: "Manchettes", valeurJoueur: Double(joueur.manchettes),
+                         moyenne: moyennes.manchettes, formatter: FormatMetriques.points),
         ]
     }
 }

@@ -48,6 +48,9 @@ struct PointEvolution: Identifiable {
     let adversaire: String
     let labelPrincipal: String
     let labelSecondaire: String?
+    /// Moyenne mobile (fenêtre glissante) de la valeur principale — renseignée
+    /// à partir du 3e match seulement (fenêtre complète).
+    var moyenneMobile: Double? = nil
 }
 
 // MARK: - Tendance
@@ -73,8 +76,8 @@ enum Tendance {
 
     var couleur: Color {
         switch self {
-        case .hausse: return PaletteMat.vert
-        case .baisse: return .red
+        case .hausse: return PaletteMat.positif
+        case .baisse: return PaletteMat.negatif
         case .stable: return PaletteMat.bleu
         }
     }
@@ -96,6 +99,21 @@ struct EvolutionJoueurView: View {
     @State private var pointsDonnees: [PointEvolution] = []
     @State private var apparition = false
 
+    // MARK: - Constantes
+
+    /// Taille de la fenêtre de la moyenne mobile (en matchs).
+    private static let fenetreMoyenneMobile = 3
+    /// Le rendement (fraction 0-1) est porté ×100 sur le graphique pour
+    /// partager l'échelle des kills ; `efficaciteReception` est déjà en 0-100.
+    private static let echellePourcentage = 100.0
+    private static let hauteurGraphique: CGFloat = 280
+    private static let hauteurEtatVide: CGFloat = 260
+    private static let largeurColonneDate: CGFloat = 120
+    private static let largeurColonneSecondaire: CGFloat = 70
+    /// Seuils de détection de tendance (écart relatif / absolu).
+    private static let seuilTendanceRelatif = 0.1
+    private static let seuilTendanceAbsolu = 0.5
+
     // MARK: - Body
 
     var body: some View {
@@ -107,7 +125,7 @@ struct EvolutionJoueurView: View {
             } else {
                 ScrollView {
                     contenu
-                        .padding(20)
+                        .padding(LiquidGlassKit.espaceLG)
                 }
                 .background(Color(.systemGroupedBackground))
                 .navigationTitle("Évolution — \(joueur.prenom)")
@@ -120,13 +138,13 @@ struct EvolutionJoueurView: View {
                 apparition = true
             }
         }
-        .onChange(of: categorieSelectionnee) { _, _ in
-            calculerPoints()
-        }
+        .onChange(of: categorieSelectionnee) { calculerPoints() }
+        .onChange(of: toutesStats) { calculerPoints() }
+        .onChange(of: codeEquipeActif) { calculerPoints() }
     }
 
     private var contenu: some View {
-        VStack(spacing: 24) {
+        VStack(spacing: LiquidGlassKit.espaceLG) {
             selecteurCategorie
             graphiquePrincipal
             resumeStatistiques
@@ -144,31 +162,23 @@ struct EvolutionJoueurView: View {
             }
         }
         .pickerStyle(.segmented)
-        .padding(.horizontal, 4)
+        .padding(.horizontal, LiquidGlassKit.espaceXS)
     }
 
     // MARK: - Graphique principal
 
     private var graphiquePrincipal: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Image(systemName: categorieSelectionnee.icone)
-                    .foregroundStyle(categorieSelectionnee.couleurPrincipale)
-                Text(categorieSelectionnee.rawValue)
-                    .font(.headline.weight(.semibold))
-                Spacer()
-                Text("\(pointsDonnees.count) matchs")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
+        VStack(alignment: .leading, spacing: LiquidGlassKit.espaceSM + 4) {
+            EnTeteSection(titre: categorieSelectionnee.rawValue,
+                          sousTitre: libelleMatchs(pointsDonnees.count))
 
             if pointsDonnees.isEmpty {
                 ContentUnavailableView(
                     "Aucune donnée",
                     systemImage: "chart.line.downtrend.xyaxis",
-                    description: Text("Aucune statistique de match enregistrée pour ce joueur.")
+                    description: Text("Saisissez des statistiques de match (box score ou stats en direct) pour suivre l'évolution de \(joueur.prenom).")
                 )
-                .frame(height: 260)
+                .frame(height: Self.hauteurEtatVide)
             } else {
                 Chart {
                     ForEach(pointsDonnees) { point in
@@ -203,11 +213,12 @@ struct EvolutionJoueurView: View {
                                 .frame(width: 7, height: 7)
                         }
 
-                        // Ligne secondaire (si applicable)
-                        if let sec = point.valeurSecondaire, let labelSec = point.labelSecondaire {
+                        // Ligne secondaire (rendement attaque, fraction ×100
+                        // pour partager l'échelle des kills)
+                        if let secondaire = point.valeurSecondaire, let labelSec = point.labelSecondaire {
                             LineMark(
                                 x: .value("Date", point.date),
-                                y: .value(labelSec, sec)
+                                y: .value(labelSec, secondaire * Self.echellePourcentage)
                             )
                             .foregroundStyle(PaletteMat.orange)
                             .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round, dash: [6, 4]))
@@ -217,6 +228,17 @@ struct EvolutionJoueurView: View {
                                     .stroke(PaletteMat.orange, lineWidth: 2)
                                     .frame(width: 6, height: 6)
                             }
+                        }
+
+                        // Moyenne mobile (fenêtre glissante de 3 matchs)
+                        if let moyenneMobile = point.moyenneMobile {
+                            LineMark(
+                                x: .value("Date", point.date),
+                                y: .value("Moyenne mobile", moyenneMobile)
+                            )
+                            .foregroundStyle(PaletteMat.texteSecondaire)
+                            .lineStyle(StrokeStyle(lineWidth: 1.5, lineCap: .round, dash: [3, 4]))
+                            .interpolationMethod(.catmullRom)
                         }
                     }
                 }
@@ -237,8 +259,8 @@ struct EvolutionJoueurView: View {
                     }
                 }
                 .chartLegend(position: .top, alignment: .trailing)
-                .frame(height: 280)
-                .padding(.top, 8)
+                .frame(height: Self.hauteurGraphique)
+                .padding(.top, LiquidGlassKit.espaceSM)
                 .opacity(apparition ? 1 : 0)
                 .offset(y: apparition ? 0 : 20)
 
@@ -246,7 +268,7 @@ struct EvolutionJoueurView: View {
                 legendeGraphique
             }
         }
-        .padding(16)
+        .padding(LiquidGlassKit.espaceMD)
         .glassCard(teinte: categorieSelectionnee.couleurPrincipale)
     }
 
@@ -257,18 +279,32 @@ struct EvolutionJoueurView: View {
         return 4
     }
 
+    private var aMoyenneMobile: Bool {
+        pointsDonnees.contains { $0.moyenneMobile != nil }
+    }
+
     private var legendeGraphique: some View {
-        HStack(spacing: 16) {
-            HStack(spacing: 6) {
+        HStack(spacing: LiquidGlassKit.espaceMD) {
+            HStack(spacing: LiquidGlassKit.espaceXS + 2) {
                 Circle().fill(PaletteMat.bleu).frame(width: 8, height: 8)
                 Text(labelPrincipalCategorie)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
             if aLigneSecondaire {
-                HStack(spacing: 6) {
+                HStack(spacing: LiquidGlassKit.espaceXS + 2) {
                     Circle().stroke(PaletteMat.orange, lineWidth: 2).frame(width: 8, height: 8)
                     Text(labelSecondaireCategorie)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            if aMoyenneMobile {
+                HStack(spacing: LiquidGlassKit.espaceXS + 2) {
+                    RoundedRectangle(cornerRadius: 1)
+                        .fill(PaletteMat.texteSecondaire)
+                        .frame(width: 14, height: 2)
+                    Text("Moyenne mobile (\(Self.fenetreMoyenneMobile) matchs)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -279,9 +315,8 @@ struct EvolutionJoueurView: View {
     // MARK: - Résumé statistiques
 
     private var resumeStatistiques: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Résumé")
-                .font(.headline.weight(.semibold))
+        VStack(alignment: .leading, spacing: LiquidGlassKit.espaceSM + 4) {
+            EnTeteSection(titre: "Résumé", sousTitre: labelPrincipalCategorie)
 
             if pointsDonnees.isEmpty {
                 Text("Aucune donnée disponible")
@@ -299,88 +334,72 @@ struct EvolutionJoueurView: View {
                     GridItem(.flexible()),
                     GridItem(.flexible()),
                     GridItem(.flexible())
-                ], spacing: 12) {
-                    carteResume(titre: "Min", valeur: formaterValeur(minimum), couleur: .red)
-                    carteResume(titre: "Max", valeur: formaterValeur(maximum), couleur: PaletteMat.vert)
-                    carteResume(titre: "Moyenne", valeur: formaterValeur(moyenne), couleur: PaletteMat.bleu)
+                ], spacing: LiquidGlassKit.espaceSM + 4) {
+                    CarteMetrique(titre: "Min", valeur: formaterValeur(minimum), teinte: PaletteMat.negatif)
+                    CarteMetrique(titre: "Max", valeur: formaterValeur(maximum), teinte: PaletteMat.positif)
+                    CarteMetrique(titre: "Moyenne", valeur: formaterValeur(moyenne), teinte: PaletteMat.bleu)
                     carteTendance(tendance: tendance)
                 }
             }
         }
-        .padding(16)
         .glassSection()
         .opacity(apparition ? 1 : 0)
         .offset(y: apparition ? 0 : 15)
     }
 
-    private func carteResume(titre: String, valeur: String, couleur: Color) -> some View {
-        VStack(spacing: 6) {
-            Text(titre)
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
-            Text(valeur)
-                .font(.title2.weight(.bold).monospacedDigit())
-                .foregroundStyle(couleur)
-                .contentTransition(.numericText())
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 10)
-        .glassCard(teinte: couleur, cornerRadius: 12, ombre: false)
-    }
-
+    /// Carte tendance alignée sur le style plat de `CarteMetrique` — l'icône
+    /// de tendance est conservée (icône porteuse de sens, D6).
     private func carteTendance(tendance: Tendance) -> some View {
-        VStack(spacing: 6) {
-            Text("Tendance")
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
-            HStack(spacing: 4) {
+        VStack(spacing: LiquidGlassKit.espaceXS + 2) {
+            HStack(spacing: LiquidGlassKit.espaceXS) {
                 Image(systemName: tendance.icone)
-                    .font(.caption.weight(.bold))
+                    .font(.subheadline.weight(.bold))
                 Text(tendance.label)
-                    .font(.caption.weight(.semibold))
+                    .font(.subheadline.weight(.bold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
             }
             .foregroundStyle(tendance.couleur)
+            Text("Tendance")
+                .font(TypographieStats.labelMetrique)
+                .foregroundStyle(.secondary)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 10)
-        .glassCard(teinte: tendance.couleur, cornerRadius: 12, ombre: false)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.vertical, LiquidGlassKit.espaceSM + 4)
+        .background(
+            tendance.couleur.opacity(LiquidGlassKit.badgeFond),
+            in: RoundedRectangle(cornerRadius: LiquidGlassKit.rayonPetit, style: .continuous)
+        )
     }
 
     // MARK: - Historique détaillé
 
     private var historiqueDetaille: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Historique des matchs")
-                    .font(.headline.weight(.semibold))
-                Spacer()
-                Text("\(pointsDonnees.count)")
-                    .font(.subheadline.weight(.medium))
-                    .glassChip(couleur: categorieSelectionnee.couleurPrincipale)
-            }
+        VStack(alignment: .leading, spacing: LiquidGlassKit.espaceSM + 4) {
+            EnTeteSection(titre: "Historique des matchs",
+                          sousTitre: libelleMatchs(pointsDonnees.count))
 
             if pointsDonnees.isEmpty {
                 Text("Aucun match enregistré")
                     .foregroundStyle(.secondary)
                     .font(.subheadline)
-                    .padding(.vertical, 20)
+                    .padding(.vertical, LiquidGlassKit.espaceMD)
                     .frame(maxWidth: .infinity)
             } else {
-                LazyVStack(spacing: 8) {
+                LazyVStack(spacing: LiquidGlassKit.espaceSM) {
                     ForEach(pointsDonnees.reversed()) { point in
                         ligneHistorique(point: point)
                     }
                 }
             }
         }
-        .padding(16)
         .glassSection()
         .opacity(apparition ? 1 : 0)
         .offset(y: apparition ? 0 : 10)
     }
 
     private func ligneHistorique(point: PointEvolution) -> some View {
-        HStack(spacing: 14) {
+        HStack(spacing: LiquidGlassKit.espaceSM + 4) {
             // Date
             VStack(alignment: .leading, spacing: 2) {
                 Text(point.date.formatCourt())
@@ -391,7 +410,7 @@ struct EvolutionJoueurView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            .frame(minWidth: 120, alignment: .leading)
+            .frame(minWidth: Self.largeurColonneDate, alignment: .leading)
 
             Spacer()
 
@@ -405,22 +424,22 @@ struct EvolutionJoueurView: View {
                     .foregroundStyle(.secondary)
             }
 
-            // Valeur secondaire (si applicable)
-            if let sec = point.valeurSecondaire, let labelSec = point.labelSecondaire {
+            // Valeur secondaire (rendement attaque, convention « .350 »)
+            if let secondaire = point.valeurSecondaire, let labelSec = point.labelSecondaire {
                 VStack(alignment: .trailing, spacing: 2) {
-                    Text(formaterValeur(sec))
+                    Text(formaterValeurSecondaire(secondaire))
                         .font(.body.weight(.semibold).monospacedDigit())
                         .foregroundStyle(PaletteMat.orange)
                     Text(labelSec)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
-                .frame(minWidth: 70, alignment: .trailing)
+                .frame(minWidth: Self.largeurColonneSecondaire, alignment: .trailing)
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .glassCard(cornerRadius: 12, ombre: false)
+        .padding(.horizontal, LiquidGlassKit.espaceSM + 4)
+        .padding(.vertical, LiquidGlassKit.espaceSM + 2)
+        .glassCard(cornerRadius: LiquidGlassKit.rayonPetit, ombre: false)
     }
 
     // MARK: - Labels par catégorie
@@ -430,20 +449,24 @@ struct EvolutionJoueurView: View {
         case .attaque:   return "Kills"
         case .service:   return "Aces"
         case .bloc:      return "Blocs totaux"
-        case .reception: return "Efficacité %"
+        case .reception: return "Efficacité réception"
         case .jeu:       return "Passes décisives"
         }
     }
 
     private var labelSecondaireCategorie: String {
         switch categorieSelectionnee {
-        case .attaque:   return "Hitting %"
+        case .attaque:   return "Rendement"
         default:         return ""
         }
     }
 
     private var aLigneSecondaire: Bool {
         categorieSelectionnee == .attaque
+    }
+
+    private func libelleMatchs(_ nombre: Int) -> String {
+        nombre > 1 ? "\(nombre) matchs" : "\(nombre) match"
     }
 
     // MARK: - Calculs
@@ -466,7 +489,7 @@ struct EvolutionJoueurView: View {
         paires.sort { $0.seance.date < $1.seance.date }
 
         // Mapper vers des points de données selon la catégorie
-        pointsDonnees = paires.map { paire in
+        let points = paires.map { paire -> PointEvolution in
             let s = paire.stats
             let seance = paire.seance
 
@@ -475,10 +498,12 @@ struct EvolutionJoueurView: View {
                 return PointEvolution(
                     date: seance.date,
                     valeurPrincipale: Double(s.kills),
-                    valeurSecondaire: s.hittingPct * 100,
+                    // Fraction 0-1 (D1) — portée ×100 sur le graphique,
+                    // formatée « .350 » (D2) dans l'historique.
+                    valeurSecondaire: s.hittingPct,
                     adversaire: seance.adversaire,
                     labelPrincipal: "Kills",
-                    labelSecondaire: "Hitting %"
+                    labelSecondaire: "Rendement"
                 )
             case .service:
                 return PointEvolution(
@@ -501,14 +526,14 @@ struct EvolutionJoueurView: View {
                 )
             case .reception:
                 let efficacite: Double = s.receptionsTotales > 0
-                    ? Double(s.receptionsReussies - s.erreursReception) / Double(s.receptionsTotales) * 100
+                    ? Double(s.receptionsReussies - s.erreursReception) / Double(s.receptionsTotales) * Self.echellePourcentage
                     : 0
                 return PointEvolution(
                     date: seance.date,
                     valeurPrincipale: efficacite,
                     valeurSecondaire: nil,
                     adversaire: seance.adversaire,
-                    labelPrincipal: "Efficacité %",
+                    labelPrincipal: "Efficacité réception",
                     labelSecondaire: nil
                 )
             case .jeu:
@@ -517,10 +542,26 @@ struct EvolutionJoueurView: View {
                     valeurPrincipale: Double(s.passesDecisives),
                     valeurSecondaire: nil,
                     adversaire: seance.adversaire,
-                    labelPrincipal: "Passes déc.",
+                    labelPrincipal: "Passes décisives",
                     labelSecondaire: nil
                 )
             }
+        }
+
+        pointsDonnees = appliquerMoyenneMobile(points)
+    }
+
+    /// Moyenne mobile sur fenêtre glissante complète : renseignée à partir du
+    /// `fenetreMoyenneMobile`-ième match (copies immuables, pas de mutation).
+    private func appliquerMoyenneMobile(_ points: [PointEvolution]) -> [PointEvolution] {
+        guard points.count >= Self.fenetreMoyenneMobile else { return points }
+        let valeurs = points.map(\.valeurPrincipale)
+        return points.enumerated().map { index, point in
+            guard index >= Self.fenetreMoyenneMobile - 1 else { return point }
+            let fenetre = valeurs[(index - Self.fenetreMoyenneMobile + 1)...index]
+            var copie = point
+            copie.moyenneMobile = fenetre.reduce(0, +) / Double(Self.fenetreMoyenneMobile)
+            return copie
         }
     }
 
@@ -536,18 +577,31 @@ struct EvolutionJoueurView: View {
         let moyenneSeconde = secondePartie.reduce(0, +) / Double(secondePartie.count)
 
         let ecart = moyenneSeconde - moyennePremiere
-        let seuil = max(moyennePremiere * 0.1, 0.5)
+        let seuil = max(moyennePremiere * Self.seuilTendanceRelatif, Self.seuilTendanceAbsolu)
 
         if ecart > seuil { return .hausse }
         if ecart < -seuil { return .baisse }
         return .stable
     }
 
+    /// Formatage de la valeur principale selon la catégorie (D2) :
+    /// réception = pourcentage (valeur portée en 0-100), sinon compteur.
     private func formaterValeur(_ valeur: Double) -> String {
-        if valeur == valeur.rounded() && abs(valeur) < 1000 {
-            return String(format: "%.0f", valeur)
+        switch categorieSelectionnee {
+        case .reception:
+            return FormatMetriques.pourcentage(valeur / Self.echellePourcentage)
+        default:
+            return FormatMetriques.points(valeur)
         }
-        return String(format: "%.1f", valeur)
+    }
+
+    /// D2 : le rendement attaque (seule valeur secondaire, fraction 0-1)
+    /// s'affiche en convention volleyball « .350 » — jamais en pourcentage.
+    private func formaterValeurSecondaire(_ valeur: Double) -> String {
+        switch categorieSelectionnee {
+        case .attaque: return FormatMetriques.hittingVolley(valeur)
+        default:       return formaterValeur(valeur)
+        }
     }
 }
 
