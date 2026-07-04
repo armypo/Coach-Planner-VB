@@ -128,38 +128,31 @@ struct DashboardMatchLiveView: View {
             ? Double(s.totalKills - s.totalErrAttaque) / Double(s.totalTentativesAttaque) * 100
             : 0
 
-        // Stats par joueur
-        var dict: [UUID: StatsJoueur] = [:]
-        for joueur in joueurs {
-            dict[joueur.id] = StatsJoueur(id: joueur.id, nom: "\(joueur.prenom) \(joueur.nom)", numero: joueur.numero)
+        // Stats par joueur — agrégation centralisée (AgregateurStatsMatch),
+        // adaptée aux colonnes d'affichage : réceptions et tentatives ici
+        // n'incluent que les actions de rallye (sémantique historique).
+        let compteurs = AgregateurStatsMatch.agreger(points: points, actions: actionsRallye)
+        s.statsParJoueur = joueurs.map { joueur in
+            let c = compteurs[joueur.id] ?? CompteursJoueur()
+            var sj = StatsJoueur(id: joueur.id, nom: "\(joueur.prenom) \(joueur.nom)",
+                                 numero: joueur.numero)
+            sj.kills = c.kills
+            sj.aces = c.aces
+            sj.blocs = c.blocsSeuls + c.blocsAssistes
+            sj.errAttaque = c.erreursAttaque
+            sj.errService = c.erreursService
+            sj.errBloc = c.erreursBloc
+            sj.errReception = c.erreursReception
+            sj.fautes = c.fautes
+            sj.manchettes = c.manchettes
+            sj.passesDecisives = c.passesDecisives
+            sj.receptions = c.receptionsTotales - c.erreursReception
+            sj.tentativesAttaque = c.tentativesAttaque - c.kills - c.erreursAttaque
+            sj.servicesEnJeu = c.servicesEnJeu
+            sj.digs = c.digs
+            return sj
         }
-        for point in points {
-            guard let jid = point.joueurID, dict[jid] != nil else { continue }
-            switch point.typeAction {
-            case .kill: dict[jid]?.kills += 1
-            case .ace: dict[jid]?.aces += 1
-            case .blocSeul, .blocAssiste, .bloc: dict[jid]?.blocs += 1
-            case .erreurAttaque: dict[jid]?.errAttaque += 1
-            case .erreurService: dict[jid]?.errService += 1
-            case .erreurBloc: dict[jid]?.errBloc += 1
-            case .erreurReception: dict[jid]?.errReception += 1
-            case .fauteJeu, .erreurEquipe: dict[jid]?.fautes += 1
-            case .erreurAdversaire, .killAdversaire, .aceAdversaire, .blocAdversaire,
-                 .erreurAttaqueAdversaire, .erreurServiceAdversaire: break
-            }
-        }
-        for action in actionsRallye {
-            guard dict[action.joueurID] != nil else { continue }
-            switch action.typeAction {
-            case .manchette: dict[action.joueurID]?.manchettes += 1
-            case .passeDecisive: dict[action.joueurID]?.passesDecisives += 1
-            case .reception: dict[action.joueurID]?.receptions += 1
-            case .tentativeAttaque: dict[action.joueurID]?.tentativesAttaque += 1
-            case .serviceEnJeu: dict[action.joueurID]?.servicesEnJeu += 1
-            case .dig: dict[action.joueurID]?.digs += 1
-            }
-        }
-        s.statsParJoueur = dict.values.sorted { $0.points > $1.points }
+        .sorted { $0.points > $1.points }
 
         cache = s
     }
