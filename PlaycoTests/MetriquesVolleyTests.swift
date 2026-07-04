@@ -150,6 +150,35 @@ struct MetriquesVolleyServiceTests {
         #expect(contexte[points[0].id] == true)
     }
 
+    @Test("reconstruireService — la valeur stockée prime sur la reconstruction")
+    func valeurStockeePrime() {
+        // La reconstruction dirait « nous servons » (set 1, nous en premier),
+        // mais la valeur stockée à la saisie dit le contraire.
+        let points = creerPoints(types: [.kill])
+        points[0].nousServionsAuMoment = false
+        points[0].serviceRenseigne = true
+        let seance = creerSeance(nousServonsEnPremier: true)
+
+        let contexte = MetriquesVolley.reconstruireService(points: points, seance: seance)
+
+        #expect(contexte[points[0].id] == false)
+    }
+
+    @Test("reconstruireService — mix stocké/legacy : le stocké prime, le legacy suit la chaîne")
+    func mixStockeEtLegacy() {
+        let points = creerPoints(types: [.kill, .killAdversaire, .kill])
+        // Seul le 2e point porte une valeur stockée (identique à la chaîne).
+        points[1].nousServionsAuMoment = true
+        points[1].serviceRenseigne = true
+        let seance = creerSeance(nousServonsEnPremier: true)
+
+        let contexte = MetriquesVolley.reconstruireService(points: points, seance: seance)
+
+        #expect(contexte[points[0].id] == true)
+        #expect(contexte[points[1].id] == true)
+        #expect(contexte[points[2].id] == false)
+    }
+
     @Test("reconstruireService — le gagnant du rallye sert le suivant")
     func gagnantServeEnsuite() {
         // Rallye 1 : nous servons, kill → nous gardons le service.

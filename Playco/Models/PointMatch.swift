@@ -21,6 +21,13 @@ final class PointMatch {
     var horodatage: Date = Date()
     /// Zone du terrain (1-6) où l'action a eu lieu. 0 = non assignée.
     var zone: Int = 0
+    /// Zone de départ (1-6) pour les trajectoires service/attaque. 0 = non assignée.
+    var zoneDepart: Int = 0
+    /// Vrai si NOUS servions au début de ce rallye (sideout %, D5).
+    var nousServionsAuMoment: Bool = false
+    /// Vrai si `nousServionsAuMoment` a été renseigné à la saisie — les
+    /// anciens matchs (false) passent par la reconstruction déterministe.
+    var serviceRenseigne: Bool = false
 
     var typeAction: TypeActionPoint {
         get { TypeActionPoint(rawValue: typeActionRaw) ?? .kill }

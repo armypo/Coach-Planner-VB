@@ -68,9 +68,10 @@ enum MetriquesVolley {
 
     // MARK: - Contexte de service (D5)
 
-    /// Reconstruit qui servait à chaque point : le serveur initial du set
-    /// dépend de la parité (sets impairs = premier serveur du match), puis
-    /// le gagnant d'un rallye sert le suivant.
+    /// Contexte de service par point : la valeur STOCKÉE à la saisie prime
+    /// (`serviceRenseigne`, nouveaux matchs) ; sinon reconstruction — le
+    /// serveur initial du set dépend de la parité (sets impairs = premier
+    /// serveur du match), puis le gagnant d'un rallye sert le suivant.
     static func reconstruireService(points: [PointMatch], seance: Seance) -> [UUID: Bool] {
         var contexte: [UUID: Bool] = [:]
         let parSet = Dictionary(grouping: points, by: \.set)
@@ -78,7 +79,11 @@ enum MetriquesVolley {
             let ordonnes = pointsDuSet.sorted { $0.horodatage < $1.horodatage }
             var nousServons = (set % 2 == 1) == seance.nousServonsEnPremier
             for point in ordonnes {
-                contexte[point.id] = nousServons
+                contexte[point.id] = point.serviceRenseigne
+                    ? point.nousServionsAuMoment
+                    : nousServons
+                // La chaîne « gagnant sert le suivant » continue dans tous les
+                // cas (règle du jeu, indépendante de la valeur stockée).
                 nousServons = point.estPointPourNous
             }
         }

@@ -404,4 +404,44 @@ struct MatchLiveViewModelTests {
         #expect(vm.joueursSurLeBanc.map(\.id) == [sortant.id], "Le sortant est sur le banc")
         #expect(vm.subsUtiliseesDansSet == 1)
     }
+
+    // MARK: - Contexte de service persisté (D5, sideout %)
+
+    @Test("enregistrerStat — renseigne nousServionsAuMoment AVANT la mutation sideout")
+    func enregistrerStatContexteService() throws {
+        // Arrange
+        let (context, seance, joueurs) = try creerMatch(nousServonsEnPremier: true)
+        let vm = creerVM(seance: seance, context: context, joueurs: joueurs)
+
+        // Act — nous servons : kill (on garde), kill adverse (service perdu),
+        // puis kill en réception (sideout).
+        vm.enregistrerStat(action: .kill, joueurID: joueurs[0].id)
+        vm.enregistrerStat(action: .killAdversaire, joueurID: nil)
+        vm.enregistrerStat(action: .kill, joueurID: joueurs[0].id)
+
+        // Assert
+        let points = try context.fetch(FetchDescriptor<PointMatch>())
+            .sorted { $0.horodatage < $1.horodatage }
+        #expect(points.count == 3)
+        let tousRenseignes = points.allSatisfy { $0.serviceRenseigne }
+        #expect(tousRenseignes)
+        #expect(points[0].nousServionsAuMoment == true)
+        #expect(points[1].nousServionsAuMoment == true)
+        #expect(points[2].nousServionsAuMoment == false)
+    }
+
+    @Test("enregistrerStat — adversaire au service en premier : contexte inversé")
+    func enregistrerStatContexteServiceAdverse() throws {
+        // Arrange
+        let (context, seance, joueurs) = try creerMatch(nousServonsEnPremier: false)
+        let vm = creerVM(seance: seance, context: context, joueurs: joueurs)
+
+        // Act
+        vm.enregistrerStat(action: .kill, joueurID: joueurs[0].id)
+
+        // Assert
+        let points = try context.fetch(FetchDescriptor<PointMatch>())
+        #expect(points.first?.serviceRenseigne == true)
+        #expect(points.first?.nousServionsAuMoment == false)
+    }
 }

@@ -172,6 +172,9 @@ final class MatchLiveViewModel {
         point.rotationAuMoment = rotationActuelle
         point.rotationAdvAuMoment = rotationAdversaire
         point.codeEquipe = codeEquipeActif
+        // Contexte de service (D5, sideout %) — AVANT gererSideout qui mute nousServons.
+        point.nousServionsAuMoment = nousServons
+        point.serviceRenseigne = true
         modelContext.insert(point)
 
         dernierPoint = point
