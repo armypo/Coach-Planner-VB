@@ -14,7 +14,7 @@
 import Foundation
 
 /// Définition d'une métrique pour le glossaire et les légendes.
-struct DefinitionMetrique: Identifiable {
+nonisolated struct DefinitionMetrique: Identifiable {
     var id: String { abreviation }
     let nom: String
     let abreviation: String
@@ -23,7 +23,9 @@ struct DefinitionMetrique: Identifiable {
 
 /// Formules statistiques pures — aucune dépendance UI ni SwiftData (les
 /// fonctions consomment des valeurs ou des modèles déjà chargés).
-enum MetriquesVolley {
+/// `nonisolated` : fonctions pures appelables hors MainActor (convention
+/// projet, comme JSONCoderCache).
+nonisolated enum MetriquesVolley {
 
     // MARK: - Ratios (fractions 0-1)
 
@@ -207,7 +209,8 @@ enum MetriquesVolley {
 /// Formatage canonique des métriques (D2) : hitting en convention volleyball
 /// « .350 », tout le reste en pourcentage français « 85,0 % ». Formats
 /// déterministes (indépendants de la locale du simulateur).
-enum FormatMetriques {
+/// `nonisolated` : fonctions pures appelables hors MainActor.
+nonisolated enum FormatMetriques {
 
     /// Convention volleyball : fraction 0-1 → « .350 », « -.050 », « 1.000 ».
     static func hittingVolley(_ ratio: Double) -> String {
