@@ -14,6 +14,9 @@ struct PalmaresRecordsView: View {
     @Query(filter: #Predicate<JoueurEquipe> { $0.estActif == true },
            sort: \JoueurEquipe.numero) private var joueurs: [JoueurEquipe]
 
+    /// Callback de navigation injecté par EquipeView (même pattern que TableauBordView).
+    var onNaviguer: ((EquipeView.EquipeNavItem) -> Void)? = nil
+
     @State private var matchsEquipe: [Seance] = []
     @State private var statsEquipe: [StatsMatch] = []
     @State private var joueursEquipe: [JoueurEquipe] = []
@@ -21,6 +24,11 @@ struct PalmaresRecordsView: View {
     // Caches @State des records — calculerRecords…() n'est plus appelé à chaque render
     @State private var recordsIndividuels: [RecordSaison] = []
     @State private var recordsEquipe: [RecordSaison] = []
+
+    /// Minimum de tentatives d'attaque pour qualifier un record de rendement individuel.
+    private static let minTentativesIndividuel = 10
+    /// Minimum de tentatives d'attaque pour qualifier un record de rendement d'équipe.
+    private static let minTentativesEquipe = 20
 
     /// Invalide le cache sur mutation in-place (score/stats saisis) — .onChange(collection) ne voit que les insertions/suppressions.
     private var signatureRecords: Int {
@@ -32,16 +40,16 @@ struct PalmaresRecordsView: View {
         let id = UUID()
         let titre: String
         let valeur: String
-        let detail: String
-        let icone: String
-        let couleur: Color
+        let sousTitre: String
+        /// Détenteur du record — permet la navigation vers la fiche joueur (nil pour les records d'équipe).
+        let joueurID: UUID?
+        let teinte: Color
+        let definition: DefinitionMetrique?
     }
 
     var body: some View {
         ScrollView {
             VStack(spacing: LiquidGlassKit.espaceLG) {
-                entete
-
                 if recordsIndividuels.isEmpty && recordsEquipe.isEmpty {
                     ContentUnavailableView(
                         "Pas de records",
@@ -64,41 +72,22 @@ struct PalmaresRecordsView: View {
         .onChange(of: joueurs) { mettreAJour() }
     }
 
-    // MARK: - En-tête
-
-    private var entete: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: LiquidGlassKit.espaceXS) {
-                Text("Palmarès & records")
-                    .font(.title.weight(.bold))
-                Text("Records individuels et d'équipe cette saison")
-                    .font(.subheadline)
-                    .foregroundStyle(PaletteMat.texteSecondaire)
-            }
-            Spacer()
-            Image(systemName: "trophy.fill")
-                .font(.system(size: 32))
-                .foregroundStyle(PaletteMat.orange.opacity(0.6))
-                .symbolRenderingMode(.hierarchical)
-        }
-    }
-
     // MARK: - Records individuels
 
     private var sectionRecordsIndividuels: some View {
-        VStack(alignment: .leading, spacing: LiquidGlassKit.espaceSM) {
-            Label("Records individuels (par match)", systemImage: "person.fill")
-                .font(.headline.weight(.semibold))
+        VStack(alignment: .leading, spacing: LiquidGlassKit.espaceMD) {
+            EnTeteSection(titre: "Records individuels",
+                          sousTitre: "Meilleure performance dans un match")
 
             if recordsIndividuels.isEmpty {
-                Text("Aucun record individuel")
+                Text("Aucun record individuel — entrez les stats d'un match pour commencer.")
                     .font(.caption)
                     .foregroundStyle(PaletteMat.texteTertiaire)
             } else {
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())],
                           spacing: LiquidGlassKit.espaceSM + 4) {
                     ForEach(recordsIndividuels) { record in
-                        carteRecord(record)
+                        carteRecordIndividuel(record)
                     }
                 }
             }
@@ -110,19 +99,19 @@ struct PalmaresRecordsView: View {
     // MARK: - Records équipe
 
     private var sectionRecordsEquipe: some View {
-        VStack(alignment: .leading, spacing: LiquidGlassKit.espaceSM) {
-            Label("Records d'équipe (par match)", systemImage: "person.3.fill")
-                .font(.headline.weight(.semibold))
+        VStack(alignment: .leading, spacing: LiquidGlassKit.espaceMD) {
+            EnTeteSection(titre: "Records d'équipe",
+                          sousTitre: "Meilleure performance collective dans un match")
 
             if recordsEquipe.isEmpty {
-                Text("Aucun record d'équipe")
+                Text("Aucun record d'équipe — entrez les stats d'un match pour commencer.")
                     .font(.caption)
                     .foregroundStyle(PaletteMat.texteTertiaire)
             } else {
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())],
                           spacing: LiquidGlassKit.espaceSM + 4) {
                     ForEach(recordsEquipe) { record in
-                        carteRecord(record)
+                        carteMetrique(record)
                     }
                 }
             }
@@ -131,30 +120,37 @@ struct PalmaresRecordsView: View {
         .glassCard(teinte: PaletteMat.bleu, cornerRadius: LiquidGlassKit.rayonMoyen)
     }
 
-    // MARK: - Carte record
+    // MARK: - Cartes record
 
-    private func carteRecord(_ record: RecordSaison) -> some View {
-        VStack(spacing: LiquidGlassKit.espaceSM) {
-            Image(systemName: record.icone)
-                .font(.title3)
-                .foregroundStyle(record.couleur)
-                .symbolRenderingMode(.hierarchical)
-            Text(record.valeur)
-                .font(.system(size: 24, weight: .bold, design: .rounded))
-                .foregroundStyle(record.couleur)
-                .contentTransition(.numericText())
-            Text(record.titre)
-                .font(.caption.weight(.semibold))
-                .multilineTextAlignment(.center)
-            Text(record.detail)
-                .font(.caption2)
-                .foregroundStyle(PaletteMat.texteSecondaire)
-                .multilineTextAlignment(.center)
-                .lineLimit(2)
+    /// Record individuel : cliquable vers la fiche joueur quand le câblage
+    /// de navigation est présent et que le détenteur est identifiable.
+    @ViewBuilder
+    private func carteRecordIndividuel(_ record: RecordSaison) -> some View {
+        if let onNaviguer, let joueurID = record.joueurID {
+            Button {
+                onNaviguer(.joueur(joueurID))
+            } label: {
+                carteMetrique(record)
+                    .overlay(alignment: .topTrailing) {
+                        Image(systemName: "chevron.right")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.tertiary)
+                            .padding(LiquidGlassKit.espaceSM)
+                    }
+            }
+            .buttonStyle(GlassButtonStyle())
+            .accessibilityHint("Affiche la fiche du joueur")
+        } else {
+            carteMetrique(record)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, LiquidGlassKit.espaceMD)
-        .glassCard(cornerRadius: LiquidGlassKit.rayonPetit)
+    }
+
+    private func carteMetrique(_ record: RecordSaison) -> some View {
+        CarteMetrique(titre: record.titre,
+                      valeur: record.valeur,
+                      sousTitre: record.sousTitre,
+                      teinte: record.teinte,
+                      definition: record.definition)
     }
 
     // MARK: - Calculs records individuels
@@ -164,81 +160,75 @@ struct PalmaresRecordsView: View {
 
         // Record kills dans un match
         if let top = statsEquipe.max(by: { $0.kills < $1.kills }), top.kills > 0 {
-            let nom = nomJoueur(top.joueurID)
-            let match = nomMatch(top.seanceID)
             results.append(RecordSaison(
                 titre: "Plus de kills",
                 valeur: "\(top.kills)",
-                detail: "\(nom) — \(match)",
-                icone: "flame.fill",
-                couleur: PaletteMat.orange
+                sousTitre: sousTitreIndividuel(top),
+                joueurID: top.joueurID,
+                teinte: PaletteMat.orange,
+                definition: definitionMetrique("K")
             ))
         }
 
         // Record aces dans un match
         if let top = statsEquipe.max(by: { $0.aces < $1.aces }), top.aces > 0 {
-            let nom = nomJoueur(top.joueurID)
-            let match = nomMatch(top.seanceID)
             results.append(RecordSaison(
                 titre: "Plus d'aces",
                 valeur: "\(top.aces)",
-                detail: "\(nom) — \(match)",
-                icone: "tennisball.fill",
-                couleur: PaletteMat.bleu
+                sousTitre: sousTitreIndividuel(top),
+                joueurID: top.joueurID,
+                teinte: PaletteMat.bleu,
+                definition: definitionMetrique("AC")
             ))
         }
 
         // Record blocs dans un match
         let topBlocs = statsEquipe.max(by: { ($0.blocsSeuls + $0.blocsAssistes) < ($1.blocsSeuls + $1.blocsAssistes) })
         if let top = topBlocs, (top.blocsSeuls + top.blocsAssistes) > 0 {
-            let nom = nomJoueur(top.joueurID)
-            let match = nomMatch(top.seanceID)
             results.append(RecordSaison(
                 titre: "Plus de blocs",
                 valeur: "\(top.blocsSeuls + top.blocsAssistes)",
-                detail: "\(nom) — \(match)",
-                icone: "hand.raised.fill",
-                couleur: PaletteMat.violet
+                sousTitre: sousTitreIndividuel(top),
+                joueurID: top.joueurID,
+                teinte: PaletteMat.violet,
+                definition: nil
             ))
         }
 
-        // Meilleur hitting % dans un match (min 10 tentatives)
-        let avecTA = statsEquipe.filter { $0.tentativesAttaque >= 10 }
+        // Meilleur rendement attaque dans un match (min 10 tentatives)
+        let avecTA = statsEquipe.filter { $0.tentativesAttaque >= Self.minTentativesIndividuel }
         if let top = avecTA.max(by: { $0.hittingPct < $1.hittingPct }) {
-            let nom = nomJoueur(top.joueurID)
-            let match = nomMatch(top.seanceID)
             results.append(RecordSaison(
-                titre: "Meilleur hitting %",
-                valeur: String(format: "%.3f", top.hittingPct),
-                detail: "\(nom) — \(match)",
-                icone: "chart.bar.fill",
-                couleur: PaletteMat.vert
+                titre: "Meilleur rendement",
+                valeur: FormatMetriques.hittingVolley(top.hittingPct),
+                sousTitre: sousTitreIndividuel(top),
+                joueurID: top.joueurID,
+                teinte: PaletteMat.vert,
+                definition: definitionMetrique("Rend.")
             ))
         }
 
         // Record points dans un match
         if let top = statsEquipe.max(by: { $0.points < $1.points }), top.points > 0 {
-            let nom = nomJoueur(top.joueurID)
-            let match = nomMatch(top.seanceID)
             results.append(RecordSaison(
                 titre: "Plus de points",
                 valeur: "\(top.points)",
-                detail: "\(nom) — \(match)",
-                icone: "star.fill",
-                couleur: PaletteMat.orange
+                sousTitre: sousTitreIndividuel(top),
+                joueurID: top.joueurID,
+                teinte: PaletteMat.orange,
+                definition: definitionMetrique("Pts")
             ))
         }
 
-        // Record passes dans un match
+        // Record passes décisives dans un match
         if let top = statsEquipe.max(by: { $0.passesDecisives < $1.passesDecisives }), top.passesDecisives > 0 {
-            let nom = nomJoueur(top.joueurID)
-            let match = nomMatch(top.seanceID)
             results.append(RecordSaison(
-                titre: "Plus de passes",
+                titre: "Plus de passes décisives",
                 valeur: "\(top.passesDecisives)",
-                detail: "\(nom) — \(match)",
-                icone: "arrow.triangle.branch",
-                couleur: PaletteMat.vert
+                sousTitre: sousTitreIndividuel(top),
+                joueurID: top.joueurID,
+                teinte: PaletteMat.vert,
+                definition: definitionMetrique("PD")
             ))
         }
 
@@ -263,32 +253,34 @@ struct PalmaresRecordsView: View {
             results.append(RecordSaison(
                 titre: "Plus de points (équipe)",
                 valeur: "\(top.points)",
-                detail: nomMatch(top.seanceID),
-                icone: "flame.circle.fill",
-                couleur: PaletteMat.orange
+                sousTitre: nomMatch(top.seanceID),
+                joueurID: nil,
+                teinte: PaletteMat.orange,
+                definition: definitionMetrique("Pts")
             ))
         }
 
-        // Meilleur hitting % équipe dans un match (min 20 tentatives)
-        var meilleurHit: (seanceID: UUID, pct: Double)? = nil
+        // Meilleur rendement attaque équipe dans un match (min 20 tentatives)
+        var meilleurRendement: (seanceID: UUID, rendement: Double)? = nil
         for match in matchsEquipe {
             let stats = statsEquipe.filter { $0.seanceID == match.id }
             let ta = stats.reduce(0) { $0 + $1.tentativesAttaque }
-            guard ta >= 20 else { continue }
+            guard ta >= Self.minTentativesEquipe else { continue }
             let k = stats.reduce(0) { $0 + $1.kills }
             let e = stats.reduce(0) { $0 + $1.erreursAttaque }
-            let pct = Double(k - e) / Double(ta)
-            if pct > (meilleurHit?.pct ?? -.infinity) {
-                meilleurHit = (match.id, pct)
+            let rendement = MetriquesVolley.rendementAttaque(kills: k, erreurs: e, tentatives: ta)
+            if rendement > (meilleurRendement?.rendement ?? -.infinity) {
+                meilleurRendement = (match.id, rendement)
             }
         }
-        if let top = meilleurHit {
+        if let top = meilleurRendement {
             results.append(RecordSaison(
-                titre: "Meilleur hitting % équipe",
-                valeur: String(format: "%.3f", top.pct),
-                detail: nomMatch(top.seanceID),
-                icone: "chart.line.uptrend.xyaxis",
-                couleur: PaletteMat.vert
+                titre: "Meilleur rendement (équipe)",
+                valeur: FormatMetriques.hittingVolley(top.rendement),
+                sousTitre: nomMatch(top.seanceID),
+                joueurID: nil,
+                teinte: PaletteMat.vert,
+                definition: definitionMetrique("Rend.")
             ))
         }
 
@@ -297,12 +289,14 @@ struct PalmaresRecordsView: View {
             .filter({ $0.scoreEntre && $0.scoreEquipe > $0.scoreAdversaire })
             .max(by: { ($0.scoreEquipe - $0.scoreAdversaire) < ($1.scoreEquipe - $1.scoreAdversaire) }) {
             let ecart = top.scoreEquipe - top.scoreAdversaire
+            let adversaire = top.adversaire.isEmpty ? "?" : top.adversaire
             results.append(RecordSaison(
-                titre: "Plus grand écart (V)",
+                titre: "Plus grand écart (victoire)",
                 valeur: "+\(ecart)",
-                detail: "\(top.scoreEquipe)-\(top.scoreAdversaire) vs \(top.adversaire.isEmpty ? "?" : top.adversaire)",
-                icone: "arrow.up.right",
-                couleur: PaletteMat.vert
+                sousTitre: "\(top.scoreEquipe)-\(top.scoreAdversaire) vs \(adversaire) (\(top.date.formatCourt()))",
+                joueurID: nil,
+                teinte: PaletteMat.vert,
+                definition: nil
             ))
         }
 
@@ -318,9 +312,10 @@ struct PalmaresRecordsView: View {
             results.append(RecordSaison(
                 titre: "Plus d'aces (équipe)",
                 valeur: "\(top.aces)",
-                detail: nomMatch(top.seanceID),
-                icone: "tennisball.fill",
-                couleur: PaletteMat.bleu
+                sousTitre: nomMatch(top.seanceID),
+                joueurID: nil,
+                teinte: PaletteMat.bleu,
+                definition: definitionMetrique("AC")
             ))
         }
 
@@ -336,9 +331,10 @@ struct PalmaresRecordsView: View {
             results.append(RecordSaison(
                 titre: "Plus de blocs (équipe)",
                 valeur: "\(top.blocs)",
-                detail: nomMatch(top.seanceID),
-                icone: "hand.raised.fill",
-                couleur: PaletteMat.violet
+                sousTitre: nomMatch(top.seanceID),
+                joueurID: nil,
+                teinte: PaletteMat.violet,
+                definition: nil
             ))
         }
 
@@ -355,6 +351,17 @@ struct PalmaresRecordsView: View {
         guard let match = matchsEquipe.first(where: { $0.id == seanceID }) else { return "" }
         let adversaire = match.adversaire.isEmpty ? "?" : match.adversaire
         return "vs \(adversaire) (\(match.date.formatCourt()))"
+    }
+
+    /// Sous-titre d'un record individuel : détenteur + contexte du match (adversaire, date) quand disponible.
+    private func sousTitreIndividuel(_ stat: StatsMatch) -> String {
+        let nom = nomJoueur(stat.joueurID)
+        let match = nomMatch(stat.seanceID)
+        return match.isEmpty ? nom : "\(nom) — \(match)"
+    }
+
+    private func definitionMetrique(_ abreviation: String) -> DefinitionMetrique? {
+        MetriquesVolley.catalogue.first { $0.abreviation == abreviation }
     }
 
     // MARK: - Mise à jour

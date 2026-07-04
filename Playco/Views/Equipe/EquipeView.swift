@@ -62,7 +62,7 @@ struct EquipeView: View {
                 case .heatmap:
                     HeatmapEquipeView()
                 case .palmares:
-                    PalmaresRecordsView()
+                    PalmaresRecordsView(onNaviguer: { selection = $0 })
                 case .joueur(let id):
                     if let joueur = joueurs.first(where: { $0.id == id }) {
                         JoueurDetailView(joueur: joueur)
