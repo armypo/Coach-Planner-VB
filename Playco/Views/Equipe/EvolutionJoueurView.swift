@@ -435,10 +435,11 @@ struct EvolutionJoueurView: View {
     // MARK: - Calculs
 
     private func calculerPoints() {
-        let statsJoueur = toutesStats.filter { $0.joueurID == joueur.id }
+        // Filtre défensif par équipe : les @Query sont globales à la base
+        let statsJoueur = toutesStats.filtreEquipe(codeEquipeActif).filter { $0.joueurID == joueur.id }
 
         // Construire un dictionnaire seanceID → Seance pour lookup rapide
-        let seancesDict = Dictionary(uniqueKeysWithValues: toutesSeances.compactMap { s -> (UUID, Seance)? in
+        let seancesDict = Dictionary(uniqueKeysWithValues: toutesSeances.filtreEquipe(codeEquipeActif).compactMap { s -> (UUID, Seance)? in
             guard s.estMatch, !s.estArchivee else { return nil }
             return (s.id, s)
         })

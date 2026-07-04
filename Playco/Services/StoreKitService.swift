@@ -101,6 +101,9 @@ final class StoreKitService {
     /// Retourne la souscription active (verified) si l'utilisateur en a une.
     /// Itère `Transaction.currentEntitlements` et retourne le tuple
     /// (Product, SubscriptionInfo.Status) pour le produit le plus récent.
+    /// Sélection par `purchaseDate` : lors d'un upgrade Pro→Club en cours de
+    /// cycle, les deux entitlements coexistent et le plus récent (l'upgrade)
+    /// gagne — comportement voulu.
     func statutSouscriptionActif() async -> (produit: Product, status: Product.SubscriptionInfo.Status)? {
         var derniereTx: Transaction? = nil
         for await result in Transaction.currentEntitlements {

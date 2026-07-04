@@ -338,21 +338,25 @@ struct ProfilView: View {
     private func supprimerEquipe(_ equipe: Equipe) {
         let code = equipe.codeEquipe
 
-        // Supprimer toutes les entités liées par codeEquipe
-        supprimerEntites(JoueurEquipe.self, codeEquipe: code)
-        supprimerEntites(Seance.self, codeEquipe: code)
-        supprimerEntites(StatsMatch.self, codeEquipe: code)
-        supprimerEntites(PointMatch.self, codeEquipe: code)
-        supprimerEntites(StrategieCollective.self, codeEquipe: code)
-        supprimerEntites(FormationPersonnalisee.self, codeEquipe: code)
-        supprimerEntites(ProgrammeMuscu.self, codeEquipe: code)
-        supprimerEntites(SeanceMuscu.self, codeEquipe: code)
-        supprimerEntites(MessageEquipe.self, codeEquipe: code)
-        supprimerEntites(ScoutingReport.self, codeEquipe: code)
-        supprimerEntites(StaffPermissions.self, codeEquipe: code)
-        supprimerEntites(ObjectifJoueur.self, codeEquipe: code)
-        supprimerEntites(ActionRallye.self, codeEquipe: code)
-        supprimerEntites(CategorieExercice.self, codeEquipe: code)
+        // Supprimer toutes les entités liées par codeEquipe. Prédicats concrets
+        // par type (#Predicate ne se génère pas sur un protocole) — évite de
+        // fetch TOUTE la table (PointMatch/ActionRallye grossissent à chaque point).
+        // NB : les entités legacy codeEquipe == "" sont volontairement conservées
+        // (comportement historique — elles sont partagées entre équipes).
+        supprimerEntites(FetchDescriptor<JoueurEquipe>(predicate: #Predicate { $0.codeEquipe == code }))
+        supprimerEntites(FetchDescriptor<Seance>(predicate: #Predicate { $0.codeEquipe == code }))
+        supprimerEntites(FetchDescriptor<StatsMatch>(predicate: #Predicate { $0.codeEquipe == code }))
+        supprimerEntites(FetchDescriptor<PointMatch>(predicate: #Predicate { $0.codeEquipe == code }))
+        supprimerEntites(FetchDescriptor<StrategieCollective>(predicate: #Predicate { $0.codeEquipe == code }))
+        supprimerEntites(FetchDescriptor<FormationPersonnalisee>(predicate: #Predicate { $0.codeEquipe == code }))
+        supprimerEntites(FetchDescriptor<ProgrammeMuscu>(predicate: #Predicate { $0.codeEquipe == code }))
+        supprimerEntites(FetchDescriptor<SeanceMuscu>(predicate: #Predicate { $0.codeEquipe == code }))
+        supprimerEntites(FetchDescriptor<MessageEquipe>(predicate: #Predicate { $0.codeEquipe == code }))
+        supprimerEntites(FetchDescriptor<ScoutingReport>(predicate: #Predicate { $0.codeEquipe == code }))
+        supprimerEntites(FetchDescriptor<StaffPermissions>(predicate: #Predicate { $0.codeEquipe == code }))
+        supprimerEntites(FetchDescriptor<ObjectifJoueur>(predicate: #Predicate { $0.codeEquipe == code }))
+        supprimerEntites(FetchDescriptor<ActionRallye>(predicate: #Predicate { $0.codeEquipe == code }))
+        supprimerEntites(FetchDescriptor<CategorieExercice>(predicate: #Predicate { $0.codeEquipe == code }))
 
         // Les AssistantCoach, CreneauRecurrent, MatchCalendrier sont en cascade via la relation Equipe
         // Supprimer l'équipe elle-même
@@ -377,10 +381,11 @@ struct ProfilView: View {
         }
     }
 
-    private func supprimerEntites<T: PersistentModel & FiltreParEquipe>(_ type: T.Type, codeEquipe: String) {
-        let descriptor = FetchDescriptor<T>()
+    /// Fetch-then-delete (PAS de batch delete `delete(model:where:)` : il
+    /// contourne les règles de cascade et a un historique de bugs avec CloudKit).
+    private func supprimerEntites<T: PersistentModel>(_ descriptor: FetchDescriptor<T>) {
         guard let entites = try? modelContext.fetch(descriptor) else { return }
-        for entite in entites where entite.codeEquipe == codeEquipe {
+        for entite in entites {
             modelContext.delete(entite)
         }
     }

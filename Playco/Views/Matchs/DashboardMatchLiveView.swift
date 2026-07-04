@@ -270,6 +270,10 @@ struct DashboardMatchLiveView: View {
             .padding(LiquidGlassKit.espaceMD)
         }
         .onAppear { recalculerCache() }
+        // Invariant : déclenché sur `.count` — la seule mutation in-place d'un
+        // PointMatch existant est `point.zone` (SelecteurZoneView), qui n'entre
+        // PAS dans le cache. Si une stat du cache devient éditable in-place,
+        // observer la collection elle-même.
         .onChange(of: tousPoints.count) { recalculerCache() }
         .onChange(of: toutesActionsRallye.count) { recalculerCache() }
         .onDisappear {

@@ -68,43 +68,30 @@ struct GestionStaffView: View {
 
     // MARK: - Toggles permissions
 
+    /// Descripteur d'une permission affichable (libellé + icône + accès au flag)
+    private struct PermissionStaff {
+        let titre: String
+        let icone: String
+        let keyPath: ReferenceWritableKeyPath<StaffPermissions, Bool>
+    }
+
+    private static let permissionsDisponibles: [PermissionStaff] = [
+        .init(titre: "Modifier les formations", icone: "person.3.fill", keyPath: \.peutModifierFormation),
+        .init(titre: "Gérer les statistiques", icone: "chart.bar.fill", keyPath: \.peutGererStats),
+        .init(titre: "Modifier le terrain", icone: "sportscourt.fill", keyPath: \.peutModifierTerrain),
+        .init(titre: "Gérer les joueurs", icone: "person.badge.plus", keyPath: \.peutGererJoueurs),
+        .init(titre: "Supprimer un match", icone: "trash", keyPath: \.peutSupprimerMatch),
+        .init(titre: "Inviter du staff", icone: "person.badge.key", keyPath: \.peutInviterStaff),
+        .init(titre: "Voir identifiants joueurs", icone: "eye", keyPath: \.peutVoirIdentifiantsJoueurs)
+    ]
+
     private func permissionsToggles(pour assistant: AssistantCoach) -> some View {
         let permissions = obtenirOuCreerPermissions(pour: assistant)
-        return Group {
-            togglePermission("Modifier les formations", icone: "person.3.fill",
+        return ForEach(Self.permissionsDisponibles, id: \.titre) { permission in
+            togglePermission(permission.titre, icone: permission.icone,
                              valeur: Binding(
-                                get: { permissions.peutModifierFormation },
-                                set: { permissions.peutModifierFormation = $0; sauvegarder() }
-                             ))
-            togglePermission("Gérer les statistiques", icone: "chart.bar.fill",
-                             valeur: Binding(
-                                get: { permissions.peutGererStats },
-                                set: { permissions.peutGererStats = $0; sauvegarder() }
-                             ))
-            togglePermission("Modifier le terrain", icone: "sportscourt.fill",
-                             valeur: Binding(
-                                get: { permissions.peutModifierTerrain },
-                                set: { permissions.peutModifierTerrain = $0; sauvegarder() }
-                             ))
-            togglePermission("Gérer les joueurs", icone: "person.badge.plus",
-                             valeur: Binding(
-                                get: { permissions.peutGererJoueurs },
-                                set: { permissions.peutGererJoueurs = $0; sauvegarder() }
-                             ))
-            togglePermission("Supprimer un match", icone: "trash",
-                             valeur: Binding(
-                                get: { permissions.peutSupprimerMatch },
-                                set: { permissions.peutSupprimerMatch = $0; sauvegarder() }
-                             ))
-            togglePermission("Inviter du staff", icone: "person.badge.key",
-                             valeur: Binding(
-                                get: { permissions.peutInviterStaff },
-                                set: { permissions.peutInviterStaff = $0; sauvegarder() }
-                             ))
-            togglePermission("Voir identifiants joueurs", icone: "eye",
-                             valeur: Binding(
-                                get: { permissions.peutVoirIdentifiantsJoueurs },
-                                set: { permissions.peutVoirIdentifiantsJoueurs = $0; sauvegarder() }
+                                get: { permissions[keyPath: permission.keyPath] },
+                                set: { permissions[keyPath: permission.keyPath] = $0; sauvegarder() }
                              ))
         }
     }

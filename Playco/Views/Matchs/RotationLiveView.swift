@@ -66,7 +66,7 @@ struct RotationLiveView: View {
             }
 
             // Mini-terrain visuel
-            terrainVisuel
+            terrainPostes(estAdversaire: false)
                 .padding(.horizontal, LiquidGlassKit.espaceMD)
 
             // Sélecteur de rotation
@@ -105,7 +105,7 @@ struct RotationLiveView: View {
             }
 
             // Mini-terrain adversaire simplifié (6 positions numérotées, pas de noms)
-            terrainAdversaire
+            terrainPostes(estAdversaire: true)
                 .padding(.horizontal, LiquidGlassKit.espaceMD)
 
             // Sélecteur de rotation adversaire
@@ -127,41 +127,61 @@ struct RotationLiveView: View {
         }
     }
 
-    // MARK: - Mini-terrain visuel (nous)
+    // MARK: - Mini-terrain visuel (partagé nous / adversaire)
 
-    private var terrainVisuel: some View {
-        let joueurs = viewModel.joueursActuellementSurTerrain
+    /// Filet du mini-terrain (barre blanche horizontale).
+    private var filetTerrain: some View {
+        Rectangle()
+            .fill(.white.opacity(0.6))
+            .frame(height: 3)
+            .padding(.horizontal, LiquidGlassKit.espaceMD)
+    }
+
+    /// Rangée de 3 postes du mini-terrain (cellule nommée ou numérotée selon l'équipe).
+    private func rangeePostes(_ postes: [Int], estAdversaire: Bool, joueurs: [JoueurSurTerrain]) -> some View {
+        HStack(spacing: LiquidGlassKit.espaceMD) {
+            ForEach(postes, id: \.self) { poste in
+                if estAdversaire {
+                    cellulePosteAdversaire(poste: poste)
+                } else {
+                    cellulePoste(poste: poste, joueurs: joueurs)
+                }
+            }
+        }
+        .padding(.vertical, LiquidGlassKit.espaceMD)
+    }
+
+    /// Mini-terrain des positions 1-6.
+    /// Nous : filet en haut, teinte bleue, cellules avec joueurs nommés.
+    /// Adversaire : filet en bas, teinte rouge, cellules numérotées simples.
+    private func terrainPostes(estAdversaire: Bool) -> some View {
+        let teinte: Color = estAdversaire ? .red : PaletteMat.bleu
+        let joueurs = estAdversaire ? [] : viewModel.joueursActuellementSurTerrain
 
         return VStack(spacing: 0) {
-            // Filet
-            Rectangle()
-                .fill(.white.opacity(0.6))
-                .frame(height: 3)
-                .padding(.horizontal, LiquidGlassKit.espaceMD)
+            // Filet (côté haut pour nous)
+            if !estAdversaire {
+                filetTerrain
+            }
 
             // Avant (postes 2, 3, 4)
-            HStack(spacing: LiquidGlassKit.espaceMD) {
-                cellulePoste(poste: 4, joueurs: joueurs)
-                cellulePoste(poste: 3, joueurs: joueurs)
-                cellulePoste(poste: 2, joueurs: joueurs)
-            }
-            .padding(.vertical, LiquidGlassKit.espaceMD)
+            rangeePostes([4, 3, 2], estAdversaire: estAdversaire, joueurs: joueurs)
 
             Divider().opacity(0.3)
 
             // Arrière (postes 5, 6, 1)
-            HStack(spacing: LiquidGlassKit.espaceMD) {
-                cellulePoste(poste: 5, joueurs: joueurs)
-                cellulePoste(poste: 6, joueurs: joueurs)
-                cellulePoste(poste: 1, joueurs: joueurs)
+            rangeePostes([5, 6, 1], estAdversaire: estAdversaire, joueurs: joueurs)
+
+            // Filet (côté bas pour l'adversaire)
+            if estAdversaire {
+                filetTerrain
             }
-            .padding(.vertical, LiquidGlassKit.espaceMD)
         }
         .padding(LiquidGlassKit.espaceMD)
-        .background(PaletteMat.bleu.opacity(0.08), in: RoundedRectangle(cornerRadius: LiquidGlassKit.rayonGrand))
+        .background(teinte.opacity(0.08), in: RoundedRectangle(cornerRadius: LiquidGlassKit.rayonGrand))
         .overlay {
             RoundedRectangle(cornerRadius: LiquidGlassKit.rayonGrand)
-                .strokeBorder(PaletteMat.bleu.opacity(0.2), lineWidth: 1)
+                .strokeBorder(teinte.opacity(0.2), lineWidth: 1)
         }
     }
 
@@ -199,41 +219,7 @@ struct RotationLiveView: View {
         .frame(maxWidth: .infinity)
     }
 
-    // MARK: - Mini-terrain adversaire (simplifié, numéros seulement)
-
-    private var terrainAdversaire: some View {
-        VStack(spacing: 0) {
-            // Avant adversaire (postes 2, 3, 4)
-            HStack(spacing: LiquidGlassKit.espaceMD) {
-                cellulePosteAdversaire(poste: 4)
-                cellulePosteAdversaire(poste: 3)
-                cellulePosteAdversaire(poste: 2)
-            }
-            .padding(.vertical, LiquidGlassKit.espaceMD)
-
-            Divider().opacity(0.3)
-
-            // Arrière adversaire (postes 5, 6, 1)
-            HStack(spacing: LiquidGlassKit.espaceMD) {
-                cellulePosteAdversaire(poste: 5)
-                cellulePosteAdversaire(poste: 6)
-                cellulePosteAdversaire(poste: 1)
-            }
-            .padding(.vertical, LiquidGlassKit.espaceMD)
-
-            // Filet
-            Rectangle()
-                .fill(.white.opacity(0.6))
-                .frame(height: 3)
-                .padding(.horizontal, LiquidGlassKit.espaceMD)
-        }
-        .padding(LiquidGlassKit.espaceMD)
-        .background(Color.red.opacity(0.08), in: RoundedRectangle(cornerRadius: LiquidGlassKit.rayonGrand))
-        .overlay {
-            RoundedRectangle(cornerRadius: LiquidGlassKit.rayonGrand)
-                .strokeBorder(Color.red.opacity(0.2), lineWidth: 1)
-        }
-    }
+    // MARK: - Cellule adversaire (simplifiée, numéros seulement)
 
     private func cellulePosteAdversaire(poste: Int) -> some View {
         VStack(spacing: 4) {

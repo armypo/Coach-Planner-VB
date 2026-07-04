@@ -254,7 +254,9 @@ final class AbonnementService {
         case .expired:
             statut = .expire(tier: tier, depuis: expDate)
         case .revoked:
-            statut = .expire(tier: tier, depuis: revocationDate ?? Date())
+            // Fallback expDate (pas Date()) : sinon l'UI affiche « expiré depuis
+            // 0 seconde » alors qu'aucune révocation n'a eu lieu à l'instant.
+            statut = .expire(tier: tier, depuis: revocationDate ?? expDate)
         case .subscribed:
             // Distinguer essai vs souscription payante via isUpgraded/offerType
             let estEssai = txInfo?.offer?.paymentMode == .freeTrial
@@ -360,11 +362,17 @@ final class AbonnementService {
         let desc = FetchDescriptor<Abonnement>(
             predicate: #Predicate { $0.utilisateurID == userID }
         )
-        let abo = (try? context.fetch(desc).first) ?? {
+        let existants = (try? context.fetch(desc)) ?? []
+        let abo = existants.first ?? {
             let nouveau = Abonnement(utilisateurID: userID)
             context.insert(nouveau)
             return nouveau
         }()
+        // Dédup : purger d'éventuels doublons (sync CloudKit + insert local
+        // concurrents) — sinon le calcul du tier devient ambigu.
+        for doublon in existants.dropFirst() {
+            context.delete(doublon)
+        }
         abo.tier = tierActif
         abo.produitIAPID = produit.id
         abo.dateExpiration = expDate

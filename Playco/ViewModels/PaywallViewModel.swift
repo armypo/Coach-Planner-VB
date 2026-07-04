@@ -61,32 +61,50 @@ final class PaywallViewModel {
 
     // MARK: - Label CTA dynamique (jamais tronqué)
 
-    var ctaLabel: String {
+    /// Logique pure du label CTA — testable sans `Product` StoreKit (non constructible en test).
+    static func ctaLabel(etat: EtatChargement, prixSelectionne: String?, essaiEligible: Bool) -> String {
         switch etat {
         case .chargement:
             return TextesPaywall.ctaChargement
         case .erreur:
             return TextesPaywall.ctaReessayer
         case .initial, .pret:
-            guard let p = produitSelectionne else { return TextesPaywall.ctaChoisirPlan }
-            if eligibiliteParProduit[p.id] == true {
+            guard let prix = prixSelectionne else { return TextesPaywall.ctaChoisirPlan }
+            if essaiEligible {
                 return TextesPaywall.ctaEssaiEligible
             }
-            return "\(TextesPaywall.ctaAchatPrefixe)\(p.displayPrice)"
+            return "\(TextesPaywall.ctaAchatPrefixe)\(prix)"
         }
     }
 
+    var ctaLabel: String {
+        Self.ctaLabel(
+            etat: etat,
+            prixSelectionne: produitSelectionne?.displayPrice,
+            essaiEligible: produitSelectionne.map { eligibiliteParProduit[$0.id] == true } ?? false
+        )
+    }
+
+    /// Logique pure de l'activation du CTA — testable sans `Product` StoreKit.
     /// Vrai uniquement quand on peut réellement déclencher un achat.
     /// L'état `.erreur` reste cliquable mais déclenche un retry — voir `tapCTA`.
-    var ctaEstActif: Bool {
+    static func ctaEstActif(etat: EtatChargement, aProduitSelectionne: Bool, achatEnCours: Bool) -> Bool {
         switch etat {
         case .erreur:
-            return !enCours
+            return !achatEnCours
         case .pret:
-            return produitSelectionne != nil && !enCours
+            return aProduitSelectionne && !achatEnCours
         case .initial, .chargement:
             return false
         }
+    }
+
+    var ctaEstActif: Bool {
+        Self.ctaEstActif(
+            etat: etat,
+            aProduitSelectionne: produitSelectionne != nil,
+            achatEnCours: enCours
+        )
     }
 
     // MARK: - Chargement / retry idempotent

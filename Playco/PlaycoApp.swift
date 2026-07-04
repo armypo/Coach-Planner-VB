@@ -74,7 +74,6 @@ struct PlaycoApp: App {
                     container = try ModelContainer(for: schema, configurations: [memConfig])
                 } catch {
                     logger.critical("ModelContainer mémoire échoué: \(error.localizedDescription)")
-                    // Tentative 4 — Schéma vide en mémoire (ultime fallback)
                     do {
                         // Tentative 4 — Schéma vide en mémoire (ultime fallback)
                         // Si ça réussit : l'app fonctionne sans données, un écran
@@ -184,6 +183,7 @@ struct PlaycoApp: App {
                             }
                         )
                         .environment(authService)
+                        .environment(appleSignInService)
                         .environment(sharingService)
                         .environment(analyticsService)
                         .environment(storeKitService)
@@ -198,11 +198,12 @@ struct PlaycoApp: App {
                             },
                             onConnecte: {
                                 // Gate centrale (async : peut relire le tier en Public DB).
-                                // La transition vers .app est gérée dans appliquerGateTier.
-                                Task { await appliquerGateTier() }
+                                // La transition vers .app est gérée dans routerVersApp.
+                                Task { await routerVersApp() }
                             }
                         )
                         .environment(authService)
+                        .environment(appleSignInService)
                         .environment(syncService)
                         .environment(sharingService)
                         .modelContainer(container)
@@ -255,14 +256,18 @@ struct PlaycoApp: App {
                                     }
                                     // Paywall v2.0 : migration rôles + chargement produits + rafraîchir statut
                                     abonnementService.migrerAssistantsVersNouveauRole(context: container.mainContext)
-                                    try? await storeKitService.chargerProduits()
+                                    do {
+                                        try await storeKitService.chargerProduits()
+                                    } catch {
+                                        logger.warning("Chargement produits StoreKit échoué au démarrage: \(error.localizedDescription)")
+                                    }
                                     await abonnementService.rafraichir(
                                         utilisateur: authService.utilisateurConnecte,
                                         context: container.mainContext,
                                         storeKit: storeKitService
                                     )
                                     // Appliquer la gate (athlète bloqué si tier coach != .club)
-                                    await appliquerGateTier()
+                                    await routerVersApp()
                                     // Observer transactions Apple en continu (renouvellements, refunds)
                                     if observerTransactionsTask == nil {
                                         observerTransactionsTask = storeKitService.observerTransactions()
@@ -306,7 +311,7 @@ struct PlaycoApp: App {
     /// et UNIQUEMENT pour le coach/admin (`paywallDoitBloquer`). Aucune confiance
     /// accordée à un tier publié non signé (sécurité : pas de décision d'accès
     /// basée sur la Public DB).
-    private func appliquerGateTier() async {
+    private func routerVersApp() async {
         guard authService.utilisateurConnecte != nil else { return }
         withAnimation(LiquidGlassKit.springDefaut) { ecranActif = .app }
     }

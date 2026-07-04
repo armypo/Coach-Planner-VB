@@ -30,6 +30,10 @@ struct CalendrierView: View {
     @State private var syncEnCours = false
     @State private var syncResultat: String?
 
+    /// Jours (formatYMD) du mois affiché qui ont des séances — cache @State
+    /// (évite filter + map + formatYMD à chaque cellule de la grille)
+    @State private var joursAvecSeance: Set<String> = []
+
     private let calendar = Calendar.current
     private let joursAbrevies = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"]
 
@@ -44,15 +48,6 @@ struct CalendrierView: View {
         let debut = calendar.startOfDay(for: date)
         guard let fin = calendar.date(byAdding: .day, value: 1, to: debut) else { return [] }
         return toutesSeances.filter { $0.date >= debut && $0.date < fin }
-    }
-
-    // Dates qui ont des séances dans le mois affiché (P0-01 — DateFormatter caché)
-    private var dateAvecSeance: Set<String> {
-        let debut = premierJourDuMois
-        guard let fin = calendar.date(byAdding: .month, value: 1, to: debut) else { return [] }
-        return Set(toutesSeances
-            .filter { $0.date >= debut && $0.date < fin }
-            .map { $0.date.formatYMD() })
     }
 
     private var premierJourDuMois: Date {
@@ -174,7 +169,27 @@ struct CalendrierView: View {
         } message: {
             Text(syncResultat ?? "")
         }
-        .onAppear { calendarService.verifierAcces() }
+        .onAppear {
+            calendarService.verifierAcces()
+            mettreAJourJoursAvecSeance()
+        }
+        .onChange(of: toutesSeancesQuery) { mettreAJourJoursAvecSeance() }
+        .onChange(of: moisAffiche) { mettreAJourJoursAvecSeance() }
+        .onChange(of: codeEquipeActif) { mettreAJourJoursAvecSeance() }
+    }
+
+    // MARK: - Mise à jour du cache
+
+    /// Recalcule les jours avec séance du mois affiché (P0-01 — DateFormatter caché).
+    private func mettreAJourJoursAvecSeance() {
+        let debut = premierJourDuMois
+        guard let fin = calendar.date(byAdding: .month, value: 1, to: debut) else {
+            joursAvecSeance = []
+            return
+        }
+        joursAvecSeance = Set(toutesSeances
+            .filter { $0.date >= debut && $0.date < fin }
+            .map { $0.date.formatYMD() })
     }
 
     // MARK: - Grille des jours
@@ -199,7 +214,7 @@ struct CalendrierView: View {
                             let date = calendar.date(byAdding: .day, value: jour - 1, to: premier) ?? premier
                             let dateStr = date.formatYMD() // P0-01
                             let estAujourdhui = dateStr == aujourdhuiStr
-                            let aSeance = dateAvecSeance.contains(dateStr)
+                            let aSeance = joursAvecSeance.contains(dateStr)
                             let estSelectionne = jourSelectionne.map { calendar.isDate($0, inSameDayAs: date) } ?? false
                             let phaseJour = phasePourDate(date)
 

@@ -58,31 +58,10 @@ struct BibliothequeView: View {
         return predefinies + perso.sorted() + orphelines.sorted()
     }
 
-    private var exercicesFiltres: [ExerciceBibliotheque] {
-        var result = tousExercices
-        if filtrerFavoris {
-            result = result.filter { $0.estFavori }
-        }
-        if let cat = categorieSelectionnee {
-            result = result.filter { $0.categorie == cat }
-        }
-        if !recherche.isEmpty {
-            result = result.filter {
-                $0.nom.localizedCaseInsensitiveContains(recherche) ||
-                $0.descriptionExo.localizedCaseInsensitiveContains(recherche) ||
-                $0.categorie.localizedCaseInsensitiveContains(recherche)
-            }
-        }
-        return result
-    }
-
-    private var exercicesParCategorie: [(String, [ExerciceBibliotheque])] {
-        let grouped = Dictionary(grouping: exercicesFiltres, by: \.categorie)
-        return categories.compactMap { cat in
-            guard let exos = grouped[cat], !exos.isEmpty else { return nil }
-            return (cat, exos.sorted { $0.nom < $1.nom })
-        }
-    }
+    // Caches @State — recalculés via mettreAJourExercices() (pattern perfo projet) :
+    // filtre + groupement + tri ne sont plus réévalués à chaque render.
+    @State private var exercicesFiltres: [ExerciceBibliotheque] = []
+    @State private var exercicesParCategorie: [(String, [ExerciceBibliotheque])] = []
 
     var body: some View {
         VStack(spacing: 0) {
@@ -178,6 +157,7 @@ struct BibliothequeView: View {
                     exo.nom = nom
                     exo.categorie = cat
                     exo.descriptionExo = desc
+                    mettreAJourExercices() // mutation in-place : le @Query ne change pas
                 }
             )
         }
@@ -239,6 +219,47 @@ struct BibliothequeView: View {
                 exercicesImportes = []
             }
         }
+        .onAppear { mettreAJourExercices() }
+        .onChange(of: tousExercicesBD) { mettreAJourExercices() }
+        .onChange(of: toutesCategoriesPerso) { mettreAJourExercices() }
+        .onChange(of: recherche) { mettreAJourExercices() }
+        .onChange(of: categorieSelectionnee) { mettreAJourExercices() }
+        .onChange(of: filtrerFavoris) { mettreAJourExercices() }
+        .onChange(of: codeEquipeActif) { mettreAJourExercices() }
+    }
+
+    // MARK: - Mise à jour des caches
+
+    /// Recalcule les exercices filtrés + groupés par catégorie.
+    /// Doit aussi être appelée après une mutation in-place (favori, catégorie,
+    /// édition) car .onChange sur le @Query ne détecte pas ces changements.
+    private func mettreAJourExercices() {
+        let filtres = calculerExercicesFiltres()
+        let grouped = Dictionary(grouping: filtres, by: \.categorie)
+        let parCategorie: [(String, [ExerciceBibliotheque])] = categories.compactMap { cat in
+            guard let exos = grouped[cat], !exos.isEmpty else { return nil }
+            return (cat, exos.sorted { $0.nom < $1.nom })
+        }
+        exercicesFiltres = filtres
+        exercicesParCategorie = parCategorie
+    }
+
+    private func calculerExercicesFiltres() -> [ExerciceBibliotheque] {
+        var result = tousExercices
+        if filtrerFavoris {
+            result = result.filter { $0.estFavori }
+        }
+        if let cat = categorieSelectionnee {
+            result = result.filter { $0.categorie == cat }
+        }
+        if !recherche.isEmpty {
+            result = result.filter {
+                $0.nom.localizedCaseInsensitiveContains(recherche) ||
+                $0.descriptionExo.localizedCaseInsensitiveContains(recherche) ||
+                $0.categorie.localizedCaseInsensitiveContains(recherche)
+            }
+        }
+        return result
     }
 
     // MARK: - Filtre catégories
@@ -419,6 +440,7 @@ struct BibliothequeView: View {
         .contextMenu {
             Button {
                 exo.estFavori.toggle()
+                mettreAJourExercices() // mutation in-place : le @Query ne change pas
             } label: {
                 Label(exo.estFavori ? "Retirer des favoris" : "Favori",
                       systemImage: exo.estFavori ? "star.slash" : "star.fill")
@@ -473,6 +495,7 @@ struct BibliothequeView: View {
             ForEach(CategorieBibliotheque.allCases, id: \.self) { cat in
                 Button {
                     exo.categorie = cat.rawValue
+                    mettreAJourExercices() // mutation in-place : le @Query ne change pas
                 } label: {
                     if exo.categorie == cat.rawValue {
                         Label(cat.rawValue, systemImage: "checkmark")
@@ -486,6 +509,7 @@ struct BibliothequeView: View {
                 ForEach(categoriesPerso) { cat in
                     Button {
                         exo.categorie = cat.nom
+                        mettreAJourExercices() // mutation in-place : le @Query ne change pas
                     } label: {
                         if exo.categorie == cat.nom {
                             Label(cat.nom, systemImage: "checkmark")

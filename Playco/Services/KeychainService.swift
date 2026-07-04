@@ -20,7 +20,7 @@ nonisolated enum KeychainService {
     // MARK: - Sauvegarder
 
     /// Sauvegarde une valeur string dans le Keychain.
-    /// Remplace la valeur existante si la clé existe déjà.
+    /// Remplace la valeur existante si la clé existe déjà (delete→add).
     @discardableResult
     static func sauvegarder(cle: String, valeur: String) -> Bool {
         guard let donnees = valeur.data(using: .utf8) else {

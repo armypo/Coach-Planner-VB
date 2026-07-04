@@ -17,7 +17,10 @@ struct PalmaresRecordsView: View {
     @State private var matchsEquipe: [Seance] = []
     @State private var statsEquipe: [StatsMatch] = []
     @State private var joueursEquipe: [JoueurEquipe] = []
-    @State private var records: [RecordSaison] = []
+
+    // Caches @State des records — calculerRecords…() n'est plus appelé à chaque render
+    @State private var recordsIndividuels: [RecordSaison] = []
+    @State private var recordsEquipe: [RecordSaison] = []
 
     struct RecordSaison: Identifiable {
         let id = UUID()
@@ -33,15 +36,15 @@ struct PalmaresRecordsView: View {
             VStack(spacing: LiquidGlassKit.espaceLG) {
                 entete
 
-                if records.isEmpty {
+                if recordsIndividuels.isEmpty && recordsEquipe.isEmpty {
                     ContentUnavailableView(
                         "Pas de records",
                         systemImage: "trophy",
                         description: Text("Jouez des matchs et entrez des stats pour voir le palmarès.")
                     )
                 } else {
-                    recordsIndividuels
-                    recordsEquipe
+                    sectionRecordsIndividuels
+                    sectionRecordsEquipe
                 }
             }
             .padding(LiquidGlassKit.espaceLG)
@@ -49,6 +52,9 @@ struct PalmaresRecordsView: View {
         .navigationTitle("Palmarès & records")
         .onAppear { mettreAJour() }
         .onChange(of: codeEquipeActif) { _, _ in mettreAJour() }
+        .onChange(of: seances) { mettreAJour() }
+        .onChange(of: statsMatchs) { mettreAJour() }
+        .onChange(of: joueurs) { mettreAJour() }
     }
 
     // MARK: - En-tête
@@ -72,21 +78,19 @@ struct PalmaresRecordsView: View {
 
     // MARK: - Records individuels
 
-    private var recordsIndividuels: some View {
-        let individuels = calculerRecordsIndividuels()
-
-        return VStack(alignment: .leading, spacing: LiquidGlassKit.espaceSM) {
+    private var sectionRecordsIndividuels: some View {
+        VStack(alignment: .leading, spacing: LiquidGlassKit.espaceSM) {
             Label("Records individuels (par match)", systemImage: "person.fill")
                 .font(.headline.weight(.semibold))
 
-            if individuels.isEmpty {
+            if recordsIndividuels.isEmpty {
                 Text("Aucun record individuel")
                     .font(.caption)
                     .foregroundStyle(PaletteMat.texteTertiaire)
             } else {
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())],
                           spacing: LiquidGlassKit.espaceSM + 4) {
-                    ForEach(individuels) { record in
+                    ForEach(recordsIndividuels) { record in
                         carteRecord(record)
                     }
                 }
@@ -98,21 +102,19 @@ struct PalmaresRecordsView: View {
 
     // MARK: - Records équipe
 
-    private var recordsEquipe: some View {
-        let equipe = calculerRecordsEquipe()
-
-        return VStack(alignment: .leading, spacing: LiquidGlassKit.espaceSM) {
+    private var sectionRecordsEquipe: some View {
+        VStack(alignment: .leading, spacing: LiquidGlassKit.espaceSM) {
             Label("Records d'équipe (par match)", systemImage: "person.3.fill")
                 .font(.headline.weight(.semibold))
 
-            if equipe.isEmpty {
+            if recordsEquipe.isEmpty {
                 Text("Aucun record d'équipe")
                     .font(.caption)
                     .foregroundStyle(PaletteMat.texteTertiaire)
             } else {
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())],
                           spacing: LiquidGlassKit.espaceSM + 4) {
-                    ForEach(equipe) { record in
+                    ForEach(recordsEquipe) { record in
                         carteRecord(record)
                     }
                 }
@@ -354,5 +356,8 @@ struct PalmaresRecordsView: View {
         matchsEquipe = seances.filtreEquipe(codeEquipeActif)
         statsEquipe = statsMatchs.filtreEquipe(codeEquipeActif)
         joueursEquipe = joueurs.filtreEquipe(codeEquipeActif)
+        // Les calculs lisent les caches ci-dessus — ordre important
+        recordsIndividuels = calculerRecordsIndividuels()
+        recordsEquipe = calculerRecordsEquipe()
     }
 }

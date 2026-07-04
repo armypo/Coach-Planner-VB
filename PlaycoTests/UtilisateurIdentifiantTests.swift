@@ -2,7 +2,8 @@
 //  Copyright © 2025 Christopher Dionne. Tous droits réservés.
 //
 //  Tests des générateurs `genererIdentifiantUnique` (format prenom.nom.XXXX)
-//  et `genererMotDePasseAthlete` (format LLLLL_DD).
+//  et des codes d'invitation. Les tests de `genererMotDePasseAthlete` et de
+//  `RoleLogin` ont été retirés avec le flux mot de passe (SIWA strict v2.1).
 //
 
 import Testing
@@ -10,7 +11,7 @@ import Foundation
 import SwiftData
 @testable import Playco
 
-@Suite("Utilisateur — générateurs identifiant + mdp athlète")
+@Suite("Utilisateur — générateurs identifiant + code d'invitation")
 @MainActor
 struct UtilisateurIdentifiantTests {
 
@@ -48,7 +49,7 @@ struct UtilisateurIdentifiantTests {
             #expect(!ids.contains(id), "Collision pour \(id)")
             ids.insert(id)
             let user = Utilisateur(
-                identifiant: id, motDePasseHash: "x",
+                identifiant: id, motDePasseHash: "",
                 prenom: "Jean", nom: "Dupont", role: .etudiant
             )
             container.mainContext.insert(user)
@@ -65,23 +66,27 @@ struct UtilisateurIdentifiantTests {
         #expect(id.hasPrefix("user."), "Attendu prefix 'user.', reçu \(id)")
     }
 
-    @Test("Mdp athlète : format `LLLLL_DD`")
-    func formatMotDePasse() {
-        let regex = #"^[A-Z]{5}_[0-9]{2}$"#
-        for _ in 0..<100 {
-            let mdp = Utilisateur.genererMotDePasseAthlete()
-            #expect(mdp.range(of: regex, options: .regularExpression) != nil,
-                    "Mdp \(mdp) ne matche pas \(regex)")
-        }
+    @Test("identifiantDisponible : faux si l'identifiant est déjà pris")
+    func identifiantDisponible() throws {
+        let container = try nouveauContainer()
+        let user = Utilisateur(identifiant: "pris.deja.0001", motDePasseHash: "",
+                               prenom: "Pris", nom: "Deja", role: .etudiant)
+        container.mainContext.insert(user)
+        try container.mainContext.save()
+
+        #expect(!Utilisateur.identifiantDisponible("pris.deja.0001", context: container.mainContext))
+        #expect(Utilisateur.identifiantDisponible("libre.encore.0002", context: container.mainContext))
     }
 
-    @Test("Mdp athlète : aucun caractère ambigu (I/L/O/0/1)")
-    func sansCaracteresAmbigus() {
-        let ambigus: Set<Character> = ["I", "L", "O", "0", "1"]
-        for _ in 0..<500 {
-            let mdp = Utilisateur.genererMotDePasseAthlete()
-            for c in mdp where ambigus.contains(c) {
-                Issue.record("Caractère ambigu \(c) trouvé dans \(mdp)")
+    @Test("Code d'invitation unique : 6 caractères sans I/O/1/0")
+    func codeInvitationUnique() throws {
+        let container = try nouveauContainer()
+        let interdits = Set("IO10")
+        for _ in 0..<50 {
+            let code = Utilisateur.genererCodeUniqueInvitation(context: container.mainContext)
+            #expect(code.count == 6)
+            for char in code {
+                #expect(!interdits.contains(char), "Le code ne doit pas contenir \(char)")
             }
         }
     }
@@ -91,16 +96,5 @@ struct UtilisateurIdentifiantTests {
         #expect(RoleUtilisateur.allCases.contains(.assistantCoach))
         #expect(RoleUtilisateur.assistantCoach.label == "Coach assistant")
         #expect(!RoleUtilisateur.assistantCoach.icone.isEmpty)
-    }
-
-    @Test("RoleLogin mapping vers RoleUtilisateur")
-    func roleLoginMapping() {
-        #expect(RoleLogin.coach.rolesValides.contains(.coach))
-        #expect(RoleLogin.coach.rolesValides.contains(.admin))
-        #expect(RoleLogin.assistant.rolesValides == [.assistantCoach])
-        #expect(RoleLogin.athlete.rolesValides == [.etudiant])
-        // Vérifier qu'aucun rôle ne chevauche deux tabs
-        #expect(!RoleLogin.coach.rolesValides.contains(.etudiant))
-        #expect(!RoleLogin.athlete.rolesValides.contains(.coach))
     }
 }
