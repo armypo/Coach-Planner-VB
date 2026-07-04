@@ -16,7 +16,7 @@ import SwiftData
 struct CredentialAthleteTests {
 
     private func nouveauContainer() throws -> ModelContainer {
-        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let config = ModelConfiguration(isStoredInMemoryOnly: true, allowsSave: true, groupContainer: .none, cloudKitDatabase: .none)
         return try ModelContainer(
             for: CredentialAthlete.self, Utilisateur.self,
             configurations: config

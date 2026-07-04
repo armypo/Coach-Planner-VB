@@ -398,8 +398,10 @@ struct OverlayDessinView: View {
                 .frame(width: 34, height: 34)
                 .shadow(color: .black.opacity(0.4), radius: 3)
             case .ballon:
-                Text("🏐").font(.system(size: 26))
-                    .shadow(color: .black.opacity(0.3), radius: 2)
+                Image(systemName: "volleyball.fill")
+                    .font(.system(size: 24))
+                    .foregroundStyle(.white)
+                    .shadow(color: .black.opacity(0.4), radius: 2)
             default:
                 EmptyView()
             }

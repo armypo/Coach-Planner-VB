@@ -172,6 +172,9 @@ final class MatchLiveViewModel {
         point.rotationAuMoment = rotationActuelle
         point.rotationAdvAuMoment = rotationAdversaire
         point.codeEquipe = codeEquipeActif
+        // Contexte de service (D5, sideout %) — AVANT gererSideout qui mute nousServons.
+        point.nousServionsAuMoment = nousServons
+        point.serviceRenseigne = true
         modelContext.insert(point)
 
         dernierPoint = point
@@ -179,8 +182,8 @@ final class MatchLiveViewModel {
         // Sauvegarder le set
         sauvegarderSet()
 
-        // Zone heatmap
-        if action.supportsZone {
+        // Zone heatmap — désactivable via la config du match (courtside, 3.6)
+        if action.supportsZone && seance.configMatch.demanderZone {
             pointEnAttenteZone = point
             afficherSelecteurZone = true
         }

@@ -139,26 +139,28 @@ final class TerrainEditeurViewModel {
         }) {
             let positionsCache = perso.positions
             guard !positionsCache.isEmpty else {
-                let positions = type.positions(rotation: rotation, mode: mode)
-                for pos in positions {
-                    elements.append(ElementTerrain(
-                        type: .joueur, x: pos.x, y: pos.y,
-                        label: pos.label, couleur: couleur))
-                }
+                ajouterJoueursFormation(type.positions(rotation: rotation, mode: mode))
                 return
             }
             for pos in positionsCache {
                 elements.append(ElementTerrain(
                     type: .joueur, x: pos.x, y: pos.y,
-                    label: pos.label, couleur: couleur))
+                    label: pos.label,
+                    couleur: FormationType.couleurPourLabel(pos.label)))
             }
         } else {
-            let positions = type.positions(rotation: rotation, mode: mode)
-            for pos in positions {
-                elements.append(ElementTerrain(
-                    type: .joueur, x: pos.x, y: pos.y,
-                    label: pos.label, couleur: couleur))
-            }
+            ajouterJoueursFormation(type.positions(rotation: rotation, mode: mode))
+        }
+    }
+
+    /// Phase 5.2 — chaque jeton reçoit la couleur de son poste (source unique
+    /// FormationType.couleurPourLabel) au lieu de la couleur d'outil courante.
+    private func ajouterJoueursFormation(_ positions: [FormationType.Position]) {
+        for pos in positions {
+            elements.append(ElementTerrain(
+                type: .joueur, x: pos.x, y: pos.y,
+                label: pos.label,
+                couleur: FormationType.couleurPourLabel(pos.label)))
         }
     }
 
@@ -256,6 +258,21 @@ final class TerrainEditeurViewModel {
     func ajouterEtape(dessinData: inout Data?, elementsData: inout Data?) {
         guard sauvegarderEtapeActive(dessinData: &dessinData, elementsData: &elementsData) else { return }
         etapes.append(EtapeExercice(nom: ""))
+        etapeActive = etapes.count
+        chargerEtapeActive(dessinData: dessinData, elementsData: elementsData)
+    }
+
+    /// Phase 5.4 — Duplique l'étape active (dessin + éléments) vers une
+    /// nouvelle étape ajoutée en fin de liste, puis l'active.
+    func dupliquerEtapeActive(dessinData: inout Data?, elementsData: inout Data?) {
+        guard sauvegarderEtapeActive(dessinData: &dessinData, elementsData: &elementsData) else { return }
+        guard let elems = try? JSONCoderCache.encoder.encode(elements) else {
+            logger.warning("Encodage des éléments échoué — étape non dupliquée")
+            return
+        }
+        etapes.append(EtapeExercice(nom: "",
+                                    dessinData: drawing.dataRepresentation(),
+                                    elementsData: elems))
         etapeActive = etapes.count
         chargerEtapeActive(dessinData: dessinData, elementsData: elementsData)
     }

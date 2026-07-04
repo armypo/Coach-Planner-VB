@@ -19,7 +19,7 @@ struct MembreFactoryTests {
 
     private func creerContexteEnMemoire() throws -> ModelContext {
         let schema = Schema([Utilisateur.self, JoueurEquipe.self, CredentialAthlete.self])
-        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, allowsSave: true, groupContainer: .none, cloudKitDatabase: .none)
         let container = try ModelContainer(for: schema, configurations: [config])
         return ModelContext(container)
     }

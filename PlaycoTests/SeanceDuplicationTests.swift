@@ -13,7 +13,7 @@ struct SeanceDuplicationTests {
 
     private func creerContexteEnMemoire() throws -> ModelContext {
         let schema = Schema([Seance.self, Exercice.self])
-        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, allowsSave: true, groupContainer: .none, cloudKitDatabase: .none)
         let container = try ModelContainer(for: schema, configurations: [config])
         return ModelContext(container)
     }

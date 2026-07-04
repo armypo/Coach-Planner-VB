@@ -8,6 +8,22 @@ import os
 
 private let logger = Logger(subsystem: "com.origotech.playco", category: "StatsLive")
 
+/// Constantes de mise en page locales à la saisie live (pas de magic numbers).
+private enum DispositionStatsLive {
+    /// Largeur minimale d'une cellule de stat hors mode courtside.
+    static let largeurMinCellule: CGFloat = 100
+    /// Largeur de la colonne centrale (set + rotations) du tableau de score.
+    static let largeurColonneCentrale: CGFloat = 140
+    /// Taille du score hors mode courtside.
+    static let tailleScore: CGFloat = 48
+    /// Côté visuel du bouton pavé numérique (zone tactile étendue à 44 pt).
+    static let cotePaveToggle: CGFloat = 28
+    static let rayonPaveToggle: CGFloat = 8
+    /// Dimensions d'un jeton joueur du panneau rallye.
+    static let largeurJetonRallye: CGFloat = 44
+    static let hauteurJetonRallye: CGFloat = 36
+}
+
 /// Saisie point-par-point en temps réel pendant un match
 /// Flux : clic sur stat → dropdown joueur sur le terrain → enregistrement + cascade
 struct StatsLiveView: View {
@@ -66,10 +82,10 @@ struct StatsLiveView: View {
                         .tracking(0.5)
                 }
                 .foregroundStyle(.white)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 5)
-                .background(.red.gradient, in: Capsule())
-                .padding(.vertical, 4)
+                .padding(.horizontal, LiquidGlassKit.espaceSM + 4)
+                .padding(.vertical, LiquidGlassKit.espaceXS)
+                .background(PaletteMat.negatif.gradient, in: Capsule())
+                .padding(.vertical, LiquidGlassKit.espaceXS)
             }
 
             // Tableau de score
@@ -87,9 +103,9 @@ struct StatsLiveView: View {
                 Divider()
             }
 
-            // Grille de stats + historique
+            // Saisie en 3 blocs : Points pour nous / Nos erreurs / Adversaire
             ScrollView {
-                VStack(spacing: LiquidGlassKit.espaceMD) {
+                VStack(alignment: .leading, spacing: LiquidGlassKit.espaceLG) {
                     // Bouton point adversaire rapide
                     boutonPointAdversaire
                         .disabled(lectureSeule)
@@ -97,23 +113,42 @@ struct StatsLiveView: View {
 
                     if courtside {
                         // Mode courtside : stats réduites (6 boutons essentiels)
-                        sectionStats(titre: "POINT POUR NOUS", stats: statsCourtside.filter { $0.categorie == .pointPourNous }, couleur: .green)
-                        sectionStats(titre: "NOS ERREURS", stats: statsCourtside.filter { $0.categorie == .pointContre }, couleur: .red)
-
-                        // Stats adversaire essentielles en courtside
-                        sectionStats(titre: "ADVERSAIRE — SCORING", stats: DefinitionStat.statsAdversaireScoring, couleur: .red, estAdversaire: true)
+                        blocSaisie(titre: "Points pour nous", teinte: PaletteMat.positif) {
+                            grilleStats(stats: statsCourtside.filter { $0.categorie == .pointPourNous },
+                                        couleur: PaletteMat.positif)
+                        }
+                        blocSaisie(titre: "Nos erreurs", teinte: PaletteMat.negatif) {
+                            grilleStats(stats: statsCourtside.filter { $0.categorie == .pointContre },
+                                        couleur: PaletteMat.negatif)
+                        }
+                        blocSaisie(titre: "Adversaire — scoring", teinte: PaletteMat.negatif) {
+                            grilleStats(stats: DefinitionStat.statsAdversaireScoring,
+                                        couleur: PaletteMat.negatif, estAdversaire: true)
+                        }
                     } else {
-                        // Stats pour nous
-                        sectionStats(titre: "POINT POUR NOUS", stats: DefinitionStat.statsPourNous, couleur: .green)
-
-                        // Stats contre nous (nos erreurs)
-                        sectionStats(titre: "NOS ERREURS (POINT ADV.)", stats: DefinitionStat.statsContre, couleur: .red)
-
-                        // Stats adversaire scoring (point contre nous)
-                        sectionStats(titre: "ADVERSAIRE — SCORING", stats: DefinitionStat.statsAdversaireScoring, couleur: .red, estAdversaire: true)
-
-                        // Stats adversaire erreurs (point pour nous)
-                        sectionStats(titre: "ADVERSAIRE — ERREURS", stats: DefinitionStat.statsAdversaireErreurs, couleur: .green, estAdversaire: true)
+                        blocSaisie(titre: "Points pour nous", teinte: PaletteMat.positif) {
+                            grilleStats(stats: DefinitionStat.statsPourNous,
+                                        couleur: PaletteMat.positif)
+                        }
+                        blocSaisie(titre: "Nos erreurs", teinte: PaletteMat.negatif,
+                                   sousTitre: "Point pour l'adversaire") {
+                            grilleStats(stats: DefinitionStat.statsContre,
+                                        couleur: PaletteMat.negatif)
+                        }
+                        blocSaisie(titre: "Adversaire", teinte: PaletteMat.negatif,
+                                   sousTitre: "Saisie directe, sans sélection de joueur") {
+                            VStack(alignment: .leading, spacing: LiquidGlassKit.espaceSM) {
+                                sousEnTete("Scoring adverse — point contre nous",
+                                           teinte: PaletteMat.negatif)
+                                grilleStats(stats: DefinitionStat.statsAdversaireScoring,
+                                            couleur: PaletteMat.negatif, estAdversaire: true)
+                                sousEnTete("Erreurs adverses — point pour nous",
+                                           teinte: PaletteMat.positif)
+                                    .padding(.top, LiquidGlassKit.espaceSM)
+                                grilleStats(stats: DefinitionStat.statsAdversaireErreurs,
+                                            couleur: PaletteMat.positif, estAdversaire: true)
+                            }
+                        }
                     }
 
                     // Annuler dernier point + historique simplifié en courtside
@@ -132,17 +167,14 @@ struct StatsLiveView: View {
             if let point = viewModel.pointEnAttenteZone {
                 SelecteurZoneView(
                     categorieHeatmap: point.typeAction.categorieHeatmap,
-                    onZoneSelectionnee: { zone in
-                        point.zone = zone
-                        viewModel.afficherSelecteurZone = false
-                        viewModel.pointEnAttenteZone = nil
-                    },
-                    onPasser: {
+                    onTermine: { arrivee, depart in
+                        if let arrivee { point.zone = arrivee }
+                        if let depart { point.zoneDepart = depart }
                         viewModel.afficherSelecteurZone = false
                         viewModel.pointEnAttenteZone = nil
                     }
                 )
-                .presentationDetents([.height(380)])
+                .presentationDetents([.height(420)])
                 .presentationDragIndicator(.visible)
             }
         }
@@ -178,12 +210,12 @@ struct StatsLiveView: View {
                     if viewModel.nousServons {
                         Image(systemName: "volleyball.fill")
                             .font(.system(size: 8))
-                            .foregroundStyle(.green)
+                            .foregroundStyle(PaletteMat.positif)
                     }
                 }
                 Text("\(viewModel.scoreNous)")
-                    .font(.system(size: courtside ? LiquidGlassKit.scoreCourtside : 48, weight: .bold, design: .rounded))
-                    .foregroundStyle(.green)
+                    .font(.system(size: courtside ? LiquidGlassKit.scoreCourtside : DispositionStatsLive.tailleScore, weight: .bold, design: .rounded))
+                    .foregroundStyle(PaletteMat.positif)
                     .contentTransition(.numericText())
             }
             .frame(maxWidth: .infinity)
@@ -192,9 +224,9 @@ struct StatsLiveView: View {
             VStack(spacing: 6) {
                 Text("Set \(viewModel.setActuel)")
                     .font(.title3.weight(.bold))
-                    .foregroundStyle(.red)
+                    .foregroundStyle(PaletteMat.negatif)
 
-                HStack(spacing: 8) {
+                HStack(spacing: LiquidGlassKit.espaceSM) {
                     Text("R\(viewModel.rotationActuelle)")
                         .font(.caption.weight(.medium))
                         .foregroundStyle(PaletteMat.bleu)
@@ -203,7 +235,7 @@ struct StatsLiveView: View {
                         .foregroundStyle(.tertiary)
                     Text("R\(viewModel.rotationAdversaire)")
                         .font(.caption.weight(.medium))
-                        .foregroundStyle(.red)
+                        .foregroundStyle(PaletteMat.negatif)
 
                     if courtside {
                         Button {
@@ -214,13 +246,17 @@ struct StatsLiveView: View {
                             Image(systemName: "number")
                                 .font(.caption.weight(.bold))
                                 .foregroundStyle(afficherPaveNumerique ? .white : PaletteMat.bleu)
-                                .frame(width: 28, height: 28)
+                                .frame(width: DispositionStatsLive.cotePaveToggle,
+                                       height: DispositionStatsLive.cotePaveToggle)
                                 .background(
                                     afficherPaveNumerique ? PaletteMat.bleu : PaletteMat.bleu.opacity(0.12),
-                                    in: RoundedRectangle(cornerRadius: 8)
+                                    in: RoundedRectangle(cornerRadius: DispositionStatsLive.rayonPaveToggle)
                                 )
+                                .frame(minWidth: 44, minHeight: 44)
+                                .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel("Pavé numérique rapide")
                     }
                 }
 
@@ -244,7 +280,7 @@ struct StatsLiveView: View {
                     }
                 }
             }
-            .frame(width: 140)
+            .frame(width: DispositionStatsLive.largeurColonneCentrale)
 
             // Adversaire
             VStack(spacing: 2) {
@@ -256,12 +292,12 @@ struct StatsLiveView: View {
                     if !viewModel.nousServons {
                         Image(systemName: "volleyball.fill")
                             .font(.system(size: 8))
-                            .foregroundStyle(.red)
+                            .foregroundStyle(PaletteMat.negatif)
                     }
                 }
                 Text("\(viewModel.scoreAdv)")
-                    .font(.system(size: courtside ? LiquidGlassKit.scoreCourtside : 48, weight: .bold, design: .rounded))
-                    .foregroundStyle(.red)
+                    .font(.system(size: courtside ? LiquidGlassKit.scoreCourtside : DispositionStatsLive.tailleScore, weight: .bold, design: .rounded))
+                    .foregroundStyle(PaletteMat.negatif)
                     .contentTransition(.numericText())
             }
             .frame(maxWidth: .infinity)
@@ -278,20 +314,20 @@ struct StatsLiveView: View {
                 viewModel.enregistrerStat(action: .erreurAdversaire, joueurID: nil)
             }
         } label: {
-            HStack(spacing: 8) {
+            HStack(spacing: LiquidGlassKit.espaceSM) {
                 Image(systemName: "xmark.circle.fill")
                     .font(.title3)
                 Text("Erreur adversaire (+1 nous)")
                     .font(.subheadline.weight(.semibold))
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .background(.green.opacity(0.1), in: RoundedRectangle(cornerRadius: LiquidGlassKit.rayonPetit))
+            .padding(.vertical, LiquidGlassKit.paddingChamp)
+            .background(PaletteMat.positif.opacity(0.1), in: RoundedRectangle(cornerRadius: LiquidGlassKit.rayonPetit))
             .overlay {
                 RoundedRectangle(cornerRadius: LiquidGlassKit.rayonPetit)
-                    .strokeBorder(.green.opacity(0.3), lineWidth: 1)
+                    .strokeBorder(PaletteMat.positif.opacity(0.3), lineWidth: 1)
             }
-            .foregroundStyle(.green)
+            .foregroundStyle(PaletteMat.positif)
         }
         .buttonStyle(.plain)
     }
@@ -321,40 +357,64 @@ struct StatsLiveView: View {
                             .font(.subheadline.weight(.semibold))
                     }
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                    .background(.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: LiquidGlassKit.rayonPetit))
+                    .padding(.vertical, LiquidGlassKit.espaceMD)
+                    .background(PaletteMat.attention.opacity(0.1), in: RoundedRectangle(cornerRadius: LiquidGlassKit.rayonPetit))
                     .overlay {
                         RoundedRectangle(cornerRadius: LiquidGlassKit.rayonPetit)
-                            .strokeBorder(.orange.opacity(0.3), lineWidth: 1)
+                            .strokeBorder(PaletteMat.attention.opacity(0.3), lineWidth: 1)
                     }
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(PaletteMat.attention)
                 }
                 .buttonStyle(.plain)
             }
         }
     }
 
-    /// Section grille de stats — partagée nous / adversaire (seul le bouton diffère :
-    /// sélection joueur pour nous, enregistrement direct pour l'adversaire).
-    private func sectionStats(titre: String, stats: [DefinitionStat], couleur: Color, estAdversaire: Bool = false) -> some View {
+    /// Bloc de saisie : en-tête coloré distinct (teinte sémantique positif /
+    /// négatif) + contenu. Les 3 blocs (Points pour nous / Nos erreurs /
+    /// Adversaire) sont séparés par `espaceLG` dans le corps de la vue.
+    private func blocSaisie<Contenu: View>(titre: String, teinte: Color,
+                                           sousTitre: String? = nil,
+                                           @ViewBuilder contenu: () -> Contenu) -> some View {
         VStack(alignment: .leading, spacing: LiquidGlassKit.espaceSM) {
-            Text(titre)
-                .font(courtside ? .subheadline.weight(.bold) : .caption.weight(.bold))
-                .foregroundStyle(couleur)
-                .tracking(0.5)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(titre)
+                    .font(courtside ? .headline : .subheadline.weight(.bold))
+                    .foregroundStyle(teinte)
+                    .accessibilityAddTraits(.isHeader)
+                if let sousTitre {
+                    Text(sousTitre)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            contenu()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
 
-            // Grille de statistiques — chaque cellule = 1 type de stat
-            let columns = courtside
-                ? [GridItem(.adaptive(minimum: LiquidGlassKit.grilleCourtside), spacing: LiquidGlassKit.espaceMD)]
-                : [GridItem(.adaptive(minimum: 100), spacing: LiquidGlassKit.espaceSM)]
+    /// Sous-en-tête à l'intérieur du bloc Adversaire (scoring vs erreurs).
+    private func sousEnTete(_ titre: String, teinte: Color) -> some View {
+        Text(titre)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(teinte)
+            .accessibilityAddTraits(.isHeader)
+    }
 
-            LazyVGrid(columns: columns, spacing: courtside ? LiquidGlassKit.espaceMD : LiquidGlassKit.espaceSM) {
-                ForEach(stats) { stat in
-                    if estAdversaire {
-                        boutonStatAdversaire(stat: stat, couleur: couleur)
-                    } else {
-                        boutonStat(stat: stat, couleur: couleur)
-                    }
+    /// Grille de stats — partagée nous / adversaire (seul le bouton diffère :
+    /// sélection joueur pour nous, enregistrement direct pour l'adversaire).
+    private func grilleStats(stats: [DefinitionStat], couleur: Color, estAdversaire: Bool = false) -> some View {
+        // Grille de statistiques — chaque cellule = 1 type de stat
+        let colonnes = courtside
+            ? [GridItem(.adaptive(minimum: LiquidGlassKit.grilleCourtside), spacing: LiquidGlassKit.espaceMD)]
+            : [GridItem(.adaptive(minimum: DispositionStatsLive.largeurMinCellule), spacing: LiquidGlassKit.espaceSM)]
+
+        return LazyVGrid(columns: colonnes, spacing: courtside ? LiquidGlassKit.espaceMD : LiquidGlassKit.espaceSM) {
+            ForEach(stats) { stat in
+                if estAdversaire {
+                    boutonStatAdversaire(stat: stat, couleur: couleur)
+                } else {
+                    boutonStat(stat: stat, couleur: couleur)
                 }
             }
         }
@@ -371,7 +431,7 @@ struct StatsLiveView: View {
                 .lineLimit(1)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, courtside ? 20 : 14)
+        .padding(.vertical, courtside ? LiquidGlassKit.espaceMD + LiquidGlassKit.espaceXS : LiquidGlassKit.paddingChamp)
         .background(couleur.opacity(0.08), in: RoundedRectangle(cornerRadius: LiquidGlassKit.rayonPetit))
         .overlay {
             RoundedRectangle(cornerRadius: LiquidGlassKit.rayonPetit)
@@ -436,12 +496,12 @@ struct StatsLiveView: View {
     // MARK: - Historique
 
     private var historiqueSet: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: LiquidGlassKit.espaceSM) {
             HStack {
-                Text("HISTORIQUE SET \(viewModel.setActuel)")
-                    .font(.caption.weight(.bold))
+                Text("Historique — set \(viewModel.setActuel)")
+                    .font(.subheadline.weight(.bold))
                     .foregroundStyle(.secondary)
-                    .tracking(0.5)
+                    .accessibilityAddTraits(.isHeader)
                 Spacer()
                 Text("\(pointsSetActuel.count) points")
                     .font(.caption2)
@@ -455,16 +515,18 @@ struct StatsLiveView: View {
                     } label: {
                         Label("Annuler", systemImage: "arrow.uturn.backward")
                             .font(.caption2)
+                            .frame(minHeight: 44)
+                            .contentShape(Rectangle())
                     }
-                    .tint(.orange)
+                    .tint(PaletteMat.attention)
                 }
             }
 
             if pointsSetActuel.isEmpty {
-                Text("Aucun point enregistré")
+                Text("Aucun point enregistré pour ce set — touchez une stat ci-dessus pour saisir le premier point.")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
-                    .padding(.vertical, 4)
+                    .padding(.vertical, LiquidGlassKit.espaceXS)
             } else {
                 ForEach(pointsSetActuel.sorted(by: { $0.horodatage > $1.horodatage }).prefix(10)) { point in
                     lignePoint(point)
@@ -476,10 +538,10 @@ struct StatsLiveView: View {
     private func lignePoint(_ point: PointMatch) -> some View {
         let joueur = joueursActifs.first(where: { $0.joueurID == point.joueurID })
 
-        return HStack(spacing: 8) {
+        return HStack(spacing: LiquidGlassKit.espaceSM) {
             Image(systemName: point.typeAction.icone)
                 .font(.caption2)
-                .foregroundStyle(point.estPointPourNous ? .green : .red)
+                .foregroundStyle(point.estPointPourNous ? PaletteMat.positif : PaletteMat.negatif)
                 .frame(width: 16)
 
             Text("\(point.scoreEquipeAuMoment)-\(point.scoreAdversaireAuMoment)")
@@ -508,12 +570,12 @@ struct StatsLiveView: View {
     // MARK: - Panneau actions rallye
 
     private var panneauActionsRallye: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: LiquidGlassKit.espaceSM) {
             HStack {
-                Text("ACTIONS DU RALLYE")
-                    .font(.caption.weight(.bold))
+                Text("Actions du rallye")
+                    .font(.subheadline.weight(.bold))
                     .foregroundStyle(.secondary)
-                    .tracking(0.5)
+                    .accessibilityAddTraits(.isHeader)
                 Spacer()
                 Button {
                     withAnimation(LiquidGlassKit.springDefaut) {
@@ -523,7 +585,11 @@ struct StatsLiveView: View {
                     Image(systemName: "xmark.circle.fill")
                         .font(.body)
                         .foregroundStyle(.secondary)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Fermer le panneau rallye")
             }
 
             ForEach(TypeActionRallye.allCases, id: \.rawValue) { type in
@@ -544,15 +610,17 @@ struct StatsLiveView: View {
                                     }
                                 } label: {
                                     Text("#\(joueur.numero)")
-                                        .font(.caption2.weight(.bold))
-                                        .frame(width: 34, height: 28)
-                                        .background(type.couleur.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
+                                        .font(.caption.weight(.bold))
+                                        .frame(width: DispositionStatsLive.largeurJetonRallye,
+                                               height: DispositionStatsLive.hauteurJetonRallye)
+                                        .background(type.couleur.opacity(0.12), in: RoundedRectangle(cornerRadius: LiquidGlassKit.rayonMini))
                                         .overlay {
-                                            RoundedRectangle(cornerRadius: 6)
+                                            RoundedRectangle(cornerRadius: LiquidGlassKit.rayonMini)
                                                 .strokeBorder(type.couleur.opacity(0.25), lineWidth: 0.5)
                                         }
                                 }
                                 .buttonStyle(.plain)
+                                .accessibilityLabel("\(type.rawValue), numéro \(joueur.numero) \(joueur.prenom)")
                             }
                         }
                     }
@@ -560,7 +628,7 @@ struct StatsLiveView: View {
             }
         }
         .padding(.horizontal, LiquidGlassKit.espaceMD)
-        .padding(.vertical, 10)
+        .padding(.vertical, LiquidGlassKit.espaceSM + 2)
         .background(Color(.secondarySystemGroupedBackground))
     }
 
@@ -575,14 +643,14 @@ struct StatsLiveView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            HStack(spacing: 12) {
-                boutonQualite(label: "Parfaite", qualite: 3, couleur: .green)
-                boutonQualite(label: "Bonne", qualite: 2, couleur: .yellow)
-                boutonQualite(label: "Mauvaise", qualite: 1, couleur: .red)
+            HStack(spacing: LiquidGlassKit.espaceSM + 4) {
+                boutonQualite(label: "Parfaite", qualite: 3, couleur: PaletteMat.positif)
+                boutonQualite(label: "Bonne", qualite: 2, couleur: PaletteMat.attention)
+                boutonQualite(label: "Mauvaise", qualite: 1, couleur: PaletteMat.negatif)
             }
-            .padding(.top, 4)
+            .padding(.top, LiquidGlassKit.espaceXS)
         }
-        .padding(20)
+        .padding(LiquidGlassKit.espaceMD + LiquidGlassKit.espaceXS)
     }
 
     private func boutonQualite(label: String, qualite: Int, couleur: Color) -> some View {
@@ -600,7 +668,7 @@ struct StatsLiveView: View {
                     .font(.caption2.weight(.medium))
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 12)
+            .padding(.vertical, LiquidGlassKit.espaceSM + 4)
             .background(couleur.opacity(0.12), in: RoundedRectangle(cornerRadius: LiquidGlassKit.rayonPetit))
             .overlay {
                 RoundedRectangle(cornerRadius: LiquidGlassKit.rayonPetit)

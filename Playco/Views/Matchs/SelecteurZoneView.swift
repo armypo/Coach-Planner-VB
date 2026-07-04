@@ -4,22 +4,35 @@
 
 import SwiftUI
 
-/// Mini demi-terrain avec 6 zones tapables pour assigner une zone à un point
+/// Mini demi-terrain avec 6 zones tapables pour assigner une zone à un point.
+/// Flux 3.6 refonte : zone d'ARRIVÉE (étape 1) puis zone de DÉPART optionnelle
+/// (étape 2, attaque et service seulement) pour les trajectoires façon VBStats.
 struct SelecteurZoneView: View {
     let categorieHeatmap: DonneesHeatmap.CategorieHeatmap?
-    let onZoneSelectionnee: (Int) -> Void
-    let onPasser: () -> Void
+    /// Fin du flux : arrivée nil = tout passé ; départ nil = trajectoire passée.
+    let onTermine: (_ arrivee: Int?, _ depart: Int?) -> Void
 
     private let couleurAccent: Color
 
+    @State private var zoneArrivee: Int? = nil
+
+    private enum PhaseSelection {
+        case arrivee
+        case depart
+    }
+    @State private var phase: PhaseSelection = .arrivee
+
+    /// La trajectoire n'a de sens que pour l'attaque et le service.
+    private var supporteDepart: Bool {
+        categorieHeatmap == .attaque || categorieHeatmap == .service
+    }
+
     init(
         categorieHeatmap: DonneesHeatmap.CategorieHeatmap?,
-        onZoneSelectionnee: @escaping (Int) -> Void,
-        onPasser: @escaping () -> Void
+        onTermine: @escaping (_ arrivee: Int?, _ depart: Int?) -> Void
     ) {
         self.categorieHeatmap = categorieHeatmap
-        self.onZoneSelectionnee = onZoneSelectionnee
-        self.onPasser = onPasser
+        self.onTermine = onTermine
         self.couleurAccent = categorieHeatmap?.couleurAccent ?? PaletteMat.orange
     }
 
@@ -28,14 +41,27 @@ struct SelecteurZoneView: View {
             HStack {
                 Image(systemName: "square.grid.3x3.fill")
                     .foregroundStyle(couleurAccent)
-                Text("Zone de l'action")
+                Text(phase == .arrivee ? "Zone de l'action" : "Zone de départ ?")
                     .font(.subheadline.weight(.semibold))
+                    .contentTransition(.opacity)
                 Spacer()
                 Button("Passer") {
-                    onPasser()
+                    if phase == .arrivee {
+                        onTermine(nil, nil)
+                    } else {
+                        onTermine(zoneArrivee, nil)
+                    }
                 }
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(PaletteMat.texteSecondaire)
+                .frame(minHeight: 44)
+            }
+
+            if phase == .depart {
+                Text("Optionnel — d'où l'action est-elle partie ? Permet les trajectoires cumulées.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             // Mini terrain 6 zones
@@ -45,6 +71,21 @@ struct SelecteurZoneView: View {
                 .clipShape(RoundedRectangle(cornerRadius: LiquidGlassKit.rayonMoyen, style: .continuous))
         }
         .padding(LiquidGlassKit.espaceMD)
+        .animation(LiquidGlassKit.springDefaut, value: phase == .depart)
+    }
+
+    private func zoneTapee(_ zone: Int) {
+        switch phase {
+        case .arrivee:
+            if supporteDepart {
+                zoneArrivee = zone
+                phase = .depart
+            } else {
+                onTermine(zone, nil)
+            }
+        case .depart:
+            onTermine(zoneArrivee, zone)
+        }
     }
 
     // MARK: - Mini terrain
@@ -117,7 +158,7 @@ struct SelecteurZoneView: View {
                 // Boutons zones
                 ForEach(zonesRects, id: \.0) { zone, rect in
                     Button {
-                        onZoneSelectionnee(zone)
+                        zoneTapee(zone)
                     } label: {
                         VStack(spacing: 2) {
                             Text("Z\(zone)")

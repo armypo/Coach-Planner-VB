@@ -10,6 +10,37 @@ import SwiftData
 struct DonneesHeatmap {
     var zones: [Int: Int]  // numero de zone (1-6) -> nombre d'actions
     var categorie: CategorieHeatmap
+    /// Mode d'affichage (3.5/3.6 refonte) — les trois jeux de données sont
+    /// calculés en une passe, le mode ne change que le rendu.
+    var mode: ModeHeatmap = .volume
+    /// Efficacité par zone : réussites vs échecs de la catégorie.
+    var zonesEfficacite: [Int: ZoneEfficacite] = [:]
+    /// Trajectoires cumulées départ→arrivée (attaque/service).
+    var trajectoires: [TrajectoireHeatmap] = []
+
+    enum ModeHeatmap: String, CaseIterable {
+        case volume = "Volume"
+        case efficacite = "Efficacité"
+        case trajectoires = "Trajectoires"
+    }
+
+    struct ZoneEfficacite {
+        var reussies = 0
+        var echecs = 0
+        var total: Int { reussies + echecs }
+        /// Ratio divergent -1…1 : (réussies − échecs) / total.
+        var ratio: Double {
+            guard total > 0 else { return 0 }
+            return Double(reussies - echecs) / Double(total)
+        }
+    }
+
+    struct TrajectoireHeatmap: Identifiable {
+        var id: String { "\(depart)-\(arrivee)" }
+        let depart: Int
+        let arrivee: Int
+        let nombre: Int
+    }
 
     enum CategorieHeatmap: String, CaseIterable {
         case attaque   = "Attaque"
@@ -63,6 +94,22 @@ struct HeatmapTerrainView: View {
             // Selecteur de categorie
             selecteurCategorie
 
+            // Mode d'affichage (3.5/3.6 refonte). Efficacité masquée en
+            // réception : seules les ERREURS de réception portent une zone
+            // (les réussites sont des ActionRallye sans zone) → le ratio
+            // vaudrait mécaniquement −100 %.
+            Picker("Affichage", selection: $donnees.mode) {
+                ForEach(modesDisponibles, id: \.self) { mode in
+                    Text(mode.rawValue).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .onChange(of: categorieSelectionnee) { _, _ in
+                if !modesDisponibles.contains(donnees.mode) {
+                    donnees.mode = .volume
+                }
+            }
+
             // Terrain heatmap (demi-terrain, ratio ~1:1 pour un seul cote)
             terrainHeatmap
                 .aspectRatio(1.0, contentMode: .fit)
@@ -72,6 +119,13 @@ struct HeatmapTerrainView: View {
             // Legende
             legendeCouleur
         }
+    }
+
+    /// Modes proposés selon la catégorie (efficacité sans objet en réception).
+    private var modesDisponibles: [DonneesHeatmap.ModeHeatmap] {
+        categorieSelectionnee == .reception
+            ? [.volume, .trajectoires]
+            : DonneesHeatmap.ModeHeatmap.allCases
     }
 
     // MARK: - Selecteur categorie
@@ -150,26 +204,57 @@ struct HeatmapTerrainView: View {
             ]
 
             for (zone, rect) in zonesRects {
-                let count = donnees.zones[zone] ?? 0
-                let intensite = Double(count) / Double(maxVal)
-
-                // Gradient de couleur: vert -> jaune -> orange -> rouge
-                let couleur = couleurHeatmap(intensite: intensite)
-                let opacite = count > 0 ? 0.25 + intensite * 0.50 : 0.0
-
-                var zonePath = Path(); zonePath.addRect(rect)
-                context.fill(zonePath, with: .color(couleur.opacity(opacite)))
-
-                // Nombre d'actions au centre de la zone
                 let centre = CGPoint(x: rect.midX, y: rect.midY)
-                if count > 0 {
-                    let taillePolice = min(rect.width * 0.30, 36.0)
-                    context.draw(
-                        Text("\(count)")
-                            .font(.system(size: taillePolice, weight: .bold, design: .rounded))
-                            .foregroundStyle(.white),
-                        at: centre
-                    )
+
+                switch donnees.mode {
+                case .volume:
+                    let count = donnees.zones[zone] ?? 0
+                    let intensite = Double(count) / Double(maxVal)
+
+                    // Gradient de couleur: vert -> jaune -> orange -> rouge
+                    let couleur = couleurHeatmap(intensite: intensite)
+                    let opacite = count > 0 ? 0.25 + intensite * 0.50 : 0.0
+
+                    var zonePath = Path(); zonePath.addRect(rect)
+                    context.fill(zonePath, with: .color(couleur.opacity(opacite)))
+
+                    if count > 0 {
+                        let taillePolice = min(rect.width * 0.30, 36.0)
+                        context.draw(
+                            Text("\(count)")
+                                .font(.system(size: taillePolice, weight: .bold, design: .rounded))
+                                .foregroundStyle(.white),
+                            at: centre
+                        )
+                    }
+
+                case .efficacite:
+                    // Échelle divergente : vert = zone efficace, orange = en difficulté
+                    let eff = donnees.zonesEfficacite[zone] ?? DonneesHeatmap.ZoneEfficacite()
+                    if eff.total > 0 {
+                        let couleur = eff.ratio >= 0 ? PaletteMat.vert : PaletteMat.attention
+                        let opacite = 0.18 + abs(eff.ratio) * 0.5
+                        var zonePath = Path(); zonePath.addRect(rect)
+                        context.fill(zonePath, with: .color(couleur.opacity(opacite)))
+
+                        let taillePolice = min(rect.width * 0.20, 22.0)
+                        context.draw(
+                            Text(FormatMetriques.pourcentage(eff.ratio, decimales: 0))
+                                .font(.system(size: taillePolice, weight: .bold, design: .rounded))
+                                .foregroundStyle(.white),
+                            at: CGPoint(x: centre.x, y: centre.y - taillePolice * 0.4)
+                        )
+                        context.draw(
+                            Text("+\(eff.reussies) −\(eff.echecs)")
+                                .font(.system(size: taillePolice * 0.55, weight: .semibold, design: .rounded))
+                                .foregroundStyle(.white.opacity(0.85)),
+                            at: CGPoint(x: centre.x, y: centre.y + taillePolice * 0.55)
+                        )
+                    }
+
+                case .trajectoires:
+                    // Zones neutres — les flèches sont dessinées après les lignes
+                    break
                 }
 
                 // Label de zone (coin superieur gauche)
@@ -230,39 +315,144 @@ struct HeatmapTerrainView: View {
                     .foregroundStyle(.white.opacity(0.40)),
                 at: CGPoint(x: cr + mx * 0.55, y: ligneAttaqueY)
             )
+
+            // --- Trajectoires cumulées (3.6, façon VBStats) ---
+            if donnees.mode == .trajectoires {
+                let centres = Dictionary(uniqueKeysWithValues: zonesRects.map {
+                    ($0.0, CGPoint(x: $0.1.midX, y: $0.1.midY))
+                })
+                let maxNombre = max(donnees.trajectoires.map(\.nombre).max() ?? 1, 1)
+                let accent = donnees.categorie.couleurAccent
+
+                for trajectoire in donnees.trajectoires {
+                    guard let depart = centres[trajectoire.depart],
+                          let arrivee = centres[trajectoire.arrivee] else { continue }
+
+                    // Même zone (ex. service Z1 → Z1 adverse) : marqueur circulaire
+                    let poidsMemeZone = Double(trajectoire.nombre) / Double(maxNombre)
+                    if trajectoire.depart == trajectoire.arrivee {
+                        let rayon = 10.0 + poidsMemeZone * 6.0
+                        let cercle = Path(ellipseIn: CGRect(x: arrivee.x - rayon, y: arrivee.y - rayon,
+                                                            width: rayon * 2, height: rayon * 2))
+                        context.stroke(cercle, with: .color(accent.opacity(0.45 + poidsMemeZone * 0.45)),
+                                       style: StrokeStyle(lineWidth: 2.0 + poidsMemeZone * 2.0))
+                        context.draw(
+                            Text("\(trajectoire.nombre)")
+                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                                .foregroundStyle(.white),
+                            at: arrivee
+                        )
+                        continue
+                    }
+
+                    let poids = Double(trajectoire.nombre) / Double(maxNombre)
+                    let largeur = 1.5 + poids * 4.5
+
+                    var ligne = Path()
+                    ligne.move(to: depart)
+                    ligne.addLine(to: arrivee)
+                    context.stroke(ligne, with: .color(accent.opacity(0.45 + poids * 0.45)),
+                                   style: StrokeStyle(lineWidth: largeur, lineCap: .round))
+
+                    // Pointe de flèche
+                    let angle = atan2(arrivee.y - depart.y, arrivee.x - depart.x)
+                    let taillePointe = 7.0 + poids * 5.0
+                    var pointe = Path()
+                    pointe.move(to: arrivee)
+                    pointe.addLine(to: CGPoint(x: arrivee.x - taillePointe * cos(angle - 0.45),
+                                               y: arrivee.y - taillePointe * sin(angle - 0.45)))
+                    pointe.move(to: arrivee)
+                    pointe.addLine(to: CGPoint(x: arrivee.x - taillePointe * cos(angle + 0.45),
+                                               y: arrivee.y - taillePointe * sin(angle + 0.45)))
+                    context.stroke(pointe, with: .color(accent.opacity(0.45 + poids * 0.45)),
+                                   style: StrokeStyle(lineWidth: largeur, lineCap: .round))
+
+                    // Compte au milieu si répété
+                    if trajectoire.nombre > 1 {
+                        let milieu = CGPoint(x: (depart.x + arrivee.x) / 2,
+                                             y: (depart.y + arrivee.y) / 2)
+                        context.draw(
+                            Text("\(trajectoire.nombre)")
+                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                                .foregroundStyle(.white),
+                            at: milieu
+                        )
+                    }
+                }
+
+                if donnees.trajectoires.isEmpty {
+                    context.draw(
+                        Text("Aucune trajectoire — saisissez la zone de départ en live")
+                            .font(.system(size: min(ch * 0.045, 12.0), weight: .medium))
+                            .foregroundStyle(.white.opacity(0.7)),
+                        at: CGPoint(x: W / 2, y: H / 2)
+                    )
+                }
+            }
         }
     }
 
     // MARK: - Legende
 
+    /// Légende adaptée au mode (revue finale : la légende volume contredisait
+    /// la carte en modes efficacité et trajectoires).
+    @ViewBuilder
     private var legendeCouleur: some View {
-        HStack(spacing: 12) {
-            Text("Intensité :")
-                .font(.caption.weight(.medium))
-                .foregroundStyle(PaletteMat.texteSecondaire)
+        switch donnees.mode {
+        case .volume:
+            HStack(spacing: 12) {
+                Text("Intensité :")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(PaletteMat.texteSecondaire)
 
-            HStack(spacing: 3) {
-                ForEach(0..<20, id: \.self) { i in
-                    let intensite = Double(i) / 19.0
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(couleurHeatmap(intensite: intensite))
-                        .frame(width: 10, height: 16)
+                HStack(spacing: 3) {
+                    ForEach(0..<20, id: \.self) { i in
+                        let intensite = Double(i) / 19.0
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(couleurHeatmap(intensite: intensite))
+                            .frame(width: 10, height: 16)
+                    }
                 }
-            }
-            .clipShape(Capsule())
+                .clipShape(Capsule())
 
-            HStack(spacing: 16) {
-                Text("Faible")
-                    .font(.caption2)
-                    .foregroundStyle(PaletteMat.texteTertiaire)
-                Spacer()
-                Text("Élevée")
-                    .font(.caption2)
-                    .foregroundStyle(PaletteMat.texteTertiaire)
+                HStack(spacing: 16) {
+                    Text("Faible")
+                        .font(.caption2)
+                        .foregroundStyle(PaletteMat.texteTertiaire)
+                    Spacer()
+                    Text("Élevée")
+                        .font(.caption2)
+                        .foregroundStyle(PaletteMat.texteTertiaire)
+                }
+                .frame(maxWidth: 100)
             }
-            .frame(maxWidth: 100)
+            .padding(.horizontal, 8)
+
+        case .efficacite:
+            HStack(spacing: 16) {
+                pastilleLegende(couleur: PaletteMat.vert, texte: "Zone efficace (+)")
+                pastilleLegende(couleur: PaletteMat.attention, texte: "Zone en difficulté (−)")
+                Spacer()
+            }
+            .padding(.horizontal, 8)
+
+        case .trajectoires:
+            HStack(spacing: 16) {
+                pastilleLegende(couleur: donnees.categorie.couleurAccent,
+                                texte: "Épaisseur de la flèche = fréquence")
+                Spacer()
+            }
+            .padding(.horizontal, 8)
         }
-        .padding(.horizontal, 8)
+    }
+
+    private func pastilleLegende(couleur: Color, texte: String) -> some View {
+        HStack(spacing: 4) {
+            Circle().fill(couleur.opacity(0.6)).frame(width: 10, height: 10)
+            Text(texte)
+                .font(.caption2)
+                .foregroundStyle(PaletteMat.texteSecondaire)
+        }
     }
 
     // MARK: - Couleur heatmap selon intensite (0.0 -> 1.0)
@@ -300,6 +490,11 @@ struct HeatmapTerrainView: View {
 // MARK: - HeatmapEquipeView
 
 struct HeatmapEquipeView: View {
+    /// Pré-filtre optionnel sur un match (liens croisés depuis MatchDetailView).
+    init(seanceID: UUID? = nil) {
+        _seanceSelectionneeID = State(initialValue: seanceID)
+    }
+
     @Environment(\.codeEquipeActif) private var codeEquipeActif
     @Query private var joueurs: [JoueurEquipe]
     @Query private var statsMatchs: [StatsMatch]
@@ -558,8 +753,12 @@ struct HeatmapEquipeView: View {
             pointsFiltres = pointsFiltres.filter { $0.joueurID == joueurID }
         }
 
-        // Filtre par catégorie heatmap (ne garder que les actions correspondantes)
-        let pointsCategorie = pointsFiltres.filter { $0.typeAction.categorieHeatmap == categorie }
+        // Filtre par catégorie heatmap — actions de NOTRE équipe uniquement
+        // (les actions adverses supportent la zone depuis 3.7 pour le
+        // scouting, mais ne doivent pas polluer la heatmap d'équipe).
+        let pointsCategorie = pointsFiltres.filter {
+            $0.typeAction.categorieHeatmap == categorie && !$0.typeAction.estStatAdversaire
+        }
 
         // Points avec zone assignée (zone > 0)
         let pointsAvecZone = pointsCategorie.filter { $0.zone > 0 && $0.zone <= 6 }
@@ -589,7 +788,37 @@ struct HeatmapEquipeView: View {
             }
         }
 
+        // Efficacité par zone (3.5) : réussites vs échecs de la catégorie —
+        // estPointPourNous sépare kill/erreurAttaque, ace/erreurService, etc.
+        var zonesEfficacite: [Int: DonneesHeatmap.ZoneEfficacite] = [:]
+        for point in pointsAvecZone {
+            var efficacite = zonesEfficacite[point.zone] ?? DonneesHeatmap.ZoneEfficacite()
+            if point.estPointPourNous {
+                efficacite.reussies += 1
+            } else {
+                efficacite.echecs += 1
+            }
+            zonesEfficacite[point.zone] = efficacite
+        }
+
+        // Trajectoires départ→arrivée (3.6) — triées pour dessiner les plus
+        // fréquentes par-dessus.
+        var comptesTrajectoires: [String: Int] = [:]
+        for point in pointsCategorie where point.zoneDepart > 0 && point.zone > 0 && point.zone <= 6 {
+            comptesTrajectoires["\(point.zoneDepart)-\(point.zone)", default: 0] += 1
+        }
+        let trajectoires = comptesTrajectoires
+            .compactMap { cle, nombre -> DonneesHeatmap.TrajectoireHeatmap? in
+                let parties = cle.split(separator: "-")
+                guard parties.count == 2,
+                      let depart = Int(parties[0]), let arrivee = Int(parties[1]) else { return nil }
+                return DonneesHeatmap.TrajectoireHeatmap(depart: depart, arrivee: arrivee, nombre: nombre)
+            }
+            .sorted { $0.nombre < $1.nombre }
+
         donneesHeatmap.zones = zones
+        donneesHeatmap.zonesEfficacite = zonesEfficacite
+        donneesHeatmap.trajectoires = trajectoires
         donneesHeatmap.categorie = categorie
     }
 

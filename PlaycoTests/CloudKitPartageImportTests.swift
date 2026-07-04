@@ -17,7 +17,7 @@ struct CloudKitPartageImportTests {
 
     private func contexte() throws -> ModelContext {
         let schema = Schema([Equipe.self, Seance.self, MatchCalendrier.self, JoueurEquipe.self])
-        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, allowsSave: true, groupContainer: .none, cloudKitDatabase: .none)
         return ModelContext(try ModelContainer(for: schema, configurations: [config]))
     }
 

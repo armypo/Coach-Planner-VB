@@ -17,7 +17,7 @@ struct UtilisateurIdentifiantTests {
 
     /// Container en mémoire isolé par test
     private func nouveauContainer() throws -> ModelContainer {
-        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let config = ModelConfiguration(isStoredInMemoryOnly: true, allowsSave: true, groupContainer: .none, cloudKitDatabase: .none)
         return try ModelContainer(
             for: Utilisateur.self, AssistantCoach.self, CredentialAthlete.self,
             configurations: config

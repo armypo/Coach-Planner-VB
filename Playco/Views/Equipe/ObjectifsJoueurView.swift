@@ -181,7 +181,8 @@ struct ObjectifsJoueurView: View {
                 Image(systemName: "ellipsis")
                     .font(.caption)
                     .foregroundStyle(PaletteMat.texteSecondaire)
-                    .padding(LiquidGlassKit.espaceSM)
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(Rectangle())
             }
         }
         .padding(LiquidGlassKit.espaceSM + 4)
@@ -211,7 +212,7 @@ struct ObjectifsJoueurView: View {
             if objectif.unite == "blocs/set" { return joueur.blocsParSet }
             return Double(joueur.blocsTotaux)
         case .reception:
-            if objectif.unite == "%" { return joueur.efficaciteReception * 100 }
+            if objectif.unite == "%" { return joueur.efficaciteReception }
             return Double(joueur.receptionsReussies)
         case .jeu:
             if objectif.unite == "passes/set" { return joueur.passesParSet }
