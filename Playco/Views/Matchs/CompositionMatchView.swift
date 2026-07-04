@@ -311,6 +311,17 @@ struct CompositionMatchView: View {
                 }
             }
             .tint(.red)
+
+            Toggle(isOn: $configMatch.demanderZone) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Demander la zone du terrain")
+                        .font(.subheadline)
+                    Text("Après chaque action marquante — désactiver pour une saisie plus rapide au bord du terrain")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .tint(.red)
         }
         .padding(LiquidGlassKit.espaceMD)
         .glassSection()

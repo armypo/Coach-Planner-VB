@@ -3,6 +3,7 @@
 //
 
 import Foundation
+import SwiftUI
 
 // MARK: - Mode de formation (P2-04 — extrait de TerrainEditeurView)
 enum FormationMode: String {
@@ -151,6 +152,25 @@ enum FormationType: String, CaseIterable {
                 Position(x: 0.38, y: 0.65, label: "J2"),
             ]
         default: return []
+        }
+    }
+
+    // MARK: - Couleur par poste (Phase 5.2 — source unique des jetons)
+
+    /// Couleur du jeton d'un joueur de formation selon le label de poste.
+    /// Source unique : P/C/R/O/L via `PosteJoueur.couleur`, « A » = violet
+    /// attaquant, J1/B et J2/D (beach) = bleu/orange de la palette.
+    /// `nonisolated` : fonction pure appelable hors MainActor (convention
+    /// MetriquesVolley) — sous SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor.
+    nonisolated static func couleurPourLabel(_ label: String) -> Color {
+        if let poste = PosteJoueur.allCases.first(where: { $0.abreviation == label }) {
+            return poste.couleur
+        }
+        switch label {
+        case "A":       return PaletteMat.violet   // Attaquant (4-2 / 6-2)
+        case "J1", "B": return PaletteMat.bleu     // Beach — joueur 1 / bloqueur
+        case "J2", "D": return PaletteMat.orange   // Beach — joueur 2 / défenseur
+        default:        return .gray
         }
     }
 

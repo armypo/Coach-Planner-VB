@@ -6,7 +6,9 @@ import Foundation
 import SwiftUI
 
 // MARK: - Color
-extension Color {
+// `nonisolated` : inits purs (Color est Sendable) utilisés par des contextes
+// non-MainActor (PosteJoueur.couleur, FormationType.couleurPourLabel).
+nonisolated extension Color {
     /// Surcharge avec label `hex:` pour compatibilité
     init(hex: String) {
         self.init(hex)

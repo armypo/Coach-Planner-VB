@@ -133,8 +133,10 @@ struct FormationMatchLiveView: View {
 
                 // Indicateur poste 1 = service
                 if viewModel.nousServons, joueurs.contains(where: { $0.poste == 1 }) {
-                    Text("🏐")
+                    Image(systemName: "volleyball.fill")
                         .font(.system(size: compact ? 8 : 12))
+                        .foregroundStyle(.white)
+                        .shadow(color: .black.opacity(0.35), radius: 1)
                         .position(x: geo.size.width * 0.88, y: geo.size.height * 0.85)
                 }
             }
@@ -218,8 +220,10 @@ struct FormationMatchLiveView: View {
 
                 // Indicateur poste 1 = service
                 if viewModel.nousServons, joueurs.contains(where: { $0.poste == 1 }) {
-                    Text("🏐")
+                    Image(systemName: "volleyball.fill")
                         .font(.system(size: 12))
+                        .foregroundStyle(.white)
+                        .shadow(color: .black.opacity(0.35), radius: 1)
                         .position(x: geo.size.width * 0.88, y: geo.size.height * 0.90)
                 }
             }

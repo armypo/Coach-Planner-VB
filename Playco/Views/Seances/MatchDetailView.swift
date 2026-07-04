@@ -35,6 +35,8 @@ struct MatchDetailView: View {
     @State private var afficherModeLive = false
     @State private var afficherConfirmationFinaliser = false
     @State private var confirmeFinalisation = false
+    @State private var afficherAnalyseMatch = false
+    @State private var afficherPlanMatch = false
 
     /// Exercice conteneur pour le terrain — stocké en @State pour éviter la recréation
     @State private var exerciceTerrain: Exercice?
@@ -138,6 +140,22 @@ struct MatchDetailView: View {
                                 .background(Color.blue.opacity(0.1), in: Capsule())
                         }
 
+                        // Plan de match (scouting adversaire)
+                        if !seance.adversaire.isEmpty {
+                            Button { afficherPlanMatch = true } label: {
+                                HStack(spacing: 3) {
+                                    Image(systemName: "binoculars.fill")
+                                        .font(.caption)
+                                    Text("Scouting")
+                                        .font(.caption.weight(.medium))
+                                }
+                                .foregroundStyle(PaletteMat.violet)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(PaletteMat.violet.opacity(0.1), in: Capsule())
+                            }
+                        }
+
                         // Dashboard live
                         Button { afficherDashboardLive = true } label: {
                             HStack(spacing: 3) {
@@ -177,6 +195,20 @@ struct MatchDetailView: View {
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)
                             .background(Color(.tertiarySystemFill), in: Capsule())
+
+                            // Analyse du match — liens croisés pré-filtrés (2.4)
+                            Button { afficherAnalyseMatch = true } label: {
+                                HStack(spacing: 3) {
+                                    Image(systemName: "chart.xyaxis.line")
+                                        .font(.caption)
+                                    Text("Analyse")
+                                        .font(.caption.weight(.medium))
+                                }
+                                .foregroundStyle(PaletteMat.bleu)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(PaletteMat.bleu.opacity(0.1), in: Capsule())
+                            }
                         }
 
                         // Mode live split-screen
@@ -222,6 +254,25 @@ struct MatchDetailView: View {
         }
         .sheet(isPresented: $afficherInfoMatch) {
             InfoMatchSheet(seance: seance)
+        }
+        .sheet(isPresented: $afficherAnalyseMatch) {
+            AnalyseMatchSheet(seance: seance)
+        }
+        .sheet(isPresented: $afficherPlanMatch) {
+            NavigationStack {
+                ScrollView {
+                    PlanMatchPanneau(adversaire: seance.adversaire)
+                        .padding(LiquidGlassKit.espaceMD)
+                }
+                .navigationTitle("Plan de match")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Fermer") { afficherPlanMatch = false }
+                    }
+                }
+            }
+            .presentationDetents([.medium, .large])
         }
         .sheet(isPresented: $afficherComposition) {
             NavigationStack {
@@ -348,108 +399,21 @@ struct MatchDetailView: View {
         let joueursEquipe = joueurs.filtreEquipe(codeEquipeActif)
         let pointsMatch = tousPoints.filter { $0.seanceID == seance.id }
         let actionsMatch = toutesActionsRallye.filter { $0.seanceID == seance.id }
+        let joueursIDs = Set(pointsMatch.compactMap(\.joueurID))
+            .union(actionsMatch.map(\.joueurID))
 
-        // Collecter tous les joueurs impliqués
-        var joueursIDs = Set<UUID>()
-        for p in pointsMatch { if let jid = p.joueurID { joueursIDs.insert(jid) } }
-        for a in actionsMatch { joueursIDs.insert(a.joueurID) }
-
-        for joueurID in joueursIDs {
-            // Trouver ou créer StatsMatch
-            let stat: StatsMatch
-            if let existant = tousStatsMatch.first(where: { $0.seanceID == seance.id && $0.joueurID == joueurID }) {
-                stat = existant
-            } else {
-                stat = StatsMatch(seanceID: seance.id, joueurID: joueurID)
-                stat.codeEquipe = codeEquipeActif
-                modelContext.insert(stat)
-            }
-
-            // Agrégation PointMatch
-            let pointsJoueur = pointsMatch.filter { $0.joueurID == joueurID }
-            for point in pointsJoueur {
-                switch point.typeAction {
-                case .kill:
-                    stat.kills += 1
-                    stat.tentativesAttaque += 1
-                case .erreurAttaque:
-                    stat.erreursAttaque += 1
-                    stat.tentativesAttaque += 1
-                case .ace:
-                    stat.aces += 1
-                    stat.servicesTotaux += 1
-                case .erreurService:
-                    stat.erreursService += 1
-                    stat.servicesTotaux += 1
-                case .blocSeul, .bloc:
-                    stat.blocsSeuls += 1
-                case .blocAssiste:
-                    stat.blocsAssistes += 1
-                case .erreurBloc:
-                    stat.erreursBloc += 1
-                case .erreurReception:
-                    stat.erreursReception += 1
-                    stat.receptionsTotales += 1
-                case .erreurAdversaire, .fauteJeu, .erreurEquipe,
-                     .killAdversaire, .aceAdversaire, .blocAdversaire,
-                     .erreurAttaqueAdversaire, .erreurServiceAdversaire:
-                    break
-                }
-            }
-
-            // Agrégation ActionRallye
-            let actionsJoueur = actionsMatch.filter { $0.joueurID == joueurID }
-            for action in actionsJoueur {
-                switch action.typeAction {
-                case .manchette:
-                    stat.manchettes += 1
-                case .passeDecisive:
-                    stat.passesDecisives += 1
-                case .reception:
-                    stat.receptionsTotales += 1
-                    if action.qualite >= 2 {
-                        stat.receptionsReussies += 1
-                    }
-                case .tentativeAttaque:
-                    stat.tentativesAttaque += 1
-                case .serviceEnJeu, .dig:
-                    break
-                }
-            }
-
-            // Sets joués = nombre de sets distincts où le joueur apparaît
-            var setsJoueur = Set<Int>()
-            for p in pointsJoueur { setsJoueur.insert(p.set) }
-            for a in actionsJoueur { setsJoueur.insert(a.set) }
-            stat.setsJoues = setsJoueur.count
-
-            // Sync vers JoueurEquipe cumulatif
-            guard let joueur = joueursEquipe.first(where: { $0.id == joueurID }) else { continue }
-
-            joueur.matchsJoues += 1
-            joueur.setsJoues += stat.setsJoues
-
-            joueur.attaquesReussies += stat.kills
-            joueur.erreursAttaque += stat.erreursAttaque
-            joueur.attaquesTotales += stat.tentativesAttaque
-
-            joueur.aces += stat.aces
-            joueur.erreursService += stat.erreursService
-            joueur.servicesTotaux += stat.servicesTotaux
-
-            joueur.blocsSeuls += stat.blocsSeuls
-            joueur.blocsAssistes += stat.blocsAssistes
-            joueur.erreursBloc += stat.erreursBloc
-
-            joueur.receptionsReussies += stat.receptionsReussies
-            joueur.erreursReception += stat.erreursReception
-            joueur.receptionsTotales += stat.receptionsTotales
-
-            joueur.passesDecisives += stat.passesDecisives
-            joueur.manchettes += stat.manchettes
-        }
-
-        seance.statsEntrees = true
+        // Agrégation + StatsMatch + resynchronisation du cumul carrière,
+        // centralisées dans le service (couvre l'union des StatsMatch créés
+        // pendant l'appel — cf. FinalisationMatchTests). Pose statsEntrees.
+        AgregateurStatsMatch.finaliserStats(
+            seance: seance,
+            points: pointsMatch,
+            actions: actionsMatch,
+            statsExistants: tousStatsMatch.filtreEquipe(codeEquipeActif),
+            joueurs: joueursEquipe,
+            codeEquipe: codeEquipeActif,
+            contexte: modelContext
+        )
         do {
             try modelContext.save()
             confirmeFinalisation = true

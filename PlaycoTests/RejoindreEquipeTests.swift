@@ -18,7 +18,7 @@ struct RejoindreEquipeTests {
         let schema = Schema([Utilisateur.self, JoueurEquipe.self, Equipe.self,
                              Etablissement.self, ProfilCoach.self, AssistantCoach.self,
                              CreneauRecurrent.self, MatchCalendrier.self])
-        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, allowsSave: true, groupContainer: .none, cloudKitDatabase: .none)
         return ModelContext(try ModelContainer(for: schema, configurations: [config]))
     }
 

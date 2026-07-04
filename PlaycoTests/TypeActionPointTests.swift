@@ -87,8 +87,15 @@ struct TypeActionPointTests {
         #expect(TypeActionPoint.blocSeul.supportsZone)
         #expect(TypeActionPoint.erreurReception.supportsZone)
 
+        // 3.7 refonte : les actions MARQUANTES adverses supportent la zone
+        // (scouting « prédictions vs réalité ») — pas les erreurs adverses.
+        #expect(TypeActionPoint.killAdversaire.supportsZone)
+        #expect(TypeActionPoint.aceAdversaire.supportsZone)
+        #expect(TypeActionPoint.blocAdversaire.supportsZone)
+
         #expect(!TypeActionPoint.erreurAdversaire.supportsZone)
-        #expect(!TypeActionPoint.killAdversaire.supportsZone)
+        #expect(!TypeActionPoint.erreurAttaqueAdversaire.supportsZone)
+        #expect(!TypeActionPoint.erreurServiceAdversaire.supportsZone)
         #expect(!TypeActionPoint.fauteJeu.supportsZone)
     }
 

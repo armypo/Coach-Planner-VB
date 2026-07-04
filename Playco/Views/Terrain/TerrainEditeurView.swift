@@ -146,6 +146,7 @@ struct TerrainEditeurView: View {
                                     formationsPerso: formationsPerso)
             },
             strategiesOffensives: strategiesOffensives,
+            formationsPerso: formationsPerso,
             onStrategieOffensive: { strat in
                 vm.chargerStrategie(strat)
             },
@@ -194,6 +195,26 @@ struct TerrainEditeurView: View {
                     .padding(.vertical, 6)
                     .background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
                 }
+
+                // Bouton dupliquer l'étape courante (Phase 5.4)
+                Button {
+                    vm.dupliquerEtapeActive(dessinData: &dessinData, elementsData: &elementsData)
+                    etapesData = vm.sauvegarderEtapes()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "plus.square.on.square")
+                            .font(.system(size: 12, weight: .bold))
+                        Text("Dupliquer")
+                            .font(.caption.weight(.medium))
+                    }
+                    .foregroundStyle(.orange)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+                }
+                .help("Dupliquer l'étape courante")
+                .accessibilityLabel("Dupliquer l'étape courante")
+                .accessibilityHint("Crée une nouvelle étape avec une copie du dessin et des éléments actuels")
             }
             .padding(.horizontal, 6)
             .padding(.vertical, 4)

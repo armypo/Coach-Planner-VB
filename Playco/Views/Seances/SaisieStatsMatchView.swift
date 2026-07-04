@@ -21,6 +21,7 @@ struct SaisieStatsMatchView: View {
 
     @State private var joueurSelectionne: JoueurEquipe?
     @State private var confirmeSauvegarde = false
+    @State private var afficherLegende = false
 
     private var joueursEquipe: [JoueurEquipe] {
         joueurs.filtreEquipe(codeEquipeActif)
@@ -37,6 +38,7 @@ struct SaisieStatsMatchView: View {
             return existant
         }
         let nouveau = StatsMatch(seanceID: seance.id, joueurID: joueur.id)
+        nouveau.codeEquipe = codeEquipeActif
         modelContext.insert(nouveau)
         return nouveau
     }
@@ -60,10 +62,12 @@ struct SaisieStatsMatchView: View {
                 if let joueur = joueurSelectionne {
                     formulaireStats(joueur: joueur)
                 } else {
-                    Text("Sélectionnez un joueur")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    ContentUnavailableView {
+                        Text("Sélectionnez un joueur")
+                            .font(.subheadline.weight(.semibold))
+                    } description: {
+                        Text("Touchez un joueur dans la bande ci-dessus pour saisir ses statistiques du match.")
+                    }
                 }
             }
         }
@@ -73,6 +77,9 @@ struct SaisieStatsMatchView: View {
             ToolbarItem(placement: .cancellationAction) {
                 Button("Fermer") { dismiss() }
             }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Légende") { afficherLegende = true }
+            }
             ToolbarItem(placement: .confirmationAction) {
                 Button {
                     sauvegarderEtSync()
@@ -81,6 +88,9 @@ struct SaisieStatsMatchView: View {
                         .font(.subheadline.weight(.semibold))
                 }
             }
+        }
+        .sheet(isPresented: $afficherLegende) {
+            LegendeStatsSheet()
         }
         .alert("Stats sauvegardées", isPresented: $confirmeSauvegarde) {
             Button("OK") { dismiss() }
@@ -95,20 +105,21 @@ struct SaisieStatsMatchView: View {
     // MARK: - En-tête
 
     private var enteteMatch: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: LiquidGlassKit.espaceSM + 4) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(seance.nom)
                     .font(.subheadline.weight(.bold))
                 if !seance.adversaire.isEmpty {
                     Text("vs \(seance.adversaire)")
                         .font(.caption)
-                        .foregroundStyle(.red)
+                        .foregroundStyle(PaletteMat.negatif)
                 }
             }
             Spacer()
             if seance.scoreEntre {
                 Text("\(seance.scoreEquipe) - \(seance.scoreAdversaire)")
                     .font(.title3.weight(.bold))
+                    .contentTransition(.numericText())
                 if let r = seance.resultat {
                     Text(r.label)
                         .font(.caption2.weight(.bold))
@@ -119,7 +130,7 @@ struct SaisieStatsMatchView: View {
                 }
             }
         }
-        .padding(16)
+        .padding(LiquidGlassKit.espaceMD)
         .background(Color(.systemGroupedBackground))
     }
 
@@ -159,8 +170,8 @@ struct SaisieStatsMatchView: View {
                     .buttonStyle(.plain)
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
+            .padding(.horizontal, LiquidGlassKit.espaceMD)
+            .padding(.vertical, LiquidGlassKit.espaceSM + 2)
         }
     }
 
@@ -169,61 +180,83 @@ struct SaisieStatsMatchView: View {
     private func formulaireStats(joueur: JoueurEquipe) -> some View {
         let s = stats(pour: joueur)
         return ScrollView {
-            VStack(spacing: 16) {
+            VStack(spacing: LiquidGlassKit.espaceMD) {
                 // Général
-                groupeStat(titre: "Général", icone: "sportscourt", couleur: .blue) {
+                groupeStat(titre: "Général", icone: "sportscourt", couleur: PaletteMat.texteSecondaire) {
                     ligneStepper("Sets joués", valeur: Binding(get: { s.setsJoues }, set: { s.setsJoues = $0 }))
                 }
 
-                // Attaque
-                groupeStat(titre: "Attaque", icone: "flame.fill", couleur: .green) {
+                // Attaque — rendement affiché en convention volleyball (D2)
+                groupeStat(titre: "Attaque", icone: "flame.fill", couleur: PaletteMat.orange,
+                           detail: "Rendement " + FormatMetriques.hittingVolley(
+                               MetriquesVolley.rendementAttaque(kills: s.kills,
+                                                                erreurs: s.erreursAttaque,
+                                                                tentatives: s.tentativesAttaque))) {
                     ligneStepper("Kills", valeur: Binding(get: { s.kills }, set: { s.kills = $0 }))
                     ligneStepper("Erreurs", valeur: Binding(get: { s.erreursAttaque }, set: { s.erreursAttaque = $0 }))
                     ligneStepper("Tentatives", valeur: Binding(get: { s.tentativesAttaque }, set: { s.tentativesAttaque = $0 }))
                 }
 
                 // Service
-                groupeStat(titre: "Service", icone: "arrow.up.forward", couleur: .yellow) {
+                groupeStat(titre: "Service", icone: "arrow.up.forward", couleur: PaletteMat.bleu) {
                     ligneStepper("Aces", valeur: Binding(get: { s.aces }, set: { s.aces = $0 }))
                     ligneStepper("Erreurs", valeur: Binding(get: { s.erreursService }, set: { s.erreursService = $0 }))
                     ligneStepper("Tentatives", valeur: Binding(get: { s.servicesTotaux }, set: { s.servicesTotaux = $0 }))
                 }
 
                 // Bloc
-                groupeStat(titre: "Bloc", icone: "hand.raised.fill", couleur: .red) {
+                groupeStat(titre: "Bloc", icone: "shield.fill", couleur: PaletteMat.violet) {
                     ligneStepper("Blocs seuls", valeur: Binding(get: { s.blocsSeuls }, set: { s.blocsSeuls = $0 }))
                     ligneStepper("Blocs assistés", valeur: Binding(get: { s.blocsAssistes }, set: { s.blocsAssistes = $0 }))
                     ligneStepper("Erreurs", valeur: Binding(get: { s.erreursBloc }, set: { s.erreursBloc = $0 }))
                 }
 
                 // Réception
-                groupeStat(titre: "Réception", icone: "arrow.down.to.line", couleur: .purple) {
+                groupeStat(titre: "Réception", icone: "arrow.down.to.line", couleur: PaletteMat.vert,
+                           detail: "Réc. eff. " + FormatMetriques.pourcentage(
+                               MetriquesVolley.efficaciteReception(reussies: s.receptionsReussies,
+                                                                   erreurs: s.erreursReception,
+                                                                   totales: s.receptionsTotales))) {
                     ligneStepper("Réussies", valeur: Binding(get: { s.receptionsReussies }, set: { s.receptionsReussies = $0 }))
                     ligneStepper("Erreurs", valeur: Binding(get: { s.erreursReception }, set: { s.erreursReception = $0 }))
                     ligneStepper("Totales", valeur: Binding(get: { s.receptionsTotales }, set: { s.receptionsTotales = $0 }))
                 }
 
                 // Jeu
-                groupeStat(titre: "Jeu", icone: "figure.volleyball", couleur: .teal) {
+                groupeStat(titre: "Jeu", icone: "figure.volleyball", couleur: PaletteMat.attention) {
                     ligneStepper("Passes déc.", valeur: Binding(get: { s.passesDecisives }, set: { s.passesDecisives = $0 }))
                     ligneStepper("Manchettes", valeur: Binding(get: { s.manchettes }, set: { s.manchettes = $0 }))
                 }
             }
-            .padding(16)
+            .padding(LiquidGlassKit.espaceMD)
         }
         .id(joueur.id) // force refresh quand on change de joueur
     }
 
-    private func groupeStat(titre: String, icone: String, couleur: Color, @ViewBuilder contenu: () -> some View) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label(titre, systemImage: icone)
-                .font(.subheadline.weight(.bold))
-                .foregroundStyle(couleur)
+    /// Groupe de champs par catégorie : en-tête coloré (icône de catégorie +
+    /// titre) + lecture optionnelle de la métrique dérivée (D2) à droite.
+    private func groupeStat(titre: String, icone: String, couleur: Color,
+                            detail: String? = nil,
+                            @ViewBuilder contenu: () -> some View) -> some View {
+        VStack(alignment: .leading, spacing: LiquidGlassKit.espaceSM) {
+            HStack {
+                Label(titre, systemImage: icone)
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(couleur)
+                    .accessibilityAddTraits(.isHeader)
+                Spacer()
+                if let detail {
+                    Text(detail)
+                        .font(.caption.weight(.semibold).monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .contentTransition(.numericText())
+                }
+            }
             contenu()
         }
-        .padding(12)
+        .padding(LiquidGlassKit.espaceSM + 4)
         .background(
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: LiquidGlassKit.rayonPetit)
                 .fill(Color(.secondarySystemGroupedBackground))
         )
     }
@@ -233,29 +266,37 @@ struct SaisieStatsMatchView: View {
             Text(label)
                 .font(.subheadline)
             Spacer()
-            HStack(spacing: 12) {
+            HStack(spacing: LiquidGlassKit.espaceSM) {
                 Button {
                     if valeur.wrappedValue > 0 { valeur.wrappedValue -= 1 }
                 } label: {
                     Image(systemName: "minus.circle.fill")
-                        .font(.title3)
+                        .font(.title2)
                         .foregroundStyle(.secondary)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Retirer, \(label)")
 
                 Text("\(valeur.wrappedValue)")
-                    .font(.system(size: 18, weight: .bold, design: .rounded))
-                    .frame(width: 36)
+                    .font(TypographieStats.valeurCarte)
+                    .frame(minWidth: 40)
                     .multilineTextAlignment(.center)
+                    .contentTransition(.numericText())
+                    .animation(LiquidGlassKit.springDefaut, value: valeur.wrappedValue)
 
                 Button {
                     valeur.wrappedValue += 1
                 } label: {
                     Image(systemName: "plus.circle.fill")
-                        .font(.title3)
+                        .font(.title2)
                         .foregroundStyle(PaletteMat.orange)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Ajouter, \(label)")
             }
         }
     }
@@ -263,48 +304,25 @@ struct SaisieStatsMatchView: View {
     // MARK: - État vide
 
     private var etatVide: some View {
-        VStack(spacing: 12) {
-            Spacer()
-            Image(systemName: "person.3")
-                .font(.system(size: 40))
-                .foregroundStyle(.tertiary)
-            Text("Aucun joueur actif")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            Spacer()
+        ContentUnavailableView {
+            Label("Aucun joueur actif", systemImage: "person.3")
+        } description: {
+            Text("Ajoutez des joueurs à l'équipe depuis la section Équipe pour saisir leurs statistiques de match.")
         }
-        .frame(maxWidth: .infinity)
     }
 
     // MARK: - Sauvegarder et synchroniser
 
     private func sauvegarderEtSync() {
-        // Sync : ajouter les stats du match aux stats cumulées des joueurs
-        for stat in statsMatch {
-            guard let joueur = joueursEquipe.first(where: { $0.id == stat.joueurID }) else { continue }
-
-            joueur.matchsJoues += 1
-            joueur.setsJoues += stat.setsJoues
-
-            joueur.attaquesReussies += stat.kills
-            joueur.erreursAttaque += stat.erreursAttaque
-            joueur.attaquesTotales += stat.tentativesAttaque
-
-            joueur.aces += stat.aces
-            joueur.erreursService += stat.erreursService
-            joueur.servicesTotaux += stat.servicesTotaux
-
-            joueur.blocsSeuls += stat.blocsSeuls
-            joueur.blocsAssistes += stat.blocsAssistes
-            joueur.erreursBloc += stat.erreursBloc
-
-            joueur.receptionsReussies += stat.receptionsReussies
-            joueur.erreursReception += stat.erreursReception
-            joueur.receptionsTotales += stat.receptionsTotales
-
-            joueur.passesDecisives += stat.passesDecisives
-            joueur.manchettes += stat.manchettes
-
+        // Resynchronisation idempotente (fix B2) : le cumul carrière est
+        // RECALCULÉ depuis la somme des StatsMatch — re-taper « Sauvegarder »
+        // ne double plus les stats et répare les cumuls déjà doublés.
+        let statsEquipe = tousStatsMatch.filtreEquipe(codeEquipeActif)
+        let joueursTouches = joueursEquipe.filter { joueur in
+            statsMatch.contains { $0.joueurID == joueur.id }
+        }
+        AgregateurStatsMatch.resynchroniserCumul(joueurs: joueursTouches, statsMatch: statsEquipe)
+        for joueur in joueursTouches {
             // Bump pour que le sweep coach republie les stats à jour vers la Public DB.
             joueur.dateModification = Date()
         }

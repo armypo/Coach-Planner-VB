@@ -19,6 +19,13 @@ struct FormationsView: View {
     @State private var rotationSelectionnee: Int = 0
     @State private var modeSelectionne: FormationMode = .base
 
+    // Phase 5.3b — confirmation avant écrasement d'une formation existante
+    @State private var confirmerRemplacement = false
+    @State private var positionsEnAttente: [FormationPositionData]? = nil
+
+    // Phase 5.2 — légende des postes (bouton info → popover)
+    @State private var afficherLegende = false
+
     /// Formations indoor uniquement
     private let formationsIndoor: [FormationType] = [.cinqUn, .quatreDeux, .sixDeux]
 
@@ -35,6 +42,13 @@ struct FormationsView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // Phase 5.3a — formations personnalisées existantes de l'équipe
+            if !personnalisees.isEmpty {
+                sectionPersonnalisees
+                    .padding(.horizontal)
+                    .padding(.top, LiquidGlassKit.espaceSM)
+            }
+
             // Sélecteurs en haut
             selecteurs
                 .padding(.horizontal)
@@ -57,6 +71,95 @@ struct FormationsView: View {
         }
         .navigationTitle("Mes formations")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                boutonLegende
+            }
+        }
+        .alert("Remplacer la formation existante ?", isPresented: $confirmerRemplacement) {
+            Button("Remplacer", role: .destructive) { remplacerExistante() }
+            Button("Annuler", role: .cancel) { positionsEnAttente = nil }
+        } message: {
+            Text("Une formation personnalisée existe déjà pour \(formationSelectionnee.rawValue) · R\(rotationSelectionnee + 1) · \(modeSelectionne.rawValue). Elle sera écrasée.")
+        }
+    }
+
+    // MARK: - Section formations personnalisées (Phase 5.3a)
+
+    private var sectionPersonnalisees: some View {
+        VStack(alignment: .leading, spacing: LiquidGlassKit.espaceSM) {
+            EnTeteSection(
+                titre: "Mes formations personnalisées",
+                sousTitre: "Touchez pour ouvrir — appui long pour supprimer"
+            )
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: LiquidGlassKit.espaceSM) {
+                    ForEach(personnaliseesTriees, id: \.id) { perso in
+                        cartePerso(perso)
+                    }
+                }
+            }
+        }
+    }
+
+    private var personnaliseesTriees: [FormationPersonnalisee] {
+        personnalisees.sorted {
+            ($0.formationTypeRaw, $0.rotation, $0.modeRaw) < ($1.formationTypeRaw, $1.rotation, $1.modeRaw)
+        }
+    }
+
+    private func cartePerso(_ perso: FormationPersonnalisee) -> some View {
+        Button {
+            if let type = perso.formationType { formationSelectionnee = type }
+            rotationSelectionnee = min(5, max(0, perso.rotation))
+            if let mode = perso.mode { modeSelectionne = mode }
+        } label: {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(perso.formationTypeRaw)
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(.primary)
+                HStack(spacing: LiquidGlassKit.espaceXS) {
+                    Text("R\(perso.rotation + 1)")
+                    Text("·")
+                    Text(perso.modeRaw)
+                }
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, LiquidGlassKit.espaceSM + LiquidGlassKit.espaceXS)
+            .padding(.vertical, LiquidGlassKit.espaceSM)
+            .frame(minHeight: 44)
+            .background(
+                Color.orange.opacity(LiquidGlassKit.badgeFond),
+                in: RoundedRectangle(cornerRadius: LiquidGlassKit.rayonPetit, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            Button(role: .destructive) {
+                contexte.delete(perso)
+            } label: {
+                Label("Supprimer", systemImage: "trash")
+            }
+        }
+        .accessibilityLabel("Formation personnalisée \(perso.formationTypeRaw), rotation \(perso.rotation + 1), \(perso.modeRaw)")
+        .accessibilityHint("Ouvre cette formation dans l'éditeur. Appui long pour supprimer.")
+    }
+
+    // MARK: - Légende des postes (Phase 5.2)
+
+    private var boutonLegende: some View {
+        Button {
+            afficherLegende = true
+        } label: {
+            Image(systemName: "info.circle")
+        }
+        .accessibilityLabel("Légende des postes")
+        .popover(isPresented: $afficherLegende) {
+            LegendePostesView()
+                .padding(LiquidGlassKit.espaceMD)
+                .frame(maxWidth: 320)
+                .presentationCompactAdaptation(.popover)
+        }
     }
 
     // MARK: - Sélecteurs
@@ -121,10 +224,12 @@ struct FormationsView: View {
     }
 
     // MARK: - Sauvegarder
+    /// Phase 5.3b — demande confirmation si une personnalisation existe déjà
+    /// pour la clé (type, rotation, mode) avant de l'écraser.
     private func sauvegarder(_ positions: [FormationPositionData]) {
-        if let existante = formationPerso {
-            existante.positions = positions
-            existante.dateModification = Date()
+        if formationPerso != nil {
+            positionsEnAttente = positions
+            confirmerRemplacement = true
         } else {
             let nouvelle = FormationPersonnalisee(
                 formationType: formationSelectionnee,
@@ -135,6 +240,14 @@ struct FormationsView: View {
             nouvelle.codeEquipe = codeEquipeActif
             contexte.insert(nouvelle)
         }
+    }
+
+    /// Remplace la personnalisation existante après confirmation.
+    private func remplacerExistante() {
+        defer { positionsEnAttente = nil }
+        guard let positions = positionsEnAttente, let existante = formationPerso else { return }
+        existante.positions = positions
+        existante.dateModification = Date()
     }
 
     // MARK: - Réinitialiser (supprimer la personnalisation)
@@ -225,7 +338,8 @@ struct FormationTerrainEditeur: View {
     // MARK: - Joueur déplaçable
     private func joueurDraggable(index: Int, taille: CGSize) -> some View {
         let pos = positions[index]
-        let couleurPoste = couleurPourLabel(pos.label)
+        // Phase 5.2 — source unique des couleurs de poste
+        let couleurPoste = FormationType.couleurPourLabel(pos.label)
         let px = pos.x * taille.width
         let py = pos.y * taille.height
 
@@ -251,19 +365,6 @@ struct FormationTerrainEditeur: View {
                     positions[index].y = ny
                 }
         )
-    }
-
-    // MARK: - Couleur par poste
-    private func couleurPourLabel(_ label: String) -> Color {
-        switch label {
-        case "P": return .yellow
-        case "C": return .red
-        case "R": return Color(hex: "#FF6B35")
-        case "O": return Color(hex: "#2563EB")
-        case "L": return .green
-        case "A": return .purple
-        default:  return .gray
-        }
     }
 
     // MARK: - Chargement
