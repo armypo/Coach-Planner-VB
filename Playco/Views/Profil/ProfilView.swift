@@ -40,7 +40,7 @@ struct ProfilView: View {
                             sectionVisibilite
 
                             // Organisation (gestion membres)
-                            sectionOrganisation(utilisateur)
+                            sectionOrganisation
 
                             // Gestion équipes (coach seulement)
                             sectionEquipes
@@ -180,13 +180,15 @@ struct ProfilView: View {
 
     @State private var afficherTutoriel = false
     @State private var afficherAjoutEleve = false
-    @State private var afficherAjoutCoach = false
+    @State private var afficherAjoutAssistant = false
     @State private var afficherGestionStaff = false
     @State private var afficherJournalSync = false
     @State private var afficherIdentifiantsEquipe = false
 
-    private func sectionOrganisation(_ utilisateur: Utilisateur) -> some View {
-        let codeEcole = utilisateur.codeEcole
+    private var sectionOrganisation: some View {
+        // Scope multi-équipes : les nouveaux membres appartiennent à l'équipe ACTIVE
+        // (codeEquipeActif), pas au codeEcole du coach (qui reste sa 1re équipe).
+        let codeEquipe = codeEquipeActif
         return VStack(alignment: .leading, spacing: 12) {
             Label("Organisation", systemImage: "person.3.fill")
                 .font(.headline)
@@ -198,9 +200,12 @@ struct ProfilView: View {
                     afficherAjoutEleve = true
                 }
                 .bloqueSiNonClub(source: "creation_athlete")
-                boutonAction(icone: "figure.volleyball", titre: "Ajouter un coach",
+                // Jointure SIWA réservée athlète/assistant : on propose un assistant
+                // (mêmes permissions qu'un coach) — un membre « Coach » ne pourrait
+                // jamais se connecter (roleJonctionAutorise rejette .coach).
+                boutonAction(icone: "figure.volleyball", titre: "Ajouter un assistant",
                              couleur: PaletteMat.bleu) {
-                    afficherAjoutCoach = true
+                    afficherAjoutAssistant = true
                 }
                 boutonAction(icone: "lock.shield", titre: "Permissions du staff",
                              couleur: PaletteMat.vert) {
@@ -226,10 +231,10 @@ struct ProfilView: View {
             .environment(authService)
         }
         .sheet(isPresented: $afficherAjoutEleve) {
-            AjoutUtilisateurView(codeEcole: codeEcole, roleParDefaut: .etudiant)
+            AjoutUtilisateurView(codeEquipe: codeEquipe, roleParDefaut: .etudiant)
         }
-        .sheet(isPresented: $afficherAjoutCoach) {
-            AjoutUtilisateurView(codeEcole: codeEcole, roleParDefaut: .coach)
+        .sheet(isPresented: $afficherAjoutAssistant) {
+            AjoutUtilisateurView(codeEquipe: codeEquipe, roleParDefaut: .assistantCoach)
         }
         .sheet(isPresented: $afficherGestionStaff) {
             NavigationStack {

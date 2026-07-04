@@ -3,6 +3,7 @@
 //
 
 import SwiftUI
+import SwiftData
 import AuthenticationServices
 
 /// Étape 3 — Profil du coach.
@@ -12,6 +13,7 @@ import AuthenticationServices
 /// utilisé à la finalisation (création du compte + auto-login).
 struct ConfigProfilCoachView: View {
     @Environment(AppleSignInService.self) private var appleSignIn
+    @Environment(\.modelContext) private var modelContext
 
     @Binding var prenom: String
     @Binding var nom: String
@@ -166,6 +168,13 @@ struct ConfigProfilCoachView: View {
             erreurApple = "Connexion Apple impossible. Réessaie."
             return
         }
+        // Barrière anti-doublon de rôle : un Apple ID déjà rattaché à un compte
+        // athlète/assistant ne peut pas créer une équipe (la finalisation
+        // matcherait le compte non-coach au lieu d'en créer un coach).
+        guard !appleIDLieCompteNonCoach(creds.user) else {
+            erreurApple = "Cet Apple ID est déjà lié à un compte athlète ou assistant. Utilise un autre Apple ID pour créer une équipe."
+            return
+        }
         appleUserID = creds.user
         if prenom.trimmingCharacters(in: .whitespaces).isEmpty, !creds.prenom.isEmpty {
             prenom = creds.prenom
@@ -176,5 +185,20 @@ struct ConfigProfilCoachView: View {
         if courriel.trimmingCharacters(in: .whitespaces).isEmpty, let email = creds.email {
             courriel = email
         }
+    }
+
+    /// Vrai si cet Apple ID est déjà rattaché à un compte actif dont le rôle
+    /// n'est PAS coach/admin (athlète ou assistant).
+    private func appleIDLieCompteNonCoach(_ appleID: String) -> Bool {
+        // #Predicate n'accepte pas les expressions complexes : rawValues capturés en amont.
+        let roleCoachRaw = RoleUtilisateur.coach.rawValue
+        let roleAdminRaw = RoleUtilisateur.admin.rawValue
+        let descripteur = FetchDescriptor<Utilisateur>(
+            predicate: #Predicate {
+                $0.appleUserID == appleID && $0.estActif == true &&
+                $0.roleRaw != roleCoachRaw && $0.roleRaw != roleAdminRaw
+            }
+        )
+        return (try? modelContext.fetch(descripteur).first) != nil
     }
 }

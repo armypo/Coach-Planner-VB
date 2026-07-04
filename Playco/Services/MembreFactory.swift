@@ -19,6 +19,9 @@ enum MembreFactory {
     struct Membre {
         let utilisateur: Utilisateur
         let recap: CredentialRecap
+        /// Marqueur de membre inséré par la factory — exposé pour permettre un
+        /// rollback complet (delete) si la sauvegarde échoue côté appelant.
+        let credential: CredentialAthlete
     }
 
     /// - Parameters:
@@ -87,7 +90,27 @@ enum MembreFactory {
             codeInvitation: utilisateur.codeInvitation,
             role: libelleRole(role)
         )
-        return Membre(utilisateur: utilisateur, recap: recap)
+        return Membre(utilisateur: utilisateur, recap: recap, credential: cred)
+    }
+
+    /// Surcharge de commodité pour la création d'un membre isolé : gère son
+    /// propre Set d'exclusions (le wizard multi-membres utilise la variante `inout`).
+    @discardableResult
+    static func creerMembre(
+        prenom: String,
+        nom: String,
+        role: RoleUtilisateur,
+        codeEquipe: String,
+        joueur: JoueurEquipe? = nil,
+        identifiantSouhaite: String? = nil,
+        context: ModelContext
+    ) -> Membre {
+        var exclusions = Set<String>()
+        return creerMembre(
+            prenom: prenom, nom: nom, role: role, codeEquipe: codeEquipe,
+            joueur: joueur, identifiantSouhaite: identifiantSouhaite,
+            context: context, exclusions: &exclusions
+        )
     }
 
     private static func libelleRole(_ role: RoleUtilisateur) -> String {
