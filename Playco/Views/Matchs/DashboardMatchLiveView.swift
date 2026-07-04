@@ -26,7 +26,8 @@ private struct StatsJoueur: Identifiable {
     var digs: Int = 0
     var erreurs: Int { errAttaque + errService + errBloc + errReception + fautes }
     var points: Int { kills + aces + blocs }
-    /// Hitting % = (kills - errAttaque) / totalTentatives × 100
+    /// Rendement attaque = (kills - errAttaque) / totalTentatives × 100
+    /// ⚠️ Échelle 0-100 (héritage) — diviser par 100 avant FormatMetriques.hittingVolley.
     var totalTentativesAttaque: Int { kills + errAttaque + tentativesAttaque }
     var hittingPct: Double {
         guard totalTentativesAttaque > 0 else { return 0 }
@@ -50,6 +51,7 @@ struct DashboardMatchLiveView: View {
     @State private var afficherSubstitutions = false
     @State private var afficherRotation = false
     @State private var afficherDetailsJoueurs = false
+    @State private var afficherFilMatch = false
     @State private var timerTempsMort: Int = 30
     @State private var timerActif = false
     @State private var afficherTTO = false
@@ -57,6 +59,9 @@ struct DashboardMatchLiveView: View {
 
     // Cache pré-calculé — recalculé uniquement sur changement de tousPoints.count
     @State private var cache = StatsMatchLiveCache()
+
+    /// Seuil (échelle 0-100 du cache) au-dessus duquel le rendement attaque est jugé bon.
+    private static let seuilRendementBon: Double = 25
 
     /// Cache des stats agrégées du match live — évite de filtrer points/actions à chaque render
     private struct StatsMatchLiveCache {
@@ -208,6 +213,8 @@ struct DashboardMatchLiveView: View {
                             afficherRotation = true
                         } label: {
                             infoChip(icone: "arrow.triangle.2.circlepath", texte: "Rotation \(viewModel.rotationActuelle)", couleur: PaletteMat.bleu)
+                                .frame(minHeight: 44)
+                                .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Modifier la rotation. Actuellement rotation \(viewModel.rotationActuelle)")
@@ -215,22 +222,45 @@ struct DashboardMatchLiveView: View {
 
                         infoChip(icone: "arrow.triangle.2.circlepath.camera", texte: "Rot. adv. R\(viewModel.rotationAdversaire)", couleur: .red)
                         infoChip(icone: "number.circle", texte: "Set \(viewModel.setActuel)", couleur: PaletteMat.violet)
-                        infoChip(icone: "chart.line.uptrend.xyaxis", texte: "Eff. \(String(format: "%.0f", cache.efficaciteAttaque))%", couleur: cache.efficaciteAttaque >= 25 ? PaletteMat.vert : .red)
+                        infoChip(icone: "chart.line.uptrend.xyaxis", texte: "Rend. \(rendementEquipeFormate)", couleur: couleurRendementEquipe)
+
+                        // Bouton fil du match (worm chart point par point)
+                        Button {
+                            afficherFilMatch = true
+                        } label: {
+                            HStack(spacing: LiquidGlassKit.espaceXS) {
+                                Image(systemName: "chart.xyaxis.line")
+                                    .font(.caption)
+                                Text("Fil du match")
+                                    .font(.caption.weight(.medium))
+                            }
+                            .foregroundStyle(PaletteMat.bleu)
+                            .padding(.horizontal, LiquidGlassKit.espaceSM + LiquidGlassKit.espaceXS)
+                            .padding(.vertical, LiquidGlassKit.espaceXS + 2)
+                            .background(PaletteMat.bleu.opacity(0.1), in: Capsule())
+                            .frame(minHeight: 44)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Fil du match")
+                        .accessibilityHint("Double-tapez pour voir l'écart de score point par point")
 
                         // Bouton substitutions
                         Button {
                             afficherSubstitutions = true
                         } label: {
-                            HStack(spacing: 4) {
+                            HStack(spacing: LiquidGlassKit.espaceXS) {
                                 Image(systemName: "arrow.left.arrow.right")
                                     .font(.caption)
                                 Text("Subs \(viewModel.subsUtiliseesDansSet)/\(viewModel.subsMaxParSet)")
                                     .font(.caption.weight(.medium))
                             }
                             .foregroundStyle(.red)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
+                            .padding(.horizontal, LiquidGlassKit.espaceSM + LiquidGlassKit.espaceXS)
+                            .padding(.vertical, LiquidGlassKit.espaceXS + 2)
                             .background(.red.opacity(0.1), in: Capsule())
+                            .frame(minHeight: 44)
+                            .contentShape(Rectangle())
                         }
                         .accessibilityLabel("Substitutions : \(viewModel.subsUtiliseesDansSet) sur \(viewModel.subsMaxParSet) utilisées dans ce set")
                         .accessibilityHint("Double-tapez pour gérer les substitutions")
@@ -252,7 +282,7 @@ struct DashboardMatchLiveView: View {
                             .font(.caption.weight(.medium))
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 10)
+                            .padding(.vertical, LiquidGlassKit.espaceSM + 2)
                             .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: LiquidGlassKit.rayonPetit))
                     }
                     .buttonStyle(.plain)
@@ -282,6 +312,11 @@ struct DashboardMatchLiveView: View {
         .sheet(isPresented: $afficherRotation) {
             RotationLiveView(viewModel: viewModel)
                 .presentationDetents([.large])
+        }
+        .sheet(isPresented: $afficherFilMatch) {
+            NavigationStack {
+                FilDuMatchView(seance: viewModel.seance)
+            }
         }
         .alert("Temps mort technique", isPresented: $afficherTTO) {
             Button("OK") { afficherTTO = false }
@@ -387,8 +422,8 @@ struct DashboardMatchLiveView: View {
                     } label: {
                         Text("TM")
                             .font(.caption2.weight(.bold))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 4)
+                            .padding(.horizontal, LiquidGlassKit.espaceSM + 2)
+                            .padding(.vertical, LiquidGlassKit.espaceXS)
                             .background(.red.opacity(0.12), in: Capsule())
                             .foregroundStyle(.red)
                     }
@@ -421,8 +456,8 @@ struct DashboardMatchLiveView: View {
                     } label: {
                         Text("TM")
                             .font(.caption2.weight(.bold))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 4)
+                            .padding(.horizontal, LiquidGlassKit.espaceSM + 2)
+                            .padding(.vertical, LiquidGlassKit.espaceXS)
                             .background(.orange.opacity(0.12), in: Capsule())
                             .foregroundStyle(.orange)
                     }
@@ -459,9 +494,9 @@ struct DashboardMatchLiveView: View {
             }
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: LiquidGlassKit.espaceSM), count: 4), spacing: LiquidGlassKit.espaceSM) {
                 statCard(titre: "Digs", valeur: cache.totalDigs + cache.totalManchettes, icone: "hand.point.down.fill", couleur: .teal)
-                statCard(titre: "Assists", valeur: cache.totalPasses, icone: "arrow.turn.up.right", couleur: .yellow)
+                statCard(titre: "Passes déc.", valeur: cache.totalPasses, icone: "arrow.turn.up.right", couleur: .yellow)
                 statCard(titre: "Réceptions", valeur: cache.totalReceptions, icone: "arrow.down.to.line", couleur: .purple)
-                statCardPct(titre: "Eff. Att.", valeur: cache.efficaciteAttaque, icone: "chart.line.uptrend.xyaxis", couleur: cache.efficaciteAttaque >= 25 ? PaletteMat.vert : .red)
+                statCardTexte(titre: "Rendement", valeur: rendementEquipeFormate, icone: "chart.line.uptrend.xyaxis", couleur: couleurRendementEquipe)
             }
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: LiquidGlassKit.espaceSM), count: 3), spacing: LiquidGlassKit.espaceSM) {
                 statCard(titre: "Err. Service", valeur: cache.totalErrService, icone: "arrow.up.forward.circle", couleur: .orange)
@@ -561,12 +596,13 @@ struct DashboardMatchLiveView: View {
         .glassCard(teinte: couleur, cornerRadius: LiquidGlassKit.rayonMoyen)
     }
 
-    private func statCardPct(titre: String, valeur: Double, icone: String, couleur: Color) -> some View {
+    /// Carte à valeur pré-formatée (ex. rendement attaque « .350 » — D2).
+    private func statCardTexte(titre: String, valeur: String, icone: String, couleur: Color) -> some View {
         VStack(spacing: LiquidGlassKit.espaceSM) {
             Image(systemName: icone)
                 .font(.system(size: 20))
                 .foregroundStyle(couleur)
-            Text(String(format: "%.0f%%", valeur))
+            Text(valeur)
                 .font(.title2.weight(.bold).monospacedDigit())
                 .contentTransition(.numericText())
             Text(titre)
@@ -578,6 +614,20 @@ struct DashboardMatchLiveView: View {
         .glassCard(teinte: couleur, cornerRadius: LiquidGlassKit.rayonMoyen)
     }
 
+    // MARK: - Rendement attaque (D2 : convention volleyball « .350 »)
+
+    /// Rendement attaque de l'équipe formaté « .350 » — le cache stocke une
+    /// valeur en échelle 0-100, FormatMetriques attend une fraction 0-1.
+    private var rendementEquipeFormate: String {
+        guard cache.totalTentativesAttaque > 0 else { return "—" }
+        return FormatMetriques.hittingVolley(cache.efficaciteAttaque / 100)
+    }
+
+    private var couleurRendementEquipe: Color {
+        guard cache.totalTentativesAttaque > 0 else { return PaletteMat.texteSecondaire }
+        return cache.efficaciteAttaque >= Self.seuilRendementBon ? PaletteMat.positif : PaletteMat.negatif
+    }
+
     private func infoChip(icone: String, texte: String, couleur: Color) -> some View {
         HStack(spacing: 6) {
             Image(systemName: icone)
@@ -587,8 +637,8 @@ struct DashboardMatchLiveView: View {
                 .contentTransition(.numericText())
         }
         .foregroundStyle(couleur)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
+        .padding(.horizontal, LiquidGlassKit.espaceSM + LiquidGlassKit.espaceXS)
+        .padding(.vertical, LiquidGlassKit.espaceXS + 2)
         .background(couleur.opacity(0.1), in: Capsule())
     }
 
@@ -596,119 +646,84 @@ struct DashboardMatchLiveView: View {
 
     private var tableauJoueurs: some View {
         VStack(alignment: .leading, spacing: LiquidGlassKit.espaceSM) {
-            Text("STATISTIQUES PAR JOUEUR")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-
-            ScrollView(.horizontal, showsIndicators: true) {
-                VStack(alignment: .leading, spacing: 0) {
-                    // En-tête
-                    HStack(spacing: 0) {
-                        Text("#").frame(width: 30, alignment: .leading)
-                        Text("Joueur").frame(width: 100, alignment: .leading)
-                        Text("Pts").frame(width: 32)
-                        Text("K").frame(width: 28)
-                        Text("A").frame(width: 28)
-                        Text("B").frame(width: 28)
-                        Text("D").frame(width: 28)
-                        Text("As").frame(width: 28)
-                        Text("R").frame(width: 28)
-                        Text("EAt").frame(width: 32)
-                        Text("ESv").frame(width: 32)
-                        Text("EB").frame(width: 28)
-                        Text("ER").frame(width: 28)
-                        Text("F").frame(width: 28)
-                        Text("E").frame(width: 28)
-                        Text("Eff%").frame(width: 40)
-                    }
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 4)
-
-                    Divider()
-
-                    ForEach(cache.statsParJoueur) { stat in
-                        HStack(spacing: 0) {
-                            Text("\(stat.numero)")
-                                .font(.caption.weight(.bold).monospacedDigit())
-                                .frame(width: 30, alignment: .leading)
-                            Text(stat.nom)
-                                .font(.caption)
-                                .lineLimit(1)
-                                .frame(width: 100, alignment: .leading)
-                            Text("\(stat.points)")
-                                .font(.caption.weight(.bold))
-                                .frame(width: 32)
-                                .foregroundStyle(PaletteMat.vert)
-                                .contentTransition(.numericText())
-                            Text("\(stat.kills)")
-                                .frame(width: 28)
-                                .contentTransition(.numericText())
-                            Text("\(stat.aces)")
-                                .frame(width: 28)
-                                .contentTransition(.numericText())
-                            Text("\(stat.blocs)")
-                                .frame(width: 28)
-                                .contentTransition(.numericText())
-                            Text("\(stat.manchettes)")
-                                .frame(width: 28)
-                                .foregroundStyle(.teal)
-                                .contentTransition(.numericText())
-                            Text("\(stat.passesDecisives)")
-                                .frame(width: 28)
-                                .foregroundStyle(.yellow)
-                                .contentTransition(.numericText())
-                            Text("\(stat.receptions)")
-                                .frame(width: 28)
-                                .foregroundStyle(.purple)
-                                .contentTransition(.numericText())
-                            Text("\(stat.errAttaque)")
-                                .frame(width: 32)
-                                .foregroundStyle(stat.errAttaque > 0 ? .orange : .primary)
-                                .contentTransition(.numericText())
-                            Text("\(stat.errService)")
-                                .frame(width: 32)
-                                .foregroundStyle(stat.errService > 0 ? .orange : .primary)
-                                .contentTransition(.numericText())
-                            Text("\(stat.errBloc)")
-                                .frame(width: 28)
-                                .foregroundStyle(stat.errBloc > 0 ? .orange : .primary)
-                                .contentTransition(.numericText())
-                            Text("\(stat.errReception)")
-                                .frame(width: 28)
-                                .foregroundStyle(stat.errReception > 0 ? .orange : .primary)
-                                .contentTransition(.numericText())
-                            Text("\(stat.fautes)")
-                                .frame(width: 28)
-                                .foregroundStyle(stat.fautes > 0 ? .red : .primary)
-                                .contentTransition(.numericText())
-                            Text("\(stat.erreurs)")
-                                .frame(width: 28)
-                                .foregroundStyle(stat.erreurs > 0 ? .red : .primary)
-                                .contentTransition(.numericText())
-                            Text(stat.tentativesAttaque > 0 ? String(format: "%.0f", stat.hittingPct) : "—")
-                                .frame(width: 40)
-                                .foregroundStyle(stat.hittingPct >= 25 ? PaletteMat.vert : (stat.hittingPct < 0 ? .red : .primary))
-                                .contentTransition(.numericText())
-                        }
-                        .font(.caption.monospacedDigit())
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 4)
-                    }
-                }
-            }
+            EnTeteSection(titre: "Statistiques par joueur")
 
             if cache.statsParJoueur.isEmpty {
-                Text("Aucune statistique enregistrée")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, LiquidGlassKit.espaceLG)
+                ContentUnavailableView(
+                    "Aucune statistique",
+                    systemImage: "chart.bar",
+                    description: Text("Saisissez les points dans l'onglet Stats pour remplir le tableau par joueur.")
+                )
+            } else {
+                TableauStats(
+                    groupes: groupesTableauJoueurs,
+                    lignes: cache.statsParJoueur.map(ligneTableauJoueur),
+                    ligneTotaux: ligneTotauxEquipe
+                )
             }
         }
         .padding(LiquidGlassKit.espaceMD)
         .glassSection()
+    }
+
+    /// Colonnes groupées par catégorie (ordre aplati :
+    /// K, E, TA, Rend. · AC, SE · B · Réc., ER · M, PD, D, F · Pts).
+    private var groupesTableauJoueurs: [GroupeColonnesStats] {
+        [
+            GroupeColonnesStats(titre: "Attaque", colonnes: ["K", "E", "TA", "Rend."], teinte: PaletteMat.orange),
+            GroupeColonnesStats(titre: "Service", colonnes: ["AC", "SE"], teinte: PaletteMat.bleu),
+            GroupeColonnesStats(titre: "Bloc", colonnes: ["B"], teinte: PaletteMat.violet),
+            GroupeColonnesStats(titre: "Réception", colonnes: ["Réc.", "ER"], teinte: PaletteMat.vert),
+            GroupeColonnesStats(titre: "Jeu", colonnes: ["M", "PD", "D", "F"], teinte: PaletteMat.attention),
+            GroupeColonnesStats(titre: "Pts", colonnes: ["Pts"], teinte: PaletteMat.vert),
+        ]
+    }
+
+    private func ligneTableauJoueur(_ stat: StatsJoueur) -> LigneTableauStats {
+        let aDesTentatives = stat.totalTentativesAttaque > 0
+        let rendement = aDesTentatives ? FormatMetriques.hittingVolley(stat.hittingPct / 100) : "—"
+        let couleurRendement: Color? = {
+            guard aDesTentatives else { return nil }
+            if stat.hittingPct < 0 { return PaletteMat.negatif }
+            return stat.hittingPct >= Self.seuilRendementBon ? PaletteMat.positif : nil
+        }()
+
+        return LigneTableauStats(
+            id: stat.id,
+            libelle: "\(stat.numero) \(stat.nom)",
+            valeurs: [
+                "\(stat.kills)", "\(stat.errAttaque)", "\(stat.totalTentativesAttaque)", rendement,
+                "\(stat.aces)", "\(stat.errService)",
+                "\(stat.blocs)",
+                "\(stat.receptions)", "\(stat.errReception)",
+                "\(stat.manchettes)", "\(stat.passesDecisives)", "\(stat.digs)", "\(stat.fautes)",
+                "\(stat.points)",
+            ],
+            couleurs: [
+                nil, stat.errAttaque > 0 ? PaletteMat.attention : nil, nil, couleurRendement,
+                nil, stat.errService > 0 ? PaletteMat.attention : nil,
+                nil,
+                nil, stat.errReception > 0 ? PaletteMat.attention : nil,
+                nil, nil, nil, stat.fautes > 0 ? PaletteMat.negatif : nil,
+                PaletteMat.vert,
+            ]
+        )
+    }
+
+    private var ligneTotauxEquipe: LigneTableauStats {
+        let fautesEquipe = cache.statsParJoueur.reduce(0) { $0 + $1.fautes }
+        return LigneTableauStats(
+            id: UUID(),
+            libelle: "Équipe",
+            valeurs: [
+                "\(cache.totalKills)", "\(cache.totalErrAttaque)", "\(cache.totalTentativesAttaque)", rendementEquipeFormate,
+                "\(cache.totalAces)", "\(cache.totalErrService)",
+                "\(cache.totalBlocs)",
+                "\(cache.totalReceptions)", "\(cache.totalErrReception)",
+                "\(cache.totalManchettes)", "\(cache.totalPasses)", "\(cache.totalDigs)", "\(fautesEquipe)",
+                "\(cache.totalKills + cache.totalAces + cache.totalBlocs)",
+            ]
+        )
     }
 
     // MARK: - TTO
@@ -743,8 +758,8 @@ struct DashboardMatchLiveView: View {
             } label: {
                 Text("Fermer")
                     .font(.subheadline.weight(.semibold))
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 10)
+                    .padding(.horizontal, LiquidGlassKit.espaceLG)
+                    .padding(.vertical, LiquidGlassKit.espaceSM + 2)
                     .background(.red.opacity(0.12), in: Capsule())
                     .foregroundStyle(.red)
             }
