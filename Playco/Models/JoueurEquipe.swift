@@ -6,7 +6,9 @@ import SwiftUI
 import SwiftData
 
 // MARK: - Poste du joueur
-enum PosteJoueur: String, Codable, CaseIterable {
+// `nonisolated` : enum pur (valeurs + couleurs Sendable) appelé depuis
+// FormationType.couleurPourLabel (nonisolated) — Phase 5.2.
+nonisolated enum PosteJoueur: String, Codable, CaseIterable {
     case passeur    = "Passeur"
     case central    = "Central"
     case recepteur  = "Réceptionneur"

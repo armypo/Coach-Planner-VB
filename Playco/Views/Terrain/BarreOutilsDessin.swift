@@ -23,6 +23,7 @@ struct BarreOutilsDessin: View {
     var peutRetablir: Bool
     var onFormation: ((FormationType, Int, FormationMode) -> Void)?
     var strategiesOffensives: [StrategieCollective] = []
+    var formationsPerso: [FormationPersonnalisee] = []
     var onStrategieOffensive: ((StrategieCollective) -> Void)?
     var joueursBD: [JoueurEquipe] = []
     var onPlacerJoueur: ((JoueurEquipe) -> Void)?
@@ -31,6 +32,9 @@ struct BarreOutilsDessin: View {
 
     @State private var afficherCouleurs  = false
     @State private var confirmerEffacer  = false
+    @State private var afficherFormations = false
+    @State private var derniereFormation: DerniereFormationPosee? = nil
+    @State private var compteurPoseFormation = 0
 
     private let couleursEquipes: [(String, Color)] = [
         ("Éq. A", PaletteMat.orange),
@@ -94,6 +98,9 @@ struct BarreOutilsDessin: View {
                 }
                 .help("Pointillé")
 
+                // ── Flèche de rotation (Phase 5.3c — outil existant sans bouton)
+                outilBtn("arrow.triangle.2.circlepath", "Flèche de rotation", .rotation, accent: .cyan)
+
                 sep
 
                 // ── Placement
@@ -130,29 +137,12 @@ struct BarreOutilsDessin: View {
 
                 sep
 
-                // ── Formations (rotation de base)
-                menuFormation(
-                    mode: .base,
-                    icone: "arrow.triangle.2.circlepath",
-                    couleurIcone: .green.opacity(0.8),
-                    aide: "Rotation de base"
-                )
+                // ── Formations — panneau 2 taps (Phase 5.1)
+                boutonFormations
 
-                // ── Réception
-                menuFormation(
-                    mode: .reception,
-                    icone: "hand.raised.fill",
-                    couleurIcone: .blue.opacity(0.8),
-                    aide: "Formation réception"
-                )
-
-                // ── Attaque (indoor uniquement)
-                if typeTerrain == .indoor {
-                    menuFormationAttaque(
-                        icone: "flame.fill",
-                        couleurIcone: .red.opacity(0.9),
-                        aide: "Système offensif"
-                    )
+                // ── Reposer la dernière formation posée
+                if let derniere = derniereFormation {
+                    boutonReposer(derniere)
                 }
 
                 sep
@@ -308,41 +298,65 @@ struct BarreOutilsDessin: View {
         }
     }
 
-    // MARK: - Menu formation réutilisable
-    @ViewBuilder
-    private func menuFormation(mode: FormationMode, icone: String, couleurIcone: Color, aide: String) -> some View {
-        Menu {
-            ForEach(FormationType.allCases.filter { $0.estBeach == (typeTerrain == .beach) }, id: \.self) { f in
-                if f.estBeach {
-                    Button {
-                        onFormation?(f, 0, mode)
-                    } label: {
-                        Label(f.rawValue, systemImage: "person.2.fill")
-                    }
-                } else {
-                    Menu {
-                        ForEach(0..<f.nombreRotations, id: \.self) { r in
-                            Button {
-                                onFormation?(f, r, mode)
-                            } label: {
-                                Label("Rotation \(r + 1) — \(f.descriptionRotation(r))",
-                                      systemImage: "arrow.clockwise")
-                            }
-                        }
-                    } label: {
-                        Label("Formation \(f.rawValue)", systemImage: "person.3.fill")
-                    }
-                }
-            }
+    // MARK: - Formations (Phase 5.1 — panneau 2 taps)
+
+    private var boutonFormations: some View {
+        Button {
+            afficherFormations = true
         } label: {
-            Image(systemName: icone)
-                .font(.system(size: 14))
-                .frame(width: 36, height: 38)
-                .foregroundStyle(couleurIcone)
+            HStack(spacing: LiquidGlassKit.espaceXS) {
+                Image(systemName: "person.3.fill")
+                    .font(.system(size: 12))
+                Text("Formations")
+                    .font(.caption.weight(.semibold))
+            }
+            .foregroundStyle(.green)
+            .padding(.horizontal, 10)
+            .frame(height: 38)
+            .background(Color.green.opacity(0.12), in: RoundedRectangle(cornerRadius: 7))
         }
-        .help(aide)
-        .accessibilityLabel(aide)
-        .accessibilityHint("Ouvre le menu de sélection de formation")
+        .help("Formations préétablies")
+        .accessibilityLabel("Formations")
+        .accessibilityHint("Ouvre le panneau des formations préétablies et des stratégies")
+        .popover(isPresented: $afficherFormations) {
+            PanneauFormationsView(
+                typeTerrain: typeTerrain,
+                formationsPerso: formationsPerso,
+                strategiesOffensives: strategiesOffensives,
+                onFormation: { type, rotation, mode in
+                    poserFormation(type: type, rotation: rotation, mode: mode)
+                },
+                onStrategie: { strat in
+                    onStrategieOffensive?(strat)
+                    compteurPoseFormation += 1
+                }
+            )
+        }
+        .sensoryFeedback(.impact, trigger: compteurPoseFormation)
+    }
+
+    private func boutonReposer(_ derniere: DerniereFormationPosee) -> some View {
+        Button {
+            poserFormation(type: derniere.type, rotation: derniere.rotation, mode: derniere.mode)
+        } label: {
+            HStack(spacing: LiquidGlassKit.espaceXS) {
+                Image(systemName: "arrow.counterclockwise")
+                    .font(.system(size: 11, weight: .semibold))
+                Text("Reposer \(derniere.labelCourt)")
+                    .font(.caption.weight(.medium))
+            }
+            .foregroundStyle(.green)
+            .padding(.horizontal, 8)
+            .frame(height: 38)
+        }
+        .help("Reposer la dernière formation (\(derniere.labelCourt))")
+        .accessibilityLabel("Reposer la dernière formation \(derniere.labelCourt)")
+    }
+
+    private func poserFormation(type: FormationType, rotation: Int, mode: FormationMode) {
+        onFormation?(type, rotation, mode)
+        derniereFormation = DerniereFormationPosee(type: type, rotation: rotation, mode: mode)
+        compteurPoseFormation += 1
     }
 
     // MARK: - Menu joueurs base de données
@@ -365,47 +379,6 @@ struct BarreOutilsDessin: View {
         .help("Placer un joueur (BD)")
         .accessibilityLabel("Placer un joueur depuis l'équipe")
         .accessibilityHint("Ouvre la liste des joueurs à placer sur le terrain")
-    }
-
-    // MARK: - Menu formation attaque (stratégies offensives)
-    @ViewBuilder
-    private func menuFormationAttaque(icone: String, couleurIcone: Color, aide: String) -> some View {
-        Menu {
-            // Formations de base avec rotations
-            ForEach(FormationType.allCases.filter { !$0.estBeach }, id: \.self) { f in
-                Menu {
-                    ForEach(0..<f.nombreRotations, id: \.self) { r in
-                        Button {
-                            onFormation?(f, r, .attaque)
-                        } label: {
-                            Label("Rotation \(r + 1) — \(f.descriptionRotation(r))",
-                                  systemImage: "arrow.clockwise")
-                        }
-                    }
-                } label: {
-                    Label("Formation \(f.rawValue)", systemImage: "person.3.fill")
-                }
-            }
-
-            if !strategiesOffensives.isEmpty {
-                Divider()
-
-                // Stratégies offensives depuis la section stratégie
-                ForEach(strategiesOffensives, id: \.id) { strat in
-                    Button {
-                        onStrategieOffensive?(strat)
-                    } label: {
-                        Label(strat.nom, systemImage: "bolt.fill")
-                    }
-                }
-            }
-        } label: {
-            Image(systemName: icone)
-                .font(.system(size: 14))
-                .frame(width: 36, height: 38)
-                .foregroundStyle(couleurIcone)
-        }
-        .help(aide)
     }
 
     // MARK: - Helpers

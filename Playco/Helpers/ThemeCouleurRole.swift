@@ -22,7 +22,9 @@ extension EnvironmentValues {
 // MARK: - Liquid Glass Design System v2
 
 /// Couleurs mates uniformes — palette Apple Liquid Glass
-enum PaletteMat {
+/// `nonisolated` : constantes Sendable lues depuis des contextes non-MainActor
+/// (FormationType.couleurPourLabel — Phase 5.2).
+nonisolated enum PaletteMat {
     // Couleurs principales — mates et désaturées
     static let orange = Color(hex: "#E8734A")    // Pratiques
     static let bleu   = Color(hex: "#4A8AF4")    // Stratégies
