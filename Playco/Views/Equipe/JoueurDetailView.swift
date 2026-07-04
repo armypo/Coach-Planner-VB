@@ -25,6 +25,10 @@ struct JoueurDetailView: View {
     @State private var codeInvitationJoueur: String?
     @Query private var toutesPresences: [Presence]
     @Query private var tousStatsMatch: [StatsMatch]
+    @Query private var toutesActionsRallye: [ActionRallye]
+    @Query private var tousPointsMatch: [PointMatch]
+    @State private var noteReception: Double = 0
+    @State private var nbReceptionsNotees = 0
 
     /// Vrai si des stats de match existent → le cumul carrière est dérivé.
     private var aDesStatsDeMatch: Bool {
@@ -428,8 +432,35 @@ struct JoueurDetailView: View {
                     couleur: .purple
                 )
             }
+
+            // Note de réception 0-3 (3.2 refonte — qualité déjà saisie en live)
+            if nbReceptionsNotees > 0 {
+                CarteMetrique(
+                    titre: "Note de réception",
+                    valeur: "\(FormatMetriques.note(noteReception)) / 3",
+                    sousTitre: "\(nbReceptionsNotees) réceptions notées en live",
+                    teinte: .purple,
+                    definition: MetriquesVolley.catalogue.first { $0.abreviation == "Note réc." }
+                )
+            }
         }
         .glassSection()
+        .onAppear { recalculerNoteReception() }
+        .onChange(of: toutesActionsRallye.count) { _, _ in recalculerNoteReception() }
+    }
+
+    /// Note de réception carrière (0-3) : qualités des réceptions de rallye
+    /// + erreurs de réception (PointMatch) comptées 0 — cache @State.
+    private func recalculerNoteReception() {
+        let qualites = toutesActionsRallye
+            .filter { $0.joueurID == joueur.id && $0.typeAction == .reception }
+            .map(\.qualite)
+        let erreurs = tousPointsMatch
+            .filter { $0.joueurID == joueur.id && $0.typeAction == .erreurReception }
+            .map { _ in 0 }
+        let toutes = qualites + erreurs
+        nbReceptionsNotees = toutes.count
+        noteReception = MetriquesVolley.noteReception(qualites: toutes)
     }
 
     // MARK: - Jeu (Passes & Manchettes)

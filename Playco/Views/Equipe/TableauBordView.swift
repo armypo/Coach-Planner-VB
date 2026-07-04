@@ -502,6 +502,8 @@ struct BoxScoreView: View {
     }
 
     @State private var statsMatch: [StatsMatch] = []
+    @State private var noteReceptionMatch: Double = 0
+    @State private var nbReceptionsNoteesMatch = 0
 
     private func chargerStats() {
         let seanceID = seance.id
@@ -509,6 +511,21 @@ struct BoxScoreView: View {
             predicate: #Predicate { $0.seanceID == seanceID }
         )
         statsMatch = (try? modelContext.fetch(descriptor)) ?? []
+
+        // Note de réception du match (3.2) : qualités saisies en live + erreurs à 0.
+        let descripteurActions = FetchDescriptor<ActionRallye>(
+            predicate: #Predicate { $0.seanceID == seanceID }
+        )
+        let actions = (try? modelContext.fetch(descripteurActions)) ?? []
+        let descripteurPoints = FetchDescriptor<PointMatch>(
+            predicate: #Predicate { $0.seanceID == seanceID }
+        )
+        let points = (try? modelContext.fetch(descripteurPoints)) ?? []
+
+        let qualites = actions.filter { $0.typeAction == .reception }.map(\.qualite)
+            + points.filter { $0.typeAction == .erreurReception }.map { _ in 0 }
+        nbReceptionsNoteesMatch = qualites.count
+        noteReceptionMatch = MetriquesVolley.noteReception(qualites: qualites)
     }
 
     var body: some View {
@@ -535,6 +552,15 @@ struct BoxScoreView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 40)
                 } else {
+                    if nbReceptionsNoteesMatch > 0 {
+                        CarteMetrique(
+                            titre: "Note de réception du match",
+                            valeur: "\(FormatMetriques.note(noteReceptionMatch)) / 3",
+                            sousTitre: "\(nbReceptionsNoteesMatch) réceptions notées",
+                            teinte: .purple,
+                            definition: MetriquesVolley.catalogue.first { $0.abreviation == "Note réc." }
+                        )
+                    }
                     sectionBoxScore
                 }
             }
