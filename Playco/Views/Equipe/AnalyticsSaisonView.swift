@@ -40,16 +40,22 @@ struct AnalyticsSaisonView: View {
 
     enum OngletAnalytics: String, CaseIterable {
         case resultats    = "Résultats"
-        case efficacite   = "Efficacité"
+        case attaque      = "Attaque"
         case performances = "Performances"
+    }
 
-        var icone: String {
-            switch self {
-            case .resultats:    return "trophy.fill"
-            case .efficacite:   return "chart.line.uptrend.xyaxis"
-            case .performances: return "star.fill"
-            }
-        }
+    /// Seuils métier de la vue (pas de magic numbers dans le body).
+    private enum SeuilsAnalytics {
+        /// Objectif de rendement attaque par match (convention volleyball « .250 »).
+        static let objectifRendement = 0.250
+        /// Bilan équilibré : au moins une victoire sur deux.
+        static let ratioVictoiresEquilibre = 0.5
+        /// Nombre minimal de matchs pour tracer une tendance.
+        static let minMatchsTendance = 2
+        /// Nombre minimal de matchs pour afficher la ligne d'objectif.
+        static let minMatchsObjectif = 3
+        /// Hauteur uniforme des graphiques Swift Charts.
+        static let hauteurGraphique: CGFloat = 200
     }
 
     var body: some View {
@@ -62,8 +68,8 @@ struct AnalyticsSaisonView: View {
                 switch ongletSelectionne {
                 case .resultats:
                     sectionResultats
-                case .efficacite:
-                    sectionEfficacite
+                case .attaque:
+                    sectionAttaque
                 case .performances:
                     sectionPerformances
                 }
@@ -78,20 +84,10 @@ struct AnalyticsSaisonView: View {
     // MARK: - En-tête
 
     private var entete: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: LiquidGlassKit.espaceXS) {
-                Text("Analytics saison")
-                    .font(.title.weight(.bold))
-                Text("Tendances et progression de l'équipe")
-                    .font(.subheadline)
-                    .foregroundStyle(PaletteMat.texteSecondaire)
-            }
-            Spacer()
-            Image(systemName: "chart.line.uptrend.xyaxis")
-                .font(.system(size: 32))
-                .foregroundStyle(PaletteMat.bleu.opacity(0.6))
-                .symbolRenderingMode(.hierarchical)
-        }
+        EnTeteSection(
+            titre: "Analytics saison",
+            sousTitre: "Tendances et progression de l'équipe"
+        )
     }
 
     // MARK: - Sélecteur onglet
@@ -99,7 +95,7 @@ struct AnalyticsSaisonView: View {
     private var selecteurOnglet: some View {
         Picker("Onglet", selection: $ongletSelectionne) {
             ForEach(OngletAnalytics.allCases, id: \.self) { onglet in
-                Label(onglet.rawValue, systemImage: onglet.icone)
+                Text(onglet.rawValue)
                     .tag(onglet)
             }
         }
@@ -119,14 +115,13 @@ struct AnalyticsSaisonView: View {
                         Text("Toute la saison")
                             .tag(nil as UUID?)
                         ForEach(phasesEquipe) { phase in
-                            Label("\(phase.typePhase.rawValue)\(phase.nom.isEmpty ? "" : " — \(phase.nom)")",
-                                  systemImage: phase.typePhase.icone)
+                            Text("\(phase.typePhase.rawValue)\(phase.nom.isEmpty ? "" : " — \(phase.nom)")")
                                 .tag(phase.id as UUID?)
                         }
                     }
                     .pickerStyle(.menu)
+                    .frame(minHeight: 44)
                 }
-                .padding(LiquidGlassKit.espaceSM + 2)
                 .glassSection()
             }
         }
@@ -135,17 +130,27 @@ struct AnalyticsSaisonView: View {
     // MARK: - Résultats
 
     private var sectionResultats: some View {
-        VStack(spacing: LiquidGlassKit.espaceMD) {
-            // Bilan V-D
-            bilanVictoiresDefaites
+        Group {
+            if matchsFiltres.isEmpty {
+                ContentUnavailableView(
+                    "Aucun match",
+                    systemImage: "sportscourt",
+                    description: Text("Créez un match dans la section Matchs pour suivre les résultats de la saison.")
+                )
+            } else {
+                VStack(spacing: LiquidGlassKit.espaceMD) {
+                    // Bilan V-D
+                    bilanVictoiresDefaites
 
-            // Graphique évolution W/L cumulatif
-            if matchsFiltres.count >= 2 {
-                graphiqueResultatsCumulatifs
+                    // Graphique évolution W/L cumulatif
+                    if matchsFiltres.count >= SeuilsAnalytics.minMatchsTendance {
+                        graphiqueResultatsCumulatifs
+                    }
+
+                    // Séries
+                    seriesSection
+                }
             }
-
-            // Séries
-            seriesSection
         }
     }
 
@@ -153,24 +158,30 @@ struct AnalyticsSaisonView: View {
         let victoires = matchsFiltres.filter { $0.resultat == .victoire }.count
         let defaites = matchsFiltres.filter { $0.resultat == .defaite }.count
         let total = matchsFiltres.count
-        let pctVictoire = total > 0 ? Double(victoires) / Double(total) * 100 : 0
+        let ratioVictoires = total > 0 ? Double(victoires) / Double(total) : 0
 
         return LazyVGrid(columns: [
             GridItem(.flexible()), GridItem(.flexible()),
             GridItem(.flexible()), GridItem(.flexible())
         ], spacing: LiquidGlassKit.espaceSM + 4) {
-            carteChiffre("Matchs", "\(total)", PaletteMat.bleu, "sportscourt.fill")
-            carteChiffre("Victoires", "\(victoires)", PaletteMat.vert, "checkmark.circle.fill")
-            carteChiffre("Défaites", "\(defaites)", .red, "xmark.circle.fill")
-            carteChiffre("% Victoire", String(format: "%.0f%%", pctVictoire),
-                         pctVictoire >= 50 ? PaletteMat.vert : .orange, "percent")
+            CarteMetrique(titre: "Matchs", valeur: "\(total)", teinte: PaletteMat.bleu)
+            CarteMetrique(titre: "Victoires", valeur: "\(victoires)", teinte: PaletteMat.positif)
+            CarteMetrique(titre: "Défaites", valeur: "\(defaites)", teinte: PaletteMat.negatif)
+            CarteMetrique(
+                titre: "% victoires",
+                valeur: FormatMetriques.pourcentage(ratioVictoires, decimales: 0),
+                teinte: ratioVictoires >= SeuilsAnalytics.ratioVictoiresEquilibre
+                    ? PaletteMat.positif : PaletteMat.attention
+            )
         }
     }
 
     private var graphiqueResultatsCumulatifs: some View {
         VStack(alignment: .leading, spacing: LiquidGlassKit.espaceSM) {
-            Label("Évolution victoires / défaites", systemImage: "chart.xyaxis.line")
-                .font(.headline.weight(.semibold))
+            EnTeteSection(
+                titre: "Évolution victoires / défaites",
+                sousTitre: "Victoires en vert, défaites en rouge pointillé"
+            )
 
             let donnees = donneesResultatsCumulatifs()
 
@@ -198,13 +209,13 @@ struct AnalyticsSaisonView: View {
                     x: .value("Match", point.index),
                     y: .value("Défaites", point.defaites)
                 )
-                .foregroundStyle(.red)
+                .foregroundStyle(PaletteMat.negatif)
                 .interpolationMethod(.catmullRom)
                 .lineStyle(StrokeStyle(lineWidth: 2, dash: [5, 3]))
             }
-            .chartYAxisLabel("Cumulatif")
-            .chartXAxisLabel("Match #")
-            .frame(height: 200)
+            .chartYAxisLabel("Total cumulé")
+            .chartXAxisLabel("Nº de match")
+            .frame(height: SeuilsAnalytics.hauteurGraphique)
         }
         .padding(LiquidGlassKit.espaceMD)
         .glassCard(teinte: PaletteMat.vert, cornerRadius: LiquidGlassKit.rayonMoyen)
@@ -215,46 +226,37 @@ struct AnalyticsSaisonView: View {
         let plusLongueSerie = calculerPlusLongueSerie()
 
         return HStack(spacing: LiquidGlassKit.espaceSM + 4) {
-            VStack(spacing: LiquidGlassKit.espaceSM) {
-                Text("Série actuelle")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(PaletteMat.texteSecondaire)
-                Text("\(serieActuelle)")
-                    .font(.system(size: 32, weight: .bold, design: .rounded))
-                    .foregroundStyle(type == .victoire ? PaletteMat.vert : (type == .defaite ? .red : PaletteMat.texteSecondaire))
-                    .contentTransition(.numericText())
-                Text(type?.label ?? "—")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(type?.couleur ?? PaletteMat.texteTertiaire)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, LiquidGlassKit.espaceMD)
-            .glassCard(cornerRadius: LiquidGlassKit.rayonPetit)
-
-            VStack(spacing: LiquidGlassKit.espaceSM) {
-                Text("Plus longue série V")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(PaletteMat.texteSecondaire)
-                Text("\(plusLongueSerie)")
-                    .font(.system(size: 32, weight: .bold, design: .rounded))
-                    .foregroundStyle(PaletteMat.vert)
-                    .contentTransition(.numericText())
-                Text("victoire\(plusLongueSerie > 1 ? "s" : "")")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(PaletteMat.vert)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, LiquidGlassKit.espaceMD)
-            .glassCard(cornerRadius: LiquidGlassKit.rayonPetit)
+            CarteMetrique(
+                titre: "Série actuelle",
+                valeur: "\(serieActuelle)",
+                sousTitre: type.map { "\($0.label)\(serieActuelle > 1 ? "s" : "") de suite" } ?? "—",
+                teinte: couleurSerie(type)
+            )
+            CarteMetrique(
+                titre: "Meilleure série de victoires",
+                valeur: "\(plusLongueSerie)",
+                sousTitre: "victoire\(plusLongueSerie > 1 ? "s" : "") de suite",
+                teinte: PaletteMat.positif
+            )
         }
     }
 
-    // MARK: - Efficacité
+    /// Couleur sémantique d'une série selon son type (jamais de .red/.orange système).
+    private func couleurSerie(_ type: ResultatMatch?) -> Color {
+        switch type {
+        case .victoire: return PaletteMat.positif
+        case .defaite:  return PaletteMat.negatif
+        case .nul:      return PaletteMat.attention
+        case nil:       return PaletteMat.texteTertiaire
+        }
+    }
 
-    private var sectionEfficacite: some View {
+    // MARK: - Attaque
+
+    private var sectionAttaque: some View {
         VStack(spacing: LiquidGlassKit.espaceMD) {
-            if matchsFiltres.count >= 2 {
-                graphiqueEfficaciteAttaque
+            if matchsFiltres.count >= SeuilsAnalytics.minMatchsTendance {
+                graphiqueRendementAttaque
                 graphiquePointsParMatch
             } else {
                 ContentUnavailableView(
@@ -266,12 +268,14 @@ struct AnalyticsSaisonView: View {
         }
     }
 
-    private var graphiqueEfficaciteAttaque: some View {
-        let donnees = donneesEfficaciteParMatch()
+    private var graphiqueRendementAttaque: some View {
+        let donnees = donneesRendementParMatch()
 
         return VStack(alignment: .leading, spacing: LiquidGlassKit.espaceSM) {
-            Label("Efficacité attaque par match", systemImage: "flame.fill")
-                .font(.headline.weight(.semibold))
+            EnTeteSection(
+                titre: "Rendement attaque par match",
+                sousTitre: "Objectif \(FormatMetriques.hittingVolley(SeuilsAnalytics.objectifRendement))"
+            )
 
             if donnees.isEmpty {
                 Text("Aucune donnée d'attaque disponible")
@@ -281,24 +285,36 @@ struct AnalyticsSaisonView: View {
                 Chart(donnees, id: \.index) { point in
                     BarMark(
                         x: .value("Match", point.label),
-                        y: .value("Hit%", point.valeur)
+                        y: .value("Rendement attaque", point.valeur)
                     )
-                    .foregroundStyle(point.valeur >= 0.250 ? PaletteMat.vert : PaletteMat.orange)
+                    .foregroundStyle(point.valeur >= SeuilsAnalytics.objectifRendement
+                                     ? PaletteMat.positif : PaletteMat.attention)
                     .cornerRadius(LiquidGlassKit.rayonMini)
 
-                    if donnees.count >= 3 {
-                        RuleMark(y: .value("Objectif", 0.250))
-                            .foregroundStyle(.red.opacity(0.5))
+                    if donnees.count >= SeuilsAnalytics.minMatchsObjectif {
+                        RuleMark(y: .value("Objectif", SeuilsAnalytics.objectifRendement))
+                            .foregroundStyle(PaletteMat.negatif.opacity(0.5))
                             .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 3]))
                             .annotation(position: .top, alignment: .trailing) {
-                                Text(".250")
+                                Text(FormatMetriques.hittingVolley(SeuilsAnalytics.objectifRendement))
                                     .font(.caption2)
-                                    .foregroundStyle(.red.opacity(0.6))
+                                    .foregroundStyle(PaletteMat.negatif.opacity(0.6))
                             }
                     }
                 }
-                .chartYAxisLabel("Hitting %")
-                .frame(height: 200)
+                .chartYAxisLabel("Rendement attaque")
+                .chartXAxisLabel("Match")
+                .chartYAxis {
+                    AxisMarks { value in
+                        AxisGridLine()
+                        AxisValueLabel {
+                            if let ratio = value.as(Double.self) {
+                                Text(FormatMetriques.hittingVolley(ratio))
+                            }
+                        }
+                    }
+                }
+                .frame(height: SeuilsAnalytics.hauteurGraphique)
             }
         }
         .padding(LiquidGlassKit.espaceMD)
@@ -309,8 +325,7 @@ struct AnalyticsSaisonView: View {
         let donnees = donneesPointsParMatch()
 
         return VStack(alignment: .leading, spacing: LiquidGlassKit.espaceSM) {
-            Label("Points marqués par match", systemImage: "flame.fill")
-                .font(.headline.weight(.semibold))
+            EnTeteSection(titre: "Points marqués par match")
 
             if donnees.isEmpty {
                 Text("Aucune donnée disponible")
@@ -338,9 +353,9 @@ struct AnalyticsSaisonView: View {
                     )
                     .interpolationMethod(.catmullRom)
                 }
-                .chartYAxisLabel("Points")
-                .chartXAxisLabel("Match #")
-                .frame(height: 200)
+                .chartYAxisLabel("Points marqués")
+                .chartXAxisLabel("Nº de match")
+                .frame(height: SeuilsAnalytics.hauteurGraphique)
             }
         }
         .padding(LiquidGlassKit.espaceMD)
@@ -360,14 +375,15 @@ struct AnalyticsSaisonView: View {
     private var topMarqueurs: some View {
         classementView(
             titre: "Meilleurs marqueurs",
-            icone: "flame.fill",
             couleur: PaletteMat.orange,
             joueursTries: joueursEquipe
                 .filter { $0.pointsCalcules > 0 }
                 .sorted { $0.pointsCalcules > $1.pointsCalcules },
             valeurLabel: { "\($0.pointsCalcules) pts" },
             secondaireLabel: { j in
-                j.attaquesTotales > 0 ? String(format: "%.3f hit%%", j.pourcentageAttaque) : nil
+                j.attaquesTotales > 0
+                    ? "Rendement \(FormatMetriques.hittingVolley(j.pourcentageAttaque))"
+                    : nil
             }
         )
     }
@@ -375,14 +391,15 @@ struct AnalyticsSaisonView: View {
     private var topAces: some View {
         classementView(
             titre: "Meilleurs serveurs",
-            icone: "tennisball.fill",
             couleur: PaletteMat.bleu,
             joueursTries: joueursEquipe
                 .filter { $0.aces > 0 }
                 .sorted { $0.aces > $1.aces },
             valeurLabel: { "\($0.aces) aces" },
             secondaireLabel: { j in
-                j.servicesTotaux > 0 ? String(format: "%.0f%% err", Double(j.erreursService) / Double(j.servicesTotaux) * 100) : nil
+                guard j.servicesTotaux > 0 else { return nil }
+                let ratioErreurs = Double(j.erreursService) / Double(j.servicesTotaux)
+                return "\(FormatMetriques.pourcentage(ratioErreurs, decimales: 0)) err. service"
             }
         )
     }
@@ -390,28 +407,24 @@ struct AnalyticsSaisonView: View {
     private var topBloqueurs: some View {
         classementView(
             titre: "Meilleurs bloqueurs",
-            icone: "hand.raised.fill",
             couleur: PaletteMat.violet,
             joueursTries: joueursEquipe
                 .filter { $0.blocsTotaux > 0 }
                 .sorted { $0.blocsTotaux > $1.blocsTotaux },
-            valeurLabel: { "\($0.blocsTotaux) blocs" },
-            secondaireLabel: { "\($0.blocsSeuls) solo / \($0.blocsAssistes) ass." }
+            valeurLabel: { "\(FormatMetriques.points($0.blocsTotaux)) blocs" },
+            secondaireLabel: { "\($0.blocsSeuls) seuls · \($0.blocsAssistes) assistés" }
         )
     }
 
     private func classementView(
         titre: String,
-        icone: String,
         couleur: Color,
         joueursTries: [JoueurEquipe],
         valeurLabel: @escaping (JoueurEquipe) -> String,
         secondaireLabel: @escaping (JoueurEquipe) -> String?
     ) -> some View {
         VStack(alignment: .leading, spacing: LiquidGlassKit.espaceSM) {
-            Label(titre, systemImage: icone)
-                .font(.headline.weight(.semibold))
-                .foregroundStyle(couleur)
+            EnTeteSection(titre: titre)
 
             if joueursTries.isEmpty {
                 Text("Aucune donnée")
@@ -460,26 +473,6 @@ struct AnalyticsSaisonView: View {
         .glassCard(teinte: couleur, cornerRadius: LiquidGlassKit.rayonMoyen)
     }
 
-    // MARK: - Composants
-
-    private func carteChiffre(_ titre: String, _ valeur: String, _ couleur: Color, _ icone: String) -> some View {
-        VStack(spacing: LiquidGlassKit.espaceSM) {
-            Image(systemName: icone)
-                .font(.system(size: 22))
-                .foregroundStyle(couleur)
-                .symbolRenderingMode(.hierarchical)
-            Text(valeur)
-                .font(.system(size: 24, weight: .bold, design: .rounded))
-                .contentTransition(.numericText())
-            Text(titre)
-                .font(.caption2.weight(.medium))
-                .foregroundStyle(PaletteMat.texteSecondaire)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, LiquidGlassKit.espaceSM + 4)
-        .glassCard(cornerRadius: LiquidGlassKit.rayonPetit)
-    }
-
     // MARK: - Données graphiques
 
     private struct PointCumulatif {
@@ -503,16 +496,18 @@ struct AnalyticsSaisonView: View {
         }
     }
 
-    private func donneesEfficaciteParMatch() -> [PointGraphique] {
+    private func donneesRendementParMatch() -> [PointGraphique] {
         matchsFiltres.enumerated().compactMap { i, match in
             let stats = statsFiltrees.filter { $0.seanceID == match.id }
-            let ta = stats.reduce(0) { $0 + $1.tentativesAttaque }
-            guard ta > 0 else { return nil }
-            let k = stats.reduce(0) { $0 + $1.kills }
-            let e = stats.reduce(0) { $0 + $1.erreursAttaque }
-            let hit = Double(k - e) / Double(ta)
+            let tentatives = stats.reduce(0) { $0 + $1.tentativesAttaque }
+            guard tentatives > 0 else { return nil }
+            let kills = stats.reduce(0) { $0 + $1.kills }
+            let erreurs = stats.reduce(0) { $0 + $1.erreursAttaque }
+            let rendement = MetriquesVolley.rendementAttaque(
+                kills: kills, erreurs: erreurs, tentatives: tentatives
+            )
             let label = match.adversaire.isEmpty ? "M\(i+1)" : String(match.adversaire.prefix(6))
-            return PointGraphique(index: i + 1, label: label, valeur: hit)
+            return PointGraphique(index: i + 1, label: label, valeur: rendement)
         }
     }
 
