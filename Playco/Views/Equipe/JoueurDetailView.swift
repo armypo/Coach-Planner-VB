@@ -65,7 +65,7 @@ struct JoueurDetailView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 24) {
+            VStack(spacing: LiquidGlassKit.espaceLG) {
                 enteteJoueur
                 if authService.utilisateurConnecte?.role.peutGererEquipe ?? false {
                     sectionIdentifiants
@@ -148,23 +148,26 @@ struct JoueurDetailView: View {
 
     // MARK: - En-tête
     private var enteteJoueur: some View {
-        HStack(spacing: 20) {
+        HStack(spacing: LiquidGlassKit.espaceMD) {
             ZStack {
                 if let photoData = joueur.photoData, let uiImage = UIImage(data: photoData) {
                     Image(uiImage: uiImage)
                         .resizable()
                         .scaledToFill()
-                        .frame(width: 80, height: 80)
+                        .frame(width: ConstantesFicheJoueur.tailleAvatar,
+                               height: ConstantesFicheJoueur.tailleAvatar)
                         .clipShape(Circle())
-                        .overlay(Circle().stroke(joueur.poste.couleur, lineWidth: 3))
+                        .overlay(Circle().stroke(joueur.poste.couleur,
+                                                 lineWidth: ConstantesFicheJoueur.bordureAvatar))
                 } else {
                     Circle()
-                        .fill(joueur.poste.couleur.opacity(0.1))
-                        .frame(width: 80, height: 80)
+                        .fill(joueur.poste.couleur.opacity(LiquidGlassKit.badgeFond))
+                        .frame(width: ConstantesFicheJoueur.tailleAvatar,
+                               height: ConstantesFicheJoueur.tailleAvatar)
                         .overlay(
                             VStack(spacing: 2) {
                                 Text("#\(joueur.numero)")
-                                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                                    .font(TypographieStats.valeurCarte)
                                     .foregroundStyle(joueur.poste.couleur)
                                 Text(joueur.poste.abreviation)
                                     .font(.caption2.weight(.bold))
@@ -176,20 +179,23 @@ struct JoueurDetailView: View {
                 Text(joueur.poste.abreviation)
                     .font(.system(size: 11, weight: .heavy))
                     .foregroundStyle(.white)
-                    .frame(width: 22, height: 22)
+                    .frame(width: ConstantesFicheJoueur.tailleBadgePoste,
+                           height: ConstantesFicheJoueur.tailleBadgePoste)
                     .background(joueur.poste.couleur, in: Circle())
                     .overlay(Circle().stroke(.white, lineWidth: 2))
-                    .offset(x: 28, y: 28)
+                    .offset(x: ConstantesFicheJoueur.decalageBadgePoste,
+                            y: ConstantesFicheJoueur.decalageBadgePoste)
             }
-            .frame(width: 80, height: 80)
+            .frame(width: ConstantesFicheJoueur.tailleAvatar,
+                   height: ConstantesFicheJoueur.tailleAvatar)
 
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: LiquidGlassKit.espaceXS) {
                 Text(joueur.nomComplet)
                     .font(.title2.weight(.bold))
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
 
-                HStack(spacing: 12) {
+                HStack(spacing: LiquidGlassKit.espaceSM) {
                     Label(joueur.poste.rawValue, systemImage: joueur.poste.icone)
                         .font(.subheadline)
                         .foregroundStyle(joueur.poste.couleur)
@@ -204,10 +210,10 @@ struct JoueurDetailView: View {
                 if !joueur.estActif {
                     Text("Inactif")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.red)
-                        .padding(.horizontal, 8)
+                        .foregroundStyle(PaletteMat.negatif)
+                        .padding(.horizontal, LiquidGlassKit.espaceSM)
                         .padding(.vertical, 2)
-                        .background(.red.opacity(0.1), in: Capsule())
+                        .background(PaletteMat.negatif.opacity(LiquidGlassKit.badgeFond), in: Capsule())
                 }
             }
 
@@ -295,28 +301,32 @@ struct JoueurDetailView: View {
 
     // MARK: - Résumé général
     private var sectionResume: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Résumé")
-                .font(.headline)
+        VStack(alignment: .leading, spacing: LiquidGlassKit.espaceMD) {
+            EnTeteSection(titre: "Résumé")
 
             LazyVGrid(columns: [
                 GridItem(.flexible()), GridItem(.flexible()),
                 GridItem(.flexible()), GridItem(.flexible())
-            ], spacing: 12) {
-                statCard("Matchs", valeur: "\(joueur.matchsJoues)", icone: "sportscourt", couleur: .blue)
-                statCard("Sets", valeur: "\(joueur.setsJoues)", icone: "number", couleur: .indigo)
-                statCard("Points", valeur: "\(joueur.pointsCalcules)", icone: "star.fill", couleur: .orange)
-                statCard("Pts perdus", valeur: "\(joueur.pointsPerdus)", icone: "arrow.down.circle", couleur: .red.opacity(0.7))
+            ], spacing: LiquidGlassKit.espaceSM + 4) {
+                CarteMetrique(titre: "Matchs", valeur: "\(joueur.matchsJoues)",
+                              teinte: PaletteMat.bleu)
+                CarteMetrique(titre: "Sets", valeur: "\(joueur.setsJoues)",
+                              teinte: PaletteMat.violet)
+                CarteMetrique(titre: "Points", valeur: "\(joueur.pointsCalcules)",
+                              teinte: PaletteMat.orange,
+                              definition: definitionMetrique("Pts"))
+                CarteMetrique(titre: "Pts perdus", valeur: "\(joueur.pointsPerdus)",
+                              teinte: PaletteMat.negatif)
             }
 
             if joueur.setsJoues > 0 {
-                HStack(spacing: 16) {
-                    statParSet("Pts/set", valeur: joueur.pointsParSet, couleur: .orange)
-                    statParSet("Kills/set", valeur: joueur.killsParSet, couleur: .green)
-                    statParSet("Aces/set", valeur: joueur.acesParSet, couleur: .yellow)
-                    statParSet("Blocs/set", valeur: joueur.blocsParSet, couleur: .red)
+                HStack(spacing: LiquidGlassKit.espaceMD) {
+                    statParSet("Pts/set", valeur: joueur.pointsParSet, couleur: PaletteMat.orange)
+                    statParSet("Kills/set", valeur: joueur.killsParSet, couleur: PaletteMat.positif)
+                    statParSet("Aces/set", valeur: joueur.acesParSet, couleur: PaletteMat.attention)
+                    statParSet("Blocs/set", valeur: joueur.blocsParSet, couleur: PaletteMat.violet)
                 }
-                .padding(.top, 4)
+                .padding(.top, LiquidGlassKit.espaceXS)
             }
         }
         .glassSection()
@@ -328,11 +338,14 @@ struct JoueurDetailView: View {
             Text("Présences")
                 .font(.headline)
 
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                miniStat(label: "Présences", valeur: "\(nbPresences)", couleur: .green)
-                miniStat(label: "Absences", valeur: "\(nbAbsences)", couleur: .red)
-                miniStat(label: "Taux", valeur: tauxPresence > 0 ? String(format: "%.0f%%", tauxPresence) : "—",
-                         couleur: tauxPresence >= 80 ? .green : (tauxPresence >= 60 ? .orange : .red))
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())],
+                      spacing: LiquidGlassKit.espaceSM + 4) {
+                miniStat(label: "Présences", valeur: "\(nbPresences)", couleur: PaletteMat.positif)
+                miniStat(label: "Absences", valeur: "\(nbAbsences)", couleur: PaletteMat.negatif)
+                miniStat(label: "Taux",
+                         valeur: tauxPresence > 0
+                             ? FormatMetriques.pourcentage(tauxPresence / 100, decimales: 0) : "—",
+                         couleur: couleurTauxPresence)
             }
         }
         .glassSection()
@@ -340,26 +353,32 @@ struct JoueurDetailView: View {
 
     // MARK: - Attaque
     private var sectionAttaque: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label("Attaque", systemImage: "arrow.up.right")
-                .font(.headline)
-                .foregroundStyle(.green)
+        VStack(alignment: .leading, spacing: LiquidGlassKit.espaceSM + 4) {
+            EnTeteSection(titre: "Attaque")
 
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 12) {
-                statCard("Kills", valeur: "\(joueur.attaquesReussies)", icone: "flame.fill", couleur: .green)
-                statCard("Erreurs", valeur: "\(joueur.erreursAttaque)", icone: "xmark.circle", couleur: .red)
-                statCard("Tentatives", valeur: "\(joueur.attaquesTotales)", icone: "arrow.up.forward", couleur: .blue)
-                statCard("Rendement",
-                         valeur: joueur.attaquesTotales > 0 ? FormatMetriques.hittingVolley(joueur.pourcentageAttaque) : "—",
-                         icone: "percent", couleur: couleurPourcentageAttaque)
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4),
+                      spacing: LiquidGlassKit.espaceSM + 4) {
+                CarteMetrique(titre: "Kills", valeur: "\(joueur.attaquesReussies)",
+                              teinte: PaletteMat.positif)
+                CarteMetrique(titre: "Erreurs", valeur: "\(joueur.erreursAttaque)",
+                              teinte: PaletteMat.negatif)
+                CarteMetrique(titre: "Tentatives", valeur: "\(joueur.attaquesTotales)",
+                              teinte: PaletteMat.bleu)
+                CarteMetrique(titre: "Rendement",
+                              valeur: joueur.attaquesTotales > 0
+                                  ? FormatMetriques.hittingVolley(joueur.pourcentageAttaque) : "—",
+                              teinte: couleurPourcentageAttaque,
+                              definition: definitionMetrique("Rend."))
             }
 
             if joueur.attaquesTotales > 0 {
                 barreProgression(
-                    label: "(Kills - Erreurs) / Tentatives — .300 et plus : excellent",
+                    label: "(Kills − Erreurs) ÷ Tentatives — .300 et plus : excellent",
                     valeur: min(max(0, joueur.pourcentageAttaque), 1.0),
                     maximum: 1.0,
-                    couleur: couleurPourcentageAttaque
+                    couleur: couleurPourcentageAttaque,
+                    repere: RepereNiveau(valeur: ConstantesFicheJoueur.repereRendementAttaque,
+                                         label: ".300")
                 )
             }
         }
@@ -368,23 +387,30 @@ struct JoueurDetailView: View {
 
     // MARK: - Service
     private var sectionService: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label("Service", systemImage: "circle.dotted")
-                .font(.headline)
-                .foregroundStyle(.yellow)
+        VStack(alignment: .leading, spacing: LiquidGlassKit.espaceSM + 4) {
+            EnTeteSection(titre: "Service")
 
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 12) {
-                statCard("Aces", valeur: "\(joueur.aces)", icone: "bolt.fill", couleur: .yellow)
-                statCard("Erreurs", valeur: "\(joueur.erreursService)", icone: "xmark.circle", couleur: .red)
-                statCard("Tentatives", valeur: "\(joueur.servicesTotaux)", icone: "circle.dotted", couleur: .blue)
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3),
+                      spacing: LiquidGlassKit.espaceSM + 4) {
+                CarteMetrique(titre: "Aces", valeur: "\(joueur.aces)",
+                              teinte: PaletteMat.positif,
+                              definition: definitionMetrique("AC"))
+                CarteMetrique(titre: "Erreurs", valeur: "\(joueur.erreursService)",
+                              teinte: PaletteMat.negatif)
+                CarteMetrique(titre: "Tentatives", valeur: "\(joueur.servicesTotaux)",
+                              teinte: PaletteMat.bleu)
             }
 
             if joueur.servicesTotaux > 0 {
-                let tauxAce = Double(joueur.aces) / Double(joueur.servicesTotaux) * 100
-                let tauxErreur = Double(joueur.erreursService) / Double(joueur.servicesTotaux) * 100
-                HStack(spacing: 16) {
-                    statParSet("Taux ace", valeur: tauxAce / 100, format: "%.0f%%", brut: tauxAce, couleur: .yellow)
-                    statParSet("Taux erreur", valeur: tauxErreur / 100, format: "%.0f%%", brut: tauxErreur, couleur: .red)
+                let tauxAce = Double(joueur.aces) / Double(joueur.servicesTotaux)
+                let tauxErreur = Double(joueur.erreursService) / Double(joueur.servicesTotaux)
+                HStack(spacing: LiquidGlassKit.espaceMD) {
+                    statValeur("Taux ace",
+                               valeur: FormatMetriques.pourcentage(tauxAce, decimales: 0),
+                               couleur: PaletteMat.positif)
+                    statValeur("Taux erreur",
+                               valeur: FormatMetriques.pourcentage(tauxErreur, decimales: 0),
+                               couleur: PaletteMat.negatif)
                 }
             }
         }
@@ -393,16 +419,21 @@ struct JoueurDetailView: View {
 
     // MARK: - Bloc
     private var sectionBloc: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label("Bloc", systemImage: "hand.raised.fill")
-                .font(.headline)
-                .foregroundStyle(.red)
+        VStack(alignment: .leading, spacing: LiquidGlassKit.espaceSM + 4) {
+            EnTeteSection(titre: "Bloc")
 
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 12) {
-                statCard("Seuls", valeur: "\(joueur.blocsSeuls)", icone: "hand.raised.fill", couleur: .red)
-                statCard("Assistés", valeur: "\(joueur.blocsAssistes)", icone: "hand.raised.fingers.spread.fill", couleur: .orange)
-                statCard("Total", valeur: String(format: "%.1f", joueur.blocsTotaux), icone: "sum", couleur: .purple)
-                statCard("Erreurs", valeur: "\(joueur.erreursBloc)", icone: "xmark.circle", couleur: .red.opacity(0.6))
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4),
+                      spacing: LiquidGlassKit.espaceSM + 4) {
+                CarteMetrique(titre: "Seuls", valeur: "\(joueur.blocsSeuls)",
+                              teinte: PaletteMat.positif,
+                              definition: definitionMetrique("BS"))
+                CarteMetrique(titre: "Assistés", valeur: "\(joueur.blocsAssistes)",
+                              teinte: PaletteMat.positif,
+                              definition: definitionMetrique("BA"))
+                CarteMetrique(titre: "Total", valeur: FormatMetriques.points(joueur.blocsTotaux),
+                              teinte: PaletteMat.violet)
+                CarteMetrique(titre: "Erreurs", valeur: "\(joueur.erreursBloc)",
+                              teinte: PaletteMat.negatif)
             }
         }
         .glassSection()
@@ -410,18 +441,25 @@ struct JoueurDetailView: View {
 
     // MARK: - Réception
     private var sectionReception: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label("Réception", systemImage: "figure.volleyball")
-                .font(.headline)
-                .foregroundStyle(.purple)
+        VStack(alignment: .leading, spacing: LiquidGlassKit.espaceSM + 4) {
+            EnTeteSection(titre: "Réception")
 
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 12) {
-                statCard("Réussies", valeur: "\(joueur.receptionsReussies)", icone: "checkmark.circle", couleur: .green)
-                statCard("Erreurs", valeur: "\(joueur.erreursReception)", icone: "xmark.circle", couleur: .red)
-                statCard("Totales", valeur: "\(joueur.receptionsTotales)", icone: "arrow.down.forward", couleur: .blue)
-                statCard("Eff. %",
-                         valeur: joueur.receptionsTotales > 0 ? String(format: "%.0f%%", joueur.efficaciteReception) : "—",
-                         icone: "percent", couleur: .purple)
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4),
+                      spacing: LiquidGlassKit.espaceSM + 4) {
+                CarteMetrique(titre: "Réussies", valeur: "\(joueur.receptionsReussies)",
+                              teinte: PaletteMat.positif)
+                CarteMetrique(titre: "Erreurs", valeur: "\(joueur.erreursReception)",
+                              teinte: PaletteMat.negatif)
+                CarteMetrique(titre: "Totales", valeur: "\(joueur.receptionsTotales)",
+                              teinte: PaletteMat.bleu)
+                // efficaciteReception est en échelle 0-100 (convention modèle) →
+                // fraction 0-1 pour FormatMetriques (D2).
+                CarteMetrique(titre: "Réc. eff.",
+                              valeur: joueur.receptionsTotales > 0
+                                  ? FormatMetriques.pourcentage(joueur.efficaciteReception / 100,
+                                                                decimales: 0) : "—",
+                              teinte: PaletteMat.violet,
+                              definition: definitionMetrique("Réc. eff."))
             }
 
             if joueur.receptionsTotales > 0 {
@@ -429,7 +467,7 @@ struct JoueurDetailView: View {
                     label: "Réception positive",
                     valeur: joueur.pourcentageReceptionPositive / 100,
                     maximum: 1.0,
-                    couleur: .purple
+                    couleur: PaletteMat.violet
                 )
             }
 
@@ -439,8 +477,8 @@ struct JoueurDetailView: View {
                     titre: "Note de réception",
                     valeur: "\(FormatMetriques.note(noteReception)) / 3",
                     sousTitre: "\(nbReceptionsNotees) réceptions notées en live",
-                    teinte: .purple,
-                    definition: MetriquesVolley.catalogue.first { $0.abreviation == "Note réc." }
+                    teinte: PaletteMat.violet,
+                    definition: definitionMetrique("Note réc.")
                 )
             }
         }
@@ -465,20 +503,23 @@ struct JoueurDetailView: View {
 
     // MARK: - Jeu (Passes & Manchettes)
     private var sectionJeu: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label("Jeu", systemImage: "hands.and.sparkles.fill")
-                .font(.headline)
-                .foregroundStyle(.cyan)
+        VStack(alignment: .leading, spacing: LiquidGlassKit.espaceSM + 4) {
+            EnTeteSection(titre: "Jeu")
 
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: 12) {
-                statCard("Passes déc.", valeur: "\(joueur.passesDecisives)", icone: "arrow.turn.up.right", couleur: .cyan)
-                statCard("Manchettes", valeur: "\(joueur.manchettes)", icone: "figure.volleyball", couleur: .teal)
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2),
+                      spacing: LiquidGlassKit.espaceSM + 4) {
+                CarteMetrique(titre: "Passes déc.", valeur: "\(joueur.passesDecisives)",
+                              teinte: PaletteMat.bleu,
+                              definition: definitionMetrique("PD"))
+                CarteMetrique(titre: "Manchettes", valeur: "\(joueur.manchettes)",
+                              teinte: PaletteMat.violet,
+                              definition: definitionMetrique("M"))
             }
 
             if joueur.setsJoues > 0 {
-                HStack(spacing: 16) {
-                    statParSet("Passes/set", valeur: joueur.passesParSet, couleur: .cyan)
-                    statParSet("Manch./set", valeur: joueur.manchettesParSet, couleur: .teal)
+                HStack(spacing: LiquidGlassKit.espaceMD) {
+                    statParSet("Passes/set", valeur: joueur.passesParSet, couleur: PaletteMat.bleu)
+                    statParSet("Manch./set", valeur: joueur.manchettesParSet, couleur: PaletteMat.violet)
                 }
             }
         }
@@ -597,13 +638,10 @@ struct JoueurDetailView: View {
         .background(couleur.opacity(0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
-    private func statCard(_ titre: String, valeur: String, icone: String, couleur: Color) -> some View {
-        CarteChiffreCle(titre: titre, valeur: valeur, icone: icone, couleur: couleur)
-    }
-
-    private func statParSet(_ label: String, valeur: Double, format: String = "%.1f", brut: Double? = nil, couleur: Color) -> some View {
+    /// Valeur compacte pré-formatée + libellé (taux, moyennes par set).
+    private func statValeur(_ label: String, valeur: String, couleur: Color) -> some View {
         VStack(spacing: 2) {
-            Text(String(format: format, brut ?? valeur))
+            Text(valeur)
                 .font(.system(size: 14, weight: .bold, design: .rounded))
                 .foregroundStyle(couleur)
             Text(label)
@@ -613,22 +651,51 @@ struct JoueurDetailView: View {
         .frame(maxWidth: .infinity)
     }
 
-    private func barreProgression(label: String, valeur: Double, maximum: Double, couleur: Color) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+    /// Moyenne par set (« 2,3 ») — délègue à statValeur.
+    private func statParSet(_ label: String, valeur: Double, couleur: Color) -> some View {
+        statValeur(label, valeur: FormatMetriques.note(valeur), couleur: couleur)
+    }
+
+    /// Barre de progression avec repère de niveau optionnel (trait vertical
+    /// discret + label sous la barre, ex. « .300 » pour le rendement attaque).
+    private func barreProgression(label: String, valeur: Double, maximum: Double,
+                                  couleur: Color, repere: RepereNiveau? = nil) -> some View {
+        VStack(alignment: .leading, spacing: LiquidGlassKit.espaceXS) {
             Text(label)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
             GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(Color.primary.opacity(0.08))
-                    RoundedRectangle(cornerRadius: 4)
+                ZStack(alignment: .topLeading) {
+                    RoundedRectangle(cornerRadius: LiquidGlassKit.rayonMini)
+                        .fill(Color.primary.opacity(LiquidGlassKit.badgeFond))
+                        .frame(height: ConstantesFicheJoueur.hauteurBarre)
+                    RoundedRectangle(cornerRadius: LiquidGlassKit.rayonMini)
                         .fill(couleur)
-                        .frame(width: max(0, geo.size.width * min(valeur / maximum, 1.0)))
+                        .frame(width: max(0, geo.size.width * min(valeur / maximum, 1.0)),
+                               height: ConstantesFicheJoueur.hauteurBarre)
+                    if let repere {
+                        let xRepere = geo.size.width * min(repere.valeur / maximum, 1.0)
+                        RoundedRectangle(cornerRadius: ConstantesFicheJoueur.largeurRepere / 2)
+                            .fill(.secondary)
+                            .frame(width: ConstantesFicheJoueur.largeurRepere,
+                                   height: ConstantesFicheJoueur.hauteurRepere)
+                            .position(x: xRepere, y: ConstantesFicheJoueur.hauteurBarre / 2)
+                        Text(repere.label)
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                            .fixedSize()
+                            .position(x: xRepere, y: ConstantesFicheJoueur.centreLabelRepereY)
+                    }
                 }
             }
-            .frame(height: 8)
+            .frame(height: repere == nil ? ConstantesFicheJoueur.hauteurBarre
+                                         : ConstantesFicheJoueur.hauteurBarreAvecRepere)
         }
+    }
+
+    /// Définition du glossaire par abréviation (popover info des cartes).
+    private func definitionMetrique(_ abreviation: String) -> DefinitionMetrique? {
+        MetriquesVolley.catalogue.first { $0.abreviation == abreviation }
     }
 
     private func groupeStat(titre: String, couleur: Color, @ViewBuilder contenu: () -> some View) -> some View {
@@ -672,11 +739,17 @@ struct JoueurDetailView: View {
         .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
+    private var couleurTauxPresence: Color {
+        if tauxPresence >= ConstantesFicheJoueur.seuilPresenceBon { return PaletteMat.positif }
+        if tauxPresence >= ConstantesFicheJoueur.seuilPresenceMoyen { return PaletteMat.attention }
+        return PaletteMat.negatif
+    }
+
     private var couleurPourcentageAttaque: Color {
-        let pct = joueur.pourcentageAttaque
-        if pct >= 0.350 { return .green }
-        if pct >= 0.200 { return .orange }
-        return .red
+        let rendement = joueur.pourcentageAttaque
+        if rendement >= ConstantesFicheJoueur.seuilRendementExcellent { return PaletteMat.positif }
+        if rendement >= ConstantesFicheJoueur.seuilRendementCorrect { return PaletteMat.attention }
+        return PaletteMat.negatif
     }
 
     private func reinitialiserStats() {
@@ -702,4 +775,40 @@ struct JoueurDetailView: View {
         joueur.services = 0
         joueur.erreurs = 0
     }
+}
+
+// MARK: - Support (fiche joueur)
+
+/// Repère de niveau affiché sur une barre de progression
+/// (ex. « .300 » = seuil d'excellence du rendement attaque).
+private struct RepereNiveau {
+    let valeur: Double
+    let label: String
+}
+
+/// Constantes locales de la fiche joueur — pas de magic numbers dans le body.
+private enum ConstantesFicheJoueur {
+    // En-tête
+    static let tailleAvatar: CGFloat = 64
+    static let bordureAvatar: CGFloat = 3
+    static let tailleBadgePoste: CGFloat = 22
+    /// Rayon avatar × cos(45°) ≈ 22,6 → badge posé sur le bord bas-droit.
+    static let decalageBadgePoste: CGFloat = 22
+
+    // Barre de progression + repère
+    static let hauteurBarre: CGFloat = 8
+    static let hauteurRepere: CGFloat = 14
+    static let largeurRepere: CGFloat = 2
+    static let hauteurBarreAvecRepere: CGFloat = 26
+    /// Centre vertical du label du repère (sous la barre, dans les 26 pt).
+    static let centreLabelRepereY: CGFloat = 19
+
+    // Seuils rendement attaque (convention volleyball)
+    static let seuilRendementExcellent = 0.350
+    static let seuilRendementCorrect = 0.200
+    static let repereRendementAttaque = 0.300
+
+    // Seuils taux de présence (échelle 0-100, convention du modèle)
+    static let seuilPresenceBon = 80.0
+    static let seuilPresenceMoyen = 60.0
 }
