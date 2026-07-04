@@ -563,8 +563,12 @@ struct HeatmapEquipeView: View {
             pointsFiltres = pointsFiltres.filter { $0.joueurID == joueurID }
         }
 
-        // Filtre par catégorie heatmap (ne garder que les actions correspondantes)
-        let pointsCategorie = pointsFiltres.filter { $0.typeAction.categorieHeatmap == categorie }
+        // Filtre par catégorie heatmap — actions de NOTRE équipe uniquement
+        // (les actions adverses supportent la zone depuis 3.7 pour le
+        // scouting, mais ne doivent pas polluer la heatmap d'équipe).
+        let pointsCategorie = pointsFiltres.filter {
+            $0.typeAction.categorieHeatmap == categorie && !$0.typeAction.estStatAdversaire
+        }
 
         // Points avec zone assignée (zone > 0)
         let pointsAvecZone = pointsCategorie.filter { $0.zone > 0 && $0.zone <= 6 }

@@ -141,15 +141,20 @@ enum TypeActionPoint: String, Codable, CaseIterable {
         }
     }
 
-    /// Catégorie heatmap associée à cette action (nil = pas de zone pertinente)
+    /// Catégorie heatmap associée à cette action (nil = pas de zone pertinente).
+    /// Les actions marquantes ADVERSES supportent aussi la zone depuis la
+    /// refonte 3.7 — nécessaire au « prédictions vs réalité » du scouting
+    /// (d'où l'adversaire attaque/sert réellement).
     var categorieHeatmap: DonneesHeatmap.CategorieHeatmap? {
         switch self {
         case .kill, .erreurAttaque: return .attaque
         case .ace, .erreurService: return .service
         case .blocSeul, .blocAssiste, .bloc, .erreurBloc: return .bloc
         case .erreurReception: return .reception
+        case .killAdversaire: return .attaque
+        case .aceAdversaire: return .service
+        case .blocAdversaire: return .bloc
         case .erreurAdversaire, .fauteJeu, .erreurEquipe,
-             .killAdversaire, .aceAdversaire, .blocAdversaire,
              .erreurAttaqueAdversaire, .erreurServiceAdversaire: return nil
         }
     }
