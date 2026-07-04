@@ -8,6 +8,11 @@ import Charts
 
 /// Analyse des performances par rotation (1-6) basée sur les PointMatch
 struct StatsParRotationView: View {
+    /// Pré-filtre optionnel sur un match (liens croisés depuis MatchDetailView).
+    init(seanceID: UUID? = nil) {
+        _seanceSelectionneeID = State(initialValue: seanceID)
+    }
+
     @Environment(\.codeEquipeActif) private var codeEquipeActif
     @Query private var tousPoints: [PointMatch]
     @Query(filter: #Predicate<Seance> { $0.typeSeanceRaw == "Match" && $0.estArchivee == false },

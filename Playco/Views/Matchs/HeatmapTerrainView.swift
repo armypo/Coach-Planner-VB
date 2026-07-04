@@ -300,6 +300,11 @@ struct HeatmapTerrainView: View {
 // MARK: - HeatmapEquipeView
 
 struct HeatmapEquipeView: View {
+    /// Pré-filtre optionnel sur un match (liens croisés depuis MatchDetailView).
+    init(seanceID: UUID? = nil) {
+        _seanceSelectionneeID = State(initialValue: seanceID)
+    }
+
     @Environment(\.codeEquipeActif) private var codeEquipeActif
     @Query private var joueurs: [JoueurEquipe]
     @Query private var statsMatchs: [StatsMatch]

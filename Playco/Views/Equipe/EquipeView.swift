@@ -39,6 +39,8 @@ struct EquipeView: View {
     enum EquipeNavItem: Hashable {
         case dashboard
         case analytics
+        case rotations
+        case heatmap
         case palmares
         case joueur(UUID)
     }
@@ -51,9 +53,14 @@ struct EquipeView: View {
             NavigationStack {
                 switch selection {
                 case .dashboard:
-                    TableauBordView(joueurs: joueurs, seances: seances, strategies: strategies)
+                    TableauBordView(joueurs: joueurs, seances: seances, strategies: strategies,
+                                    onNaviguer: { selection = $0 })
                 case .analytics:
                     AnalyticsSaisonView()
+                case .rotations:
+                    StatsParRotationView()
+                case .heatmap:
+                    HeatmapEquipeView()
                 case .palmares:
                     PalmaresRecordsView()
                 case .joueur(let id):
@@ -94,14 +101,22 @@ struct EquipeView: View {
             get: { selection },
             set: { selection = $0 }
         )) {
-            // Tableau de bord
-            Section {
+            // Hub statistiques — toutes les analyses regroupées par intention
+            Section("Statistiques") {
                 NavigationLink(value: EquipeNavItem.dashboard) {
-                    Label("Tableau de bord", systemImage: "chart.bar.fill")
+                    Label("Mon équipe", systemImage: "person.3.fill")
                         .font(.subheadline.weight(.medium))
                 }
                 NavigationLink(value: EquipeNavItem.analytics) {
                     Label("Analytics saison", systemImage: "chart.line.uptrend.xyaxis")
+                        .font(.subheadline.weight(.medium))
+                }
+                NavigationLink(value: EquipeNavItem.rotations) {
+                    Label("Rotations", systemImage: "arrow.triangle.2.circlepath")
+                        .font(.subheadline.weight(.medium))
+                }
+                NavigationLink(value: EquipeNavItem.heatmap) {
+                    Label("Heatmap terrain", systemImage: "square.grid.3x2.fill")
                         .font(.subheadline.weight(.medium))
                 }
                 NavigationLink(value: EquipeNavItem.palmares) {
