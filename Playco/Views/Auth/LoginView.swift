@@ -119,7 +119,7 @@ struct LoginView: View {
             traiterApple(resultat)
         }
         .signInWithAppleButtonStyle(.black)
-        .frame(height: 50)
+        .frame(height: LiquidGlassKit.hauteurBoutonApple)
         .clipShape(RoundedRectangle(cornerRadius: LiquidGlassKit.rayonMoyen))
     }
 

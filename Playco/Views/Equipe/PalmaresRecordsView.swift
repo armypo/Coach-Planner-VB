@@ -22,6 +22,12 @@ struct PalmaresRecordsView: View {
     @State private var recordsIndividuels: [RecordSaison] = []
     @State private var recordsEquipe: [RecordSaison] = []
 
+    /// Invalide le cache sur mutation in-place (score/stats saisis) — .onChange(collection) ne voit que les insertions/suppressions.
+    private var signatureRecords: Int {
+        seances.reduce(0) { $0 + $1.scoreEquipe + $1.scoreAdversaire }
+            + statsMatchs.reduce(0) { $0 + $1.kills }
+    }
+
     struct RecordSaison: Identifiable {
         let id = UUID()
         let titre: String
@@ -54,6 +60,7 @@ struct PalmaresRecordsView: View {
         .onChange(of: codeEquipeActif) { _, _ in mettreAJour() }
         .onChange(of: seances) { mettreAJour() }
         .onChange(of: statsMatchs) { mettreAJour() }
+        .onChange(of: signatureRecords) { mettreAJour() }
         .onChange(of: joueurs) { mettreAJour() }
     }
 

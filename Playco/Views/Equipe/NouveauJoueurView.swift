@@ -13,7 +13,6 @@ struct NouveauJoueurView: View {
     var onCreate: (JoueurEquipe) -> Void
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
-    @Environment(AuthService.self) private var authService
     @Environment(\.codeEquipeActif) private var codeEquipeActif
 
     @Query(filter: #Predicate<Utilisateur> { $0.roleRaw == "etudiant" && $0.estActif == true })
@@ -410,17 +409,19 @@ struct NouveauJoueurView: View {
     /// Crée un joueur complet : Utilisateur global + JoueurEquipe liés (SIWA :
     /// aucun mot de passe — connexion par code d'invitation).
     private func creerJoueurComplet() {
-        let codeEcole = authService.utilisateurConnecte?.codeEcole ?? codeEquipeActif
+        // Scope multi-équipes : le parent assigne codeEquipeActif au JoueurEquipe —
+        // l'Utilisateur/CredentialAthlete doivent porter le MÊME code pour que la
+        // jointure SIWA (code équipe + code d'invitation) fonctionne.
+        let codeEquipe = codeEquipeActif
 
         let joueur = JoueurEquipe(nom: nom, prenom: prenom, numero: numero, poste: poste)
         if taille > 0 { joueur.taille = taille }
 
-        var exclusions = Set<String>()
         let membre = MembreFactory.creerMembre(
             prenom: prenom, nom: nom,
-            role: .etudiant, codeEquipe: codeEcole,
+            role: .etudiant, codeEquipe: codeEquipe,
             joueur: joueur,
-            context: modelContext, exclusions: &exclusions
+            context: modelContext
         )
         if taille > 0 { membre.utilisateur.tailleCm = taille }
 

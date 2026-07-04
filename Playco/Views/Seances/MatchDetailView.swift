@@ -116,6 +116,12 @@ struct MatchDetailView: View {
             }
         }
         .onAppear { chargerExerciceTerrain() }
+        // La vue peut être réutilisée pour une autre séance (sélection sidebar) :
+        // sans reset, le terrain resterait figé sur l'exercice du match précédent.
+        .onChange(of: seance.id) {
+            exerciceTerrain = nil
+            chargerExerciceTerrain()
+        }
         .navigationTitle(seance.nom)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

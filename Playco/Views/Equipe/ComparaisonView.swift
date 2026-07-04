@@ -32,6 +32,17 @@ struct ComparaisonView: View {
 
     @State private var moyennes = MoyennesEquipe()
 
+    /// Invalide le cache sur mutation in-place (stats saisies/modifiées) — .onChange(collection) ne voit que les insertions/suppressions.
+    private var signatureStats: Int {
+        tousJoueurs.reduce(0) {
+            $0 + $1.matchsJoues + $1.attaquesReussies + $1.erreursAttaque + $1.attaquesTotales
+                + $1.aces + $1.erreursService + $1.servicesTotaux
+                + $1.blocsSeuls + $1.blocsAssistes
+                + $1.receptionsReussies + $1.receptionsTotales
+                + $1.passesDecisives + $1.manchettes
+        }
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
@@ -74,6 +85,7 @@ struct ComparaisonView: View {
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { mettreAJourMoyennes() }
         .onChange(of: tousJoueurs) { mettreAJourMoyennes() }
+        .onChange(of: signatureStats) { mettreAJourMoyennes() }
         .onChange(of: codeEquipeActif) { mettreAJourMoyennes() }
     }
 

@@ -415,27 +415,45 @@ struct ConfigurationView: View {
         // Créer (ou réutiliser) l'utilisateur coach lié à l'identité Apple.
         // Réutilisation : un même Apple ID qui relance le wizard (2e équipe)
         // ne doit PAS créer un second compte — connexionApple matcherait
-        // arbitrairement l'un des deux.
+        // arbitrairement l'un des deux. La réutilisation est restreinte aux
+        // rôles coach/admin : un compte athlète/assistant portant cet Apple ID
+        // ne doit jamais être promu silencieusement.
         let appleID = appleUserIDCoach
+        // #Predicate n'accepte pas les expressions complexes : rawValues capturés en amont.
+        let roleCoachRaw = RoleUtilisateur.coach.rawValue
+        let roleAdminRaw = RoleUtilisateur.admin.rawValue
         let descCoachExistant = FetchDescriptor<Utilisateur>(
-            predicate: #Predicate { $0.appleUserID == appleID && $0.estActif == true }
+            predicate: #Predicate {
+                $0.appleUserID == appleID && $0.estActif == true &&
+                ($0.roleRaw == roleCoachRaw || $0.roleRaw == roleAdminRaw)
+            }
         )
         if (try? modelContext.fetch(descCoachExistant).first) == nil {
-            let identifiantFinal = Utilisateur.genererIdentifiantUnique(
-                prenom: prenomCoach, nom: nomCoach,
-                context: modelContext, exclusions: idsCreesEnMemoire
+            // Garde défensif (la vraie barrière est en amont dans ConfigProfilCoachView) :
+            // si un compte NON coach porte déjà cet Apple ID, ne PAS créer de doublon —
+            // connexionApple matcherait le compte athlète/assistant existant.
+            let descNonCoach = FetchDescriptor<Utilisateur>(
+                predicate: #Predicate { $0.appleUserID == appleID && $0.estActif == true }
             )
-            let coachUser = Utilisateur(
-                identifiant: identifiantFinal,
-                motDePasseHash: "",   // SIWA strict : aucun secret stocké
-                prenom: prenomCoach,
-                nom: nomCoach,
-                role: .coach,
-                codeEcole: codeEquipe
-            )
-            coachUser.appleUserID = appleID
-            coachUser.codeInvitation = Utilisateur.genererCodeUniqueInvitation(context: modelContext)
-            modelContext.insert(coachUser)
+            if (try? modelContext.fetch(descNonCoach).first) != nil {
+                loggerConfig.error("Wizard : Apple ID déjà lié à un compte athlète/assistant — création du compte coach refusée")
+            } else {
+                let identifiantFinal = Utilisateur.genererIdentifiantUnique(
+                    prenom: prenomCoach, nom: nomCoach,
+                    context: modelContext, exclusions: idsCreesEnMemoire
+                )
+                let coachUser = Utilisateur(
+                    identifiant: identifiantFinal,
+                    motDePasseHash: "",   // SIWA strict : aucun secret stocké
+                    prenom: prenomCoach,
+                    nom: nomCoach,
+                    role: .coach,
+                    codeEcole: codeEquipe
+                )
+                coachUser.appleUserID = appleID
+                coachUser.codeInvitation = Utilisateur.genererCodeUniqueInvitation(context: modelContext)
+                modelContext.insert(coachUser)
+            }
         }
         try? modelContext.save()
 

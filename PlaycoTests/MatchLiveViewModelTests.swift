@@ -295,7 +295,7 @@ struct MatchLiveViewModelTests {
         #expect((seance.rotationsHistoriqueAdv[1] ?? []).isEmpty)
     }
 
-    @Test("annulerDernierPoint — sans sideout (kill sur notre service) : documente le comportement ACTUEL")
+    @Test("annulerDernierPoint — sans sideout (kill sur notre service) : le service nous reste")
     func annulerDernierPointSansSideout() throws {
         // Arrange — nous servons et marquons : aucun sideout n'a eu lieu
         let (context, seance, joueurs) = try creerMatch(nousServonsEnPremier: true)
@@ -313,13 +313,10 @@ struct MatchLiveViewModelTests {
         #expect(try compterPoints(context) == 0)
         #expect(vm.dernierPoint == nil)
 
-        // ⚠️ COMPORTEMENT ACTUEL (suspect) : l'heuristique `estPointPourNous && nousServons`
-        // ne distingue pas « sideout » de « point marqué sur notre propre service »
-        // (après tout point marqué par nous, nousServons == true). L'undo prend donc
-        // toujours la branche sideout et rend le service à l'adversaire, alors que
-        // nous servions AVANT ce point. Attendu métier : nousServons == true.
-        #expect(vm.nousServons == false,
-                "Comportement actuel documenté : l'undo d'un point marqué sur notre service donne le service à l'adversaire")
+        // Règle volleyball : qui a marqué le point précédent sert — pas de point
+        // précédent ici, donc le serveur du début de set (nous) est restauré.
+        #expect(vm.nousServons == true,
+                "Pas de sideout : nous servions avant ce point, le service nous reste")
     }
 
     // MARK: - Modification manuelle des rotations
