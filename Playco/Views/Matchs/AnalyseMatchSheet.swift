@@ -39,6 +39,14 @@ struct AnalyseMatchSheet: View {
                               sousTitre: "Actions par zone du terrain",
                               icone: "square.grid.3x2.fill", teinte: PaletteMat.orange)
                     }
+
+                    NavigationLink {
+                        FilDuMatchView(seance: seance)
+                    } label: {
+                        ligne(titre: "Fil du match",
+                              sousTitre: "Écart de score point par point, séries et temps morts",
+                              icone: "chart.xyaxis.line", teinte: PaletteMat.vert)
+                    }
                 } header: {
                     Text(seance.adversaire.isEmpty ? seance.nom : "vs \(seance.adversaire)")
                 }
