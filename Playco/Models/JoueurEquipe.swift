@@ -169,7 +169,10 @@ final class JoueurEquipe {
 
     // MARK: - Computed — Réception
 
-    /// Efficacité réception = (Réussies - Erreurs) / Totales × 100
+    /// Efficacité réception = (Réussies - Erreurs) / Totales × 100.
+    /// ⚠️ ÉCHELLE 0-100 (pourcentage prêt à afficher) — NE PAS multiplier
+    /// à nouveau par 100 chez les consommateurs (cause du bug B1). Convention
+    /// distincte de `MetriquesVolley.efficaciteReception` (fraction 0-1, D1).
     var efficaciteReception: Double {
         guard receptionsTotales > 0 else { return 0 }
         return Double(receptionsReussies - erreursReception) / Double(receptionsTotales) * 100

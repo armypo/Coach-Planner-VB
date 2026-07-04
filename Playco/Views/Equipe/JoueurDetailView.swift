@@ -15,6 +15,12 @@ struct JoueurDetailView: View {
     /// Code d'invitation de l'Utilisateur lié — cache @State (évite un fetch par render)
     @State private var codeInvitationJoueur: String?
     @Query private var toutesPresences: [Presence]
+    @Query private var tousStatsMatch: [StatsMatch]
+
+    /// Vrai si des stats de match existent → le cumul carrière est dérivé.
+    private var aDesStatsDeMatch: Bool {
+        tousStatsMatch.contains { $0.joueurID == joueur.id }
+    }
 
     // Présences de ce joueur
     private var presencesJoueur: [Presence] {
@@ -474,9 +480,20 @@ struct JoueurDetailView: View {
     // MARK: - Édition rapide stats
     private var sectionEditionStats: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Ajouter des statistiques")
+            Text("Ajuster les statistiques cumulées")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.secondary)
+
+            if aDesStatsDeMatch {
+                Label("Ces totaux sont recalculés à partir des matchs saisis. " +
+                      "Un ajustement manuel sera écrasé au prochain match enregistré.",
+                      systemImage: "info.circle")
+                    .font(.caption)
+                    .foregroundStyle(PaletteMat.attention)
+                    .padding(LiquidGlassKit.espaceSM)
+                    .background(PaletteMat.attention.opacity(0.1),
+                                in: RoundedRectangle(cornerRadius: LiquidGlassKit.rayonPetit))
+            }
 
             // Général
             groupeStat(titre: "Général", couleur: .blue) {

@@ -17,23 +17,32 @@ final class FiltresStatsModel {
     var joueurID: UUID?
     var phaseID: UUID?
 
-    /// Applique les filtres actifs à une liste de points.
-    func filtrer(_ points: [PointMatch]) -> [PointMatch] {
+    /// Applique les filtres match/set/joueur à une liste de points.
+    /// Le filtre de PHASE ne s'applique PAS ici (il porte sur les matchs) :
+    /// passer `seancesDeLaPhase` pour restreindre aussi par phase.
+    func filtrer(_ points: [PointMatch], seancesDeLaPhase: Set<UUID>? = nil) -> [PointMatch] {
         points.filter { point in
             (seanceID == nil || point.seanceID == seanceID)
                 && (set == nil || point.set == set)
                 && (joueurID == nil || point.joueurID == joueurID)
+                && (seancesDeLaPhase == nil || seancesDeLaPhase!.contains(point.seanceID))
         }
     }
 
-    /// Applique le filtre de phase à une liste de matchs (par date).
+    /// Applique les filtres match + phase à une liste de matchs.
+    /// Les bornes de phase sont élargies à la journée entière (l'heure de
+    /// création de la PhaseSaison ne doit pas exclure des matchs limites).
     func filtrer(_ matchs: [Seance], phases: [PhaseSaison]) -> [Seance] {
         var resultat = matchs
         if let seanceID {
             resultat = resultat.filter { $0.id == seanceID }
         }
         if let phaseID, let phase = phases.first(where: { $0.id == phaseID }) {
-            resultat = resultat.filter { $0.date >= phase.dateDebut && $0.date <= phase.dateFin }
+            let calendrier = Calendar.current
+            let debut = calendrier.startOfDay(for: phase.dateDebut)
+            let finJour = calendrier.startOfDay(for: phase.dateFin)
+            let fin = calendrier.date(byAdding: .day, value: 1, to: finJour) ?? phase.dateFin
+            resultat = resultat.filter { $0.date >= debut && $0.date < fin }
         }
         return resultat
     }
@@ -146,7 +155,8 @@ struct FiltresStats: View {
             .font(.caption.weight(.medium))
             .foregroundStyle(estActif ? .white : PaletteMat.textePrincipal)
             .padding(.horizontal, LiquidGlassKit.espaceSM + 4)
-            .frame(minHeight: 34)
+            .frame(minHeight: 44)
+            .contentShape(Capsule())
             .background(
                 estActif ? AnyShapeStyle(PaletteMat.bleu) : AnyShapeStyle(.ultraThinMaterial),
                 in: Capsule()

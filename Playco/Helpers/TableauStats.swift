@@ -54,7 +54,8 @@ struct TableauStats: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(PaletteMat.bleu)
-                .frame(minHeight: 32)
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
             }
 
             ScrollView(.horizontal, showsIndicators: true) {
@@ -125,5 +126,15 @@ struct TableauStats: View {
             }
         }
         .padding(.vertical, 5)
+        // VoiceOver : une rangée = un élément « Joueur : abréviation valeur, … »
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(labelAccessibilite(ligne))
+    }
+
+    private func labelAccessibilite(_ ligne: LigneTableauStats) -> String {
+        let paires = zip(colonnesAplaties, ligne.valeurs)
+            .map { "\($0.0) \($0.1)" }
+            .joined(separator: ", ")
+        return "\(ligne.libelle) : \(paires)"
     }
 }

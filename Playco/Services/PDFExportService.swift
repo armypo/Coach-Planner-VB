@@ -157,7 +157,7 @@ enum PDFExportService {
                 ("Aces", "\(joueur.aces)", String(format: "%.1f", moyenneEquipe["aces"] ?? 0)),
                 ("Blocs seuls", "\(joueur.blocsSeuls)", String(format: "%.1f", moyenneEquipe["blocsSeuls"] ?? 0)),
                 ("Blocs assistés", "\(joueur.blocsAssistes)", String(format: "%.1f", moyenneEquipe["blocsAssistes"] ?? 0)),
-                ("Réception %", String(format: "%.1f%%", joueur.efficaciteReception), String(format: "%.1f%%", (moyenneEquipe["receptionEff"] ?? 0) * 100)),
+                ("Réception %", String(format: "%.1f%%", joueur.efficaciteReception), String(format: "%.1f%%", moyenneEquipe["receptionEff"] ?? 0)),
                 ("Passes décisives", "\(joueur.passesDecisives)", String(format: "%.1f", moyenneEquipe["passes"] ?? 0)),
             ]
 

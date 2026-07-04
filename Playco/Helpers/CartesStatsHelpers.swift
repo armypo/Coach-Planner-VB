@@ -63,8 +63,10 @@ struct CarteMetrique: View {
                         afficherDefinition = true
                     } label: {
                         Image(systemName: "info.circle")
-                            .font(.system(size: 10))
+                            .font(.system(size: 11))
                             .foregroundStyle(.tertiary)
+                            .frame(minWidth: 44, minHeight: 44)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Définition de \(titre)")
