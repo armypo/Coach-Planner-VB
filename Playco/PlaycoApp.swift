@@ -274,18 +274,11 @@ struct PlaycoApp: App {
                                     }
                                 }
                                 #endif
-                                #if DEMO
-                                // Build démo : tutoriel complet à chaque lancement.
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                                    afficherTutorielInitial = true
-                                }
-                                #else
                                 if !tutorielVu {
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
                                         afficherTutorielInitial = true
                                     }
                                 }
-                                #endif
                             }
                             .fullScreenCover(isPresented: $afficherTutorielInitial) {
                                 TutorielView()
