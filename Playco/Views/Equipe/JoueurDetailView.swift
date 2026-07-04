@@ -199,6 +199,8 @@ struct JoueurDetailView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text(joueur.nomComplet)
                     .font(.title2.weight(.bold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
 
                 HStack(spacing: 12) {
                     Label(joueur.poste.rawValue, systemImage: joueur.poste.icone)
@@ -360,16 +362,16 @@ struct JoueurDetailView: View {
                 statCard("Kills", valeur: "\(joueur.attaquesReussies)", icone: "flame.fill", couleur: .green)
                 statCard("Erreurs", valeur: "\(joueur.erreursAttaque)", icone: "xmark.circle", couleur: .red)
                 statCard("Tentatives", valeur: "\(joueur.attaquesTotales)", icone: "arrow.up.forward", couleur: .blue)
-                statCard("Hitting %",
-                         valeur: joueur.attaquesTotales > 0 ? String(format: "%.3f", joueur.pourcentageAttaque) : "—",
+                statCard("Rendement",
+                         valeur: joueur.attaquesTotales > 0 ? FormatMetriques.hittingVolley(joueur.pourcentageAttaque) : "—",
                          icone: "percent", couleur: couleurPourcentageAttaque)
             }
 
             if joueur.attaquesTotales > 0 {
                 barreProgression(
-                    label: "(Kills - Erreurs) / Tentatives",
-                    valeur: max(0, joueur.pourcentageAttaque),
-                    maximum: 0.5,
+                    label: "(Kills - Erreurs) / Tentatives — .300 et plus : excellent",
+                    valeur: min(max(0, joueur.pourcentageAttaque), 1.0),
+                    maximum: 1.0,
                     couleur: couleurPourcentageAttaque
                 )
             }
@@ -625,6 +627,8 @@ struct JoueurDetailView: View {
                     Image(systemName: "minus.circle.fill")
                         .font(.system(size: 18))
                         .foregroundStyle(.secondary)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
                 }
                 Text("\(valeur.wrappedValue)")
                     .font(.system(size: 14, weight: .bold, design: .rounded))
@@ -632,7 +636,9 @@ struct JoueurDetailView: View {
                 Button { valeur.wrappedValue += 1 } label: {
                     Image(systemName: "plus.circle.fill")
                         .font(.system(size: 18))
-                        .foregroundStyle(.green)
+                        .foregroundStyle(PaletteMat.positif)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
                 }
             }
         }

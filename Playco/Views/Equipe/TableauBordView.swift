@@ -232,17 +232,19 @@ struct TableauBordView: View {
                 }
             }
 
-            // Bouton Feuille de match
+            // Bouton Feuille de match — zone tactile >= 44 pt
             VStack(spacing: 2) {
                 Image(systemName: "tablecells")
                     .font(.caption)
                 Text("Feuille de match")
-                    .font(.system(size: 8, weight: .medium))
+                    .font(.system(size: 10, weight: .medium))
             }
             .foregroundStyle(.red)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-            .background(Color.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+            .padding(.horizontal, LiquidGlassKit.espaceSM)
+            .frame(minWidth: 44, minHeight: 44)
+            .background(Color.red.opacity(0.08),
+                        in: RoundedRectangle(cornerRadius: LiquidGlassKit.rayonMini * 2))
+            .contentShape(Rectangle())
         }
         .padding(.vertical, 6)
     }
@@ -276,7 +278,7 @@ struct TableauBordView: View {
                     GridItem(.flexible()), GridItem(.flexible())
                 ], spacing: 12) {
                     statEquipe(label: "Kills", valeur: "\(s.kills)", couleur: .green)
-                    statEquipe(label: "Hitting %", valeur: String(format: "%.3f", s.hittingPct),
+                    statEquipe(label: "Rendement att.", valeur: FormatMetriques.hittingVolley(s.hittingPct),
                                couleur: s.hittingPct >= 0.250 ? .green : .orange)
                     statEquipe(label: "Aces", valeur: "\(s.aces)", couleur: .yellow)
                     statEquipe(label: "Blocs", valeur: String(format: "%.0f", s.teamBlocs), couleur: .red)
@@ -359,7 +361,7 @@ struct TableauBordView: View {
                             .font(.subheadline.weight(.bold))
                             .foregroundStyle(PaletteMat.orange)
                         if joueur.attaquesTotales > 0 {
-                            Text(String(format: "%.3f hit%%", joueur.pourcentageAttaque))
+                            Text(FormatMetriques.hittingVolley(joueur.pourcentageAttaque))
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }
@@ -682,7 +684,7 @@ struct BoxScoreView: View {
             cellule(stat.kills, couleur: .green)
             cellule(stat.erreursAttaque, couleur: .red)
             cellule(stat.tentativesAttaque, couleur: .primary)
-            Text(stat.tentativesAttaque > 0 ? String(format: ".%03d", Int(stat.hittingPct * 1000)) : "—")
+            Text(stat.tentativesAttaque > 0 ? FormatMetriques.hittingVolley(stat.hittingPct) : "—")
                 .font(.caption2)
                 .foregroundStyle(stat.hittingPct >= 0.250 ? .green : .orange)
                 .frame(width: 40)
@@ -729,7 +731,7 @@ struct BoxScoreView: View {
             Text("\(totK)").frame(width: 40)
             Text("\(totE)").frame(width: 40)
             Text("\(totTA)").frame(width: 40)
-            Text(String(format: ".%03d", Int(hitPct * 1000))).frame(width: 40)
+            Text(FormatMetriques.hittingVolley(hitPct)).frame(width: 40)
             Text("\(totAc)").frame(width: 40)
             Text("\(totSE)").frame(width: 40)
             Text("\(totBS)").frame(width: 40)
