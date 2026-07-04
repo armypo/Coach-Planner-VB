@@ -9,9 +9,18 @@ import SwiftData
 struct JoueurDetailView: View {
     @Bindable var joueur: JoueurEquipe
 
+    /// Onglets d'analyse de la fiche joueur (2.3 refonte — segmenté visible
+    /// au lieu de NavigationLinks enfouis).
+    enum OngletAnalyseJoueur: String, CaseIterable {
+        case statistiques = "Statistiques"
+        case evolution = "Évolution"
+        case comparaison = "Comparaison"
+    }
+
     @Environment(AuthService.self) private var authService
     @Environment(\.modelContext) private var modelContext
     @State private var afficherEdition = false
+    @State private var ongletAnalyse: OngletAnalyseJoueur = .statistiques
     /// Code d'invitation de l'Utilisateur lié — cache @State (évite un fetch par render)
     @State private var codeInvitationJoueur: String?
     @Query private var toutesPresences: [Presence]
@@ -60,67 +69,35 @@ struct JoueurDetailView: View {
                 sectionResume
                 sectionPresencesEvals
                 JoueurSuiviMuscuSection(joueur: joueur)
-                // Bouton évolution stats
-                NavigationLink {
-                    EvolutionJoueurView(joueur: joueur)
-                } label: {
-                    HStack {
-                        Image(systemName: "chart.line.uptrend.xyaxis")
-                            .font(.title3)
-                            .foregroundStyle(PaletteMat.bleu)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Évolution des statistiques")
-                                .font(.subheadline.weight(.semibold))
-                            Text("Graphiques par match")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
+
+                // Analyses du joueur — segmenté (plus de liens enfouis)
+                Picker("Analyse", selection: $ongletAnalyse) {
+                    ForEach(OngletAnalyseJoueur.allCases, id: \.self) { onglet in
+                        Text(onglet.rawValue).tag(onglet)
                     }
-                    .padding(16)
-                    .glassSection()
                 }
-                .buttonStyle(.plain)
+                .pickerStyle(.segmented)
 
-                // Bouton comparaison vs équipe
-                NavigationLink {
-                    ComparaisonView(joueur: joueur)
-                } label: {
-                    HStack {
-                        Image(systemName: "chart.bar.fill")
-                            .font(.title3)
-                            .foregroundStyle(.red)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Comparaison vs équipe")
-                                .font(.subheadline.weight(.semibold))
-                            Text("Stats joueur vs moyenne")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
-                    }
-                    .padding(16)
-                    .glassSection()
+                switch ongletAnalyse {
+                case .statistiques:
+                    // Objectifs individuels
+                    ObjectifsJoueurView(joueur: joueur)
+                        .padding(LiquidGlassKit.espaceMD)
+                        .glassSection()
+
+                    sectionAttaque
+                    sectionService
+                    sectionBloc
+                    sectionReception
+                    sectionJeu
+                case .evolution:
+                    EvolutionJoueurView(joueur: joueur, estIncorporee: true)
+                case .comparaison:
+                    ComparaisonView(joueur: joueur, estIncorporee: true)
                 }
-                .buttonStyle(.plain)
 
-                // Objectifs individuels
-                ObjectifsJoueurView(joueur: joueur)
-                    .padding(LiquidGlassKit.espaceMD)
-                    .glassSection()
-
-                sectionAttaque
-                sectionService
-                sectionBloc
-                sectionReception
-                sectionJeu
-                if authService.utilisateurConnecte?.role.peutGererEquipe ?? false {
+                if authService.utilisateurConnecte?.role.peutGererEquipe ?? false,
+                   ongletAnalyse == .statistiques {
                     sectionEditionStats
                     sectionNotes
                 }

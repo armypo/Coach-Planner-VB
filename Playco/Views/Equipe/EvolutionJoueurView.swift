@@ -84,6 +84,8 @@ enum Tendance {
 
 struct EvolutionJoueurView: View {
     let joueur: JoueurEquipe
+    /// Vrai quand la vue est incorporée dans la fiche joueur (pas de ScrollView propre).
+    var estIncorporee: Bool = false
 
     @Environment(\.codeEquipeActif) private var codeEquipeActif
     @Query private var toutesStats: [StatsMatch]
@@ -97,26 +99,38 @@ struct EvolutionJoueurView: View {
     // MARK: - Body
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                selecteurCategorie
-                graphiquePrincipal
-                resumeStatistiques
-                historiqueDetaille
+        Group {
+            if estIncorporee {
+                // Incorporée dans la fiche joueur (segmenté 2.3) : le parent
+                // fournit déjà le ScrollView et le padding.
+                contenu
+            } else {
+                ScrollView {
+                    contenu
+                        .padding(20)
+                }
+                .background(Color(.systemGroupedBackground))
+                .navigationTitle("Évolution — \(joueur.prenom)")
+                .navigationBarTitleDisplayMode(.large)
             }
-            .padding(20)
         }
-        .background(Color(.systemGroupedBackground))
-        .navigationTitle("Évolution — \(joueur.prenom)")
-        .navigationBarTitleDisplayMode(.large)
         .onAppear {
             calculerPoints()
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+            withAnimation(LiquidGlassKit.springDefaut) {
                 apparition = true
             }
         }
         .onChange(of: categorieSelectionnee) { _, _ in
             calculerPoints()
+        }
+    }
+
+    private var contenu: some View {
+        VStack(spacing: 24) {
+            selecteurCategorie
+            graphiquePrincipal
+            resumeStatistiques
+            historiqueDetaille
         }
     }
 

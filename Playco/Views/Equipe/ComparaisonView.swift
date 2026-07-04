@@ -8,6 +8,8 @@ import SwiftData
 /// Comparaison des stats d'un joueur vs la moyenne de l'équipe
 struct ComparaisonView: View {
     let joueur: JoueurEquipe
+    /// Vrai quand la vue est incorporée dans la fiche joueur (pas de ScrollView propre).
+    var estIncorporee: Bool = false
 
     @Query(filter: #Predicate<JoueurEquipe> { $0.estActif == true },
            sort: \JoueurEquipe.numero) private var tousJoueurs: [JoueurEquipe]
@@ -44,49 +46,64 @@ struct ComparaisonView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 20) {
-                // En-tête joueur
-                HStack(spacing: 12) {
-                    ZStack {
-                        Circle()
-                            .fill(Color.red.opacity(0.1))
-                            .frame(width: 50, height: 50)
-                        Text("#\(joueur.numero)")
-                            .font(.title3.weight(.bold))
-                            .foregroundStyle(.red)
-                    }
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("\(joueur.prenom) \(joueur.nom)")
-                            .font(.headline)
-                        Text(joueur.poste.rawValue)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Text("\(joueur.matchsJoues) matchs")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.secondary)
+        Group {
+            if estIncorporee {
+                // Incorporée dans la fiche joueur (segmenté 2.3) : le parent
+                // fournit déjà le ScrollView, l'en-tête joueur est redondant.
+                VStack(spacing: 20) {
+                    categoriesStats
                 }
-                .padding(.horizontal)
-
-                Divider()
-
-                // Catégories de stats
-                categorieSection(titre: "Attaque", icone: "flame.fill", couleur: .red, stats: statsAttaque)
-                categorieSection(titre: "Service", icone: "arrow.up.forward", couleur: .blue, stats: statsService)
-                categorieSection(titre: "Bloc", icone: "shield.fill", couleur: .purple, stats: statsBloc)
-                categorieSection(titre: "Réception", icone: "hand.raised.fill", couleur: .green, stats: statsReception)
-                categorieSection(titre: "Jeu", icone: "sportscourt.fill", couleur: .orange, stats: statsJeu)
+            } else {
+                ScrollView {
+                    VStack(spacing: 20) {
+                        enteteJoueurComparaison
+                        Divider()
+                        categoriesStats
+                    }
+                    .padding(.vertical)
+                }
+                .navigationTitle("Comparaison")
+                .navigationBarTitleDisplayMode(.inline)
             }
-            .padding(.vertical)
         }
-        .navigationTitle("Comparaison")
-        .navigationBarTitleDisplayMode(.inline)
         .onAppear { mettreAJourMoyennes() }
         .onChange(of: tousJoueurs) { mettreAJourMoyennes() }
         .onChange(of: signatureStats) { mettreAJourMoyennes() }
         .onChange(of: codeEquipeActif) { mettreAJourMoyennes() }
+    }
+
+    private var enteteJoueurComparaison: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(Color.red.opacity(0.1))
+                    .frame(width: 50, height: 50)
+                Text("#\(joueur.numero)")
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(.red)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(joueur.prenom) \(joueur.nom)")
+                    .font(.headline)
+                Text(joueur.poste.rawValue)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Text("\(joueur.matchsJoues) matchs")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal)
+    }
+
+    @ViewBuilder
+    private var categoriesStats: some View {
+        categorieSection(titre: "Attaque", icone: "flame.fill", couleur: .red, stats: statsAttaque)
+        categorieSection(titre: "Service", icone: "arrow.up.forward", couleur: .blue, stats: statsService)
+        categorieSection(titre: "Bloc", icone: "shield.fill", couleur: .purple, stats: statsBloc)
+        categorieSection(titre: "Réception", icone: "hand.raised.fill", couleur: .green, stats: statsReception)
+        categorieSection(titre: "Jeu", icone: "sportscourt.fill", couleur: .orange, stats: statsJeu)
     }
 
     // MARK: - Mise à jour du cache

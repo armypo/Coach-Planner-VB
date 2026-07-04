@@ -10,6 +10,8 @@ struct TableauBordView: View {
     let joueurs: [JoueurEquipe]
     let seances: [Seance]
     let strategies: [StrategieCollective]
+    /// Navigation interne du hub Équipe (top performers → fiche joueur, etc.).
+    var onNaviguer: ((EquipeView.EquipeNavItem) -> Void)? = nil
 
     @State private var matchSelectionne: Seance?
     @State private var afficherBoxScore = false
@@ -335,39 +337,53 @@ struct TableauBordView: View {
                 .prefix(5)
 
             ForEach(Array(topJoueurs.enumerated()), id: \.element.id) { index, joueur in
-                HStack(spacing: 12) {
-                    Text("\(index + 1)")
-                        .font(.system(size: 14, weight: .bold, design: .rounded))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 20)
+                Button {
+                    onNaviguer?(.joueur(joueur.id))
+                } label: {
+                    HStack(spacing: 12) {
+                        Text("\(index + 1)")
+                            .font(.system(size: 14, weight: .bold, design: .rounded))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 20)
 
-                    ZStack {
-                        Circle()
-                            .fill(joueur.poste.couleur.opacity(0.1))
-                            .frame(width: 32, height: 32)
-                        Text("#\(joueur.numero)")
-                            .font(.system(size: 11, weight: .bold, design: .rounded))
-                            .foregroundStyle(joueur.poste.couleur)
-                    }
+                        ZStack {
+                            Circle()
+                                .fill(joueur.poste.couleur.opacity(0.1))
+                                .frame(width: 32, height: 32)
+                            Text("#\(joueur.numero)")
+                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                                .foregroundStyle(joueur.poste.couleur)
+                        }
 
-                    Text(joueur.nomComplet)
-                        .font(.subheadline)
-                        .lineLimit(1)
+                        Text(joueur.nomComplet)
+                            .font(.subheadline)
+                            .lineLimit(1)
+                            .foregroundStyle(PaletteMat.textePrincipal)
 
-                    Spacer()
+                        Spacer()
 
-                    VStack(alignment: .trailing, spacing: 2) {
-                        Text("\(joueur.pointsCalcules) pts")
-                            .font(.subheadline.weight(.bold))
-                            .foregroundStyle(PaletteMat.orange)
-                        if joueur.attaquesTotales > 0 {
-                            Text(FormatMetriques.hittingVolley(joueur.pourcentageAttaque))
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text("\(joueur.pointsCalcules) pts")
+                                .font(.subheadline.weight(.bold))
+                                .foregroundStyle(PaletteMat.orange)
+                            if joueur.attaquesTotales > 0 {
+                                Text(FormatMetriques.hittingVolley(joueur.pourcentageAttaque))
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+
+                        if onNaviguer != nil {
+                            Image(systemName: "chevron.right")
                                 .font(.caption2)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(.tertiary)
                         }
                     }
+                    .padding(.vertical, 4)
+                    .contentShape(Rectangle())
                 }
-                .padding(.vertical, 2)
+                .buttonStyle(.plain)
+                .disabled(onNaviguer == nil)
             }
         }
     }

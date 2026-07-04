@@ -35,6 +35,7 @@ struct MatchDetailView: View {
     @State private var afficherModeLive = false
     @State private var afficherConfirmationFinaliser = false
     @State private var confirmeFinalisation = false
+    @State private var afficherAnalyseMatch = false
 
     /// Exercice conteneur pour le terrain — stocké en @State pour éviter la recréation
     @State private var exerciceTerrain: Exercice?
@@ -177,6 +178,20 @@ struct MatchDetailView: View {
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)
                             .background(Color(.tertiarySystemFill), in: Capsule())
+
+                            // Analyse du match — liens croisés pré-filtrés (2.4)
+                            Button { afficherAnalyseMatch = true } label: {
+                                HStack(spacing: 3) {
+                                    Image(systemName: "chart.xyaxis.line")
+                                        .font(.caption)
+                                    Text("Analyse")
+                                        .font(.caption.weight(.medium))
+                                }
+                                .foregroundStyle(PaletteMat.bleu)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(PaletteMat.bleu.opacity(0.1), in: Capsule())
+                            }
                         }
 
                         // Mode live split-screen
@@ -222,6 +237,9 @@ struct MatchDetailView: View {
         }
         .sheet(isPresented: $afficherInfoMatch) {
             InfoMatchSheet(seance: seance)
+        }
+        .sheet(isPresented: $afficherAnalyseMatch) {
+            AnalyseMatchSheet(seance: seance)
         }
         .sheet(isPresented: $afficherComposition) {
             NavigationStack {
