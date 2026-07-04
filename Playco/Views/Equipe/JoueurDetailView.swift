@@ -12,7 +12,8 @@ struct JoueurDetailView: View {
     @Environment(AuthService.self) private var authService
     @Environment(\.modelContext) private var modelContext
     @State private var afficherEdition = false
-    @State private var afficherMotDePasse = false
+    /// Code d'invitation de l'Utilisateur lié — cache @State (évite un fetch par render)
+    @State private var codeInvitationJoueur: String?
     @Query private var toutesPresences: [Presence]
 
     // Présences de ce joueur
@@ -154,6 +155,8 @@ struct JoueurDetailView: View {
         .sheet(isPresented: $afficherEdition) {
             EditionJoueurView(joueur: joueur)
         }
+        .onAppear { chargerCodeInvitation() }
+        .onChange(of: joueur.utilisateurID) { chargerCodeInvitation() }
     }
 
     // MARK: - En-tête
@@ -289,13 +292,16 @@ struct JoueurDetailView: View {
         .glassSection()
     }
 
-    /// Code d'invitation de l'Utilisateur lié à ce joueur (nil si non lié).
-    private var codeInvitationJoueur: String? {
-        guard let utilisateurID = joueur.utilisateurID else { return nil }
+    /// Charge le code d'invitation de l'Utilisateur lié à ce joueur (nil si non lié).
+    private func chargerCodeInvitation() {
+        guard let utilisateurID = joueur.utilisateurID else {
+            codeInvitationJoueur = nil
+            return
+        }
         let descriptor = FetchDescriptor<Utilisateur>(
             predicate: #Predicate { $0.id == utilisateurID }
         )
-        return try? modelContext.fetch(descriptor).first?.codeInvitation
+        codeInvitationJoueur = try? modelContext.fetch(descriptor).first?.codeInvitation
     }
 
     // MARK: - Résumé général

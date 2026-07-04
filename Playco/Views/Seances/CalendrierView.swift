@@ -34,6 +34,11 @@ struct CalendrierView: View {
     /// (évite filter + map + formatYMD à chaque cellule de la grille)
     @State private var joursAvecSeance: Set<String> = []
 
+    /// Invalide le cache sur mutation in-place (date modifiée) — .onChange(collection) ne voit que les insertions/suppressions.
+    private var signatureDates: Double {
+        toutesSeancesQuery.reduce(0) { $0 + $1.date.timeIntervalSinceReferenceDate }
+    }
+
     private let calendar = Calendar.current
     private let joursAbrevies = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"]
 
@@ -174,6 +179,7 @@ struct CalendrierView: View {
             mettreAJourJoursAvecSeance()
         }
         .onChange(of: toutesSeancesQuery) { mettreAJourJoursAvecSeance() }
+        .onChange(of: signatureDates) { mettreAJourJoursAvecSeance() }
         .onChange(of: moisAffiche) { mettreAJourJoursAvecSeance() }
         .onChange(of: codeEquipeActif) { mettreAJourJoursAvecSeance() }
     }

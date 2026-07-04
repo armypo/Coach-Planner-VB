@@ -65,6 +65,11 @@ enum LiquidGlassKit {
 
     static let paddingChamp: CGFloat = 14
 
+    // MARK: - Boutons d'authentification
+
+    /// Hauteur du bouton Sign in with Apple (LoginView + wizard étape 3)
+    static let hauteurBoutonApple: CGFloat = 50
+
     // MARK: - Espacements hero (login, onboarding)
 
     static let hauteurSpacerHero: CGFloat = 80

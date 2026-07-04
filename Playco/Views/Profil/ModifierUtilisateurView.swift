@@ -10,7 +10,6 @@ import PhotosUI
 struct ModifierUtilisateurView: View {
     @Bindable var utilisateur: Utilisateur
 
-    @Environment(AuthService.self) private var authService
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 

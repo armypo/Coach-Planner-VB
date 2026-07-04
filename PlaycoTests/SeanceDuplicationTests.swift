@@ -57,7 +57,10 @@ struct SeanceDuplicationTests {
 
         let exo = Exercice(nom: "Papillon", ordre: 2, duree: 10)
         exo.notes = "3 ballons par vague"
+        exo.dessinData = Data([0xAA, 0xBB])
+        exo.elementsData = Data([0xCC, 0xDD, 0xEE])
         exo.etapesData = Data([0x01, 0x02])
+        exo.typeTerrain = "beach"
         exo.seance = source
         context.insert(exo)
         source.exercices = [exo]
@@ -71,7 +74,10 @@ struct SeanceDuplicationTests {
         #expect(copieExo.ordre == 2)
         #expect(copieExo.duree == 10)
         #expect(copieExo.notes == "3 ballons par vague")
+        #expect(copieExo.dessinData == Data([0xAA, 0xBB]))
+        #expect(copieExo.elementsData == Data([0xCC, 0xDD, 0xEE]))
         #expect(copieExo.etapesData == Data([0x01, 0x02]))
+        #expect(copieExo.typeTerrain == "beach")
         #expect(copieExo.id != exo.id)
     }
 }

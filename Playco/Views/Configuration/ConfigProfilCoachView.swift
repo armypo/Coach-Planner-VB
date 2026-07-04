@@ -116,15 +116,15 @@ struct ConfigProfilCoachView: View {
                     .tracking(0.8)
 
                 if appleUserID.isEmpty {
-                    VStack(alignment: .leading, spacing: 10) {
+                    VStack(alignment: .leading, spacing: LiquidGlassKit.espaceSM + 2) {
                         SignInWithAppleButton(.signUp) { requete in
                             appleSignIn.configurerRequete(requete)
                         } onCompletion: { resultat in
                             traiterApple(resultat)
                         }
                         .signInWithAppleButtonStyle(.black)
-                        .frame(height: 50)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .frame(height: LiquidGlassKit.hauteurBoutonApple)
+                        .clipShape(RoundedRectangle(cornerRadius: LiquidGlassKit.rayonPetit))
 
                         Text("Ton compte coach utilise Sign in with Apple — aucun mot de passe à retenir.")
                             .font(.caption2)
@@ -137,7 +137,7 @@ struct ConfigProfilCoachView: View {
                         }
                     }
                 } else {
-                    HStack(spacing: 10) {
+                    HStack(spacing: LiquidGlassKit.espaceSM + 2) {
                         Image(systemName: "checkmark.seal.fill")
                             .foregroundStyle(.green)
                         Text("Compte Apple lié")
@@ -149,9 +149,9 @@ struct ConfigProfilCoachView: View {
                         .font(.caption.weight(.medium))
                         .foregroundStyle(.secondary)
                     }
-                    .padding(14)
+                    .padding(LiquidGlassKit.paddingChamp)
                     .background(Color.green.opacity(0.08),
-                                in: RoundedRectangle(cornerRadius: 12))
+                                in: RoundedRectangle(cornerRadius: LiquidGlassKit.rayonPetit))
                 }
 
                 Spacer(minLength: 20)
