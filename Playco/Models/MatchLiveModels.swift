@@ -83,6 +83,14 @@ nonisolated struct ConfigMatch: Codable, Equatable, Sendable {
     var ttoActifs: Bool = false
     /// Nombre de temps morts par set par équipe (FIVB: 2)
     var tempsMortsParSetParEquipe: Int = 2
+    /// Demander la zone après chaque action marquante (3.6 refonte).
+    /// Optionnel pour que les anciens JSON restent décodables (nil = true).
+    var demanderZoneBrut: Bool? = nil
+
+    var demanderZone: Bool {
+        get { demanderZoneBrut ?? true }
+        set { demanderZoneBrut = newValue }
+    }
 }
 
 // MARK: - Catégorie de statistique (pour le mapping score)

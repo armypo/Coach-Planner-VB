@@ -182,8 +182,8 @@ final class MatchLiveViewModel {
         // Sauvegarder le set
         sauvegarderSet()
 
-        // Zone heatmap
-        if action.supportsZone {
+        // Zone heatmap — désactivable via la config du match (courtside, 3.6)
+        if action.supportsZone && seance.configMatch.demanderZone {
             pointEnAttenteZone = point
             afficherSelecteurZone = true
         }

@@ -132,17 +132,14 @@ struct StatsLiveView: View {
             if let point = viewModel.pointEnAttenteZone {
                 SelecteurZoneView(
                     categorieHeatmap: point.typeAction.categorieHeatmap,
-                    onZoneSelectionnee: { zone in
-                        point.zone = zone
-                        viewModel.afficherSelecteurZone = false
-                        viewModel.pointEnAttenteZone = nil
-                    },
-                    onPasser: {
+                    onTermine: { arrivee, depart in
+                        if let arrivee { point.zone = arrivee }
+                        if let depart { point.zoneDepart = depart }
                         viewModel.afficherSelecteurZone = false
                         viewModel.pointEnAttenteZone = nil
                     }
                 )
-                .presentationDetents([.height(380)])
+                .presentationDetents([.height(420)])
                 .presentationDragIndicator(.visible)
             }
         }
