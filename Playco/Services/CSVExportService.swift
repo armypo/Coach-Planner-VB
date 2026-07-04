@@ -41,7 +41,7 @@ enum CSVExportService {
                 "\(j.aces)", "\(j.erreursService)", "\(j.servicesTotaux)",
                 "\(j.blocsSeuls)", "\(j.blocsAssistes)", "\(j.blocsTotaux)", "\(j.erreursBloc)",
                 "\(j.receptionsReussies)", "\(j.erreursReception)", "\(j.receptionsTotales)",
-                String(format: "%.1f", j.efficaciteReception * 100),
+                String(format: "%.1f", j.efficaciteReception),
                 "\(j.passesDecisives)", "\(j.manchettes)",
                 "\(j.pointsCalcules)"
             ].joined(separator: ";")

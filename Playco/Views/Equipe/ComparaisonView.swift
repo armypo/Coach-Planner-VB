@@ -218,7 +218,7 @@ struct ComparaisonView: View {
     private var statsReception: [(label: String, joueur: Double, equipe: Double, format: String)] {
         [
             ("Réceptions réussies", Double(joueur.receptionsReussies), moyennes.receptionsReussies, "%.0f"),
-            ("Efficacité réception", joueur.efficaciteReception * 100, moyennes.efficaciteReception * 100, "%.1f%%"),
+            ("Efficacité réception", joueur.efficaciteReception, moyennes.efficaciteReception, "%.1f%%"),
         ]
     }
 
