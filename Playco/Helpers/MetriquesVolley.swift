@@ -203,6 +203,24 @@ nonisolated enum MetriquesVolley {
         DefinitionMetrique(
             nom: "Passes décisives", abreviation: "PD",
             definition: "Passes qui mènent directement à un kill."),
+        DefinitionMetrique(
+            nom: "Blocs", abreviation: "B",
+            definition: "Blocs marquants, seuls et assistés combinés."),
+        DefinitionMetrique(
+            nom: "Réceptions", abreviation: "Réc.",
+            definition: "Réceptions de service jouées (hors erreurs directes)."),
+        DefinitionMetrique(
+            nom: "Erreurs de réception", abreviation: "ER",
+            definition: "Réceptions manquées donnant le point à l'adversaire (acé)."),
+        DefinitionMetrique(
+            nom: "Digs", abreviation: "D",
+            definition: "Défenses en plongeon ou en urgence qui sauvent le ballon."),
+        DefinitionMetrique(
+            nom: "Fautes", abreviation: "F",
+            definition: "Fautes de jeu (filet, ligne, double touche, position)."),
+        DefinitionMetrique(
+            nom: "Services en jeu", abreviation: "SEJ",
+            definition: "Services remis en jeu par l'adversaire (ni ace ni erreur)."),
     ]
 }
 

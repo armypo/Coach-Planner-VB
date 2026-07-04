@@ -94,13 +94,21 @@ struct HeatmapTerrainView: View {
             // Selecteur de categorie
             selecteurCategorie
 
-            // Mode d'affichage (3.5/3.6 refonte)
+            // Mode d'affichage (3.5/3.6 refonte). Efficacité masquée en
+            // réception : seules les ERREURS de réception portent une zone
+            // (les réussites sont des ActionRallye sans zone) → le ratio
+            // vaudrait mécaniquement −100 %.
             Picker("Affichage", selection: $donnees.mode) {
-                ForEach(DonneesHeatmap.ModeHeatmap.allCases, id: \.self) { mode in
+                ForEach(modesDisponibles, id: \.self) { mode in
                     Text(mode.rawValue).tag(mode)
                 }
             }
             .pickerStyle(.segmented)
+            .onChange(of: categorieSelectionnee) { _, _ in
+                if !modesDisponibles.contains(donnees.mode) {
+                    donnees.mode = .volume
+                }
+            }
 
             // Terrain heatmap (demi-terrain, ratio ~1:1 pour un seul cote)
             terrainHeatmap
@@ -111,6 +119,13 @@ struct HeatmapTerrainView: View {
             // Legende
             legendeCouleur
         }
+    }
+
+    /// Modes proposés selon la catégorie (efficacité sans objet en réception).
+    private var modesDisponibles: [DonneesHeatmap.ModeHeatmap] {
+        categorieSelectionnee == .reception
+            ? [.volume, .trajectoires]
+            : DonneesHeatmap.ModeHeatmap.allCases
     }
 
     // MARK: - Selecteur categorie
@@ -311,8 +326,24 @@ struct HeatmapTerrainView: View {
 
                 for trajectoire in donnees.trajectoires {
                     guard let depart = centres[trajectoire.depart],
-                          let arrivee = centres[trajectoire.arrivee],
-                          trajectoire.depart != trajectoire.arrivee else { continue }
+                          let arrivee = centres[trajectoire.arrivee] else { continue }
+
+                    // Même zone (ex. service Z1 → Z1 adverse) : marqueur circulaire
+                    let poidsMemeZone = Double(trajectoire.nombre) / Double(maxNombre)
+                    if trajectoire.depart == trajectoire.arrivee {
+                        let rayon = 10.0 + poidsMemeZone * 6.0
+                        let cercle = Path(ellipseIn: CGRect(x: arrivee.x - rayon, y: arrivee.y - rayon,
+                                                            width: rayon * 2, height: rayon * 2))
+                        context.stroke(cercle, with: .color(accent.opacity(0.45 + poidsMemeZone * 0.45)),
+                                       style: StrokeStyle(lineWidth: 2.0 + poidsMemeZone * 2.0))
+                        context.draw(
+                            Text("\(trajectoire.nombre)")
+                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                                .foregroundStyle(.white),
+                            at: arrivee
+                        )
+                        continue
+                    }
 
                     let poids = Double(trajectoire.nombre) / Double(maxNombre)
                     let largeur = 1.5 + poids * 4.5
@@ -363,34 +394,65 @@ struct HeatmapTerrainView: View {
 
     // MARK: - Legende
 
+    /// Légende adaptée au mode (revue finale : la légende volume contredisait
+    /// la carte en modes efficacité et trajectoires).
+    @ViewBuilder
     private var legendeCouleur: some View {
-        HStack(spacing: 12) {
-            Text("Intensité :")
-                .font(.caption.weight(.medium))
-                .foregroundStyle(PaletteMat.texteSecondaire)
+        switch donnees.mode {
+        case .volume:
+            HStack(spacing: 12) {
+                Text("Intensité :")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(PaletteMat.texteSecondaire)
 
-            HStack(spacing: 3) {
-                ForEach(0..<20, id: \.self) { i in
-                    let intensite = Double(i) / 19.0
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(couleurHeatmap(intensite: intensite))
-                        .frame(width: 10, height: 16)
+                HStack(spacing: 3) {
+                    ForEach(0..<20, id: \.self) { i in
+                        let intensite = Double(i) / 19.0
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(couleurHeatmap(intensite: intensite))
+                            .frame(width: 10, height: 16)
+                    }
                 }
-            }
-            .clipShape(Capsule())
+                .clipShape(Capsule())
 
-            HStack(spacing: 16) {
-                Text("Faible")
-                    .font(.caption2)
-                    .foregroundStyle(PaletteMat.texteTertiaire)
-                Spacer()
-                Text("Élevée")
-                    .font(.caption2)
-                    .foregroundStyle(PaletteMat.texteTertiaire)
+                HStack(spacing: 16) {
+                    Text("Faible")
+                        .font(.caption2)
+                        .foregroundStyle(PaletteMat.texteTertiaire)
+                    Spacer()
+                    Text("Élevée")
+                        .font(.caption2)
+                        .foregroundStyle(PaletteMat.texteTertiaire)
+                }
+                .frame(maxWidth: 100)
             }
-            .frame(maxWidth: 100)
+            .padding(.horizontal, 8)
+
+        case .efficacite:
+            HStack(spacing: 16) {
+                pastilleLegende(couleur: PaletteMat.vert, texte: "Zone efficace (+)")
+                pastilleLegende(couleur: PaletteMat.attention, texte: "Zone en difficulté (−)")
+                Spacer()
+            }
+            .padding(.horizontal, 8)
+
+        case .trajectoires:
+            HStack(spacing: 16) {
+                pastilleLegende(couleur: donnees.categorie.couleurAccent,
+                                texte: "Épaisseur de la flèche = fréquence")
+                Spacer()
+            }
+            .padding(.horizontal, 8)
         }
-        .padding(.horizontal, 8)
+    }
+
+    private func pastilleLegende(couleur: Color, texte: String) -> some View {
+        HStack(spacing: 4) {
+            Circle().fill(couleur.opacity(0.6)).frame(width: 10, height: 10)
+            Text(texte)
+                .font(.caption2)
+                .foregroundStyle(PaletteMat.texteSecondaire)
+        }
     }
 
     // MARK: - Couleur heatmap selon intensite (0.0 -> 1.0)

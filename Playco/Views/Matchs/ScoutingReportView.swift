@@ -245,9 +245,9 @@ struct ScoutingReportView: View {
                 if joueurs.isEmpty {
                     placeholderVide("Aucun joueur clé identifié", icone: "person.crop.circle.badge.questionmark")
                 } else {
-                    ForEach(Array(joueurs.enumerated()), id: \.element.id) { index, joueur in
+                    ForEach($joueurs) { $joueur in
                         CarteJoueurAdverseEditable(
-                            joueur: $joueurs[index],
+                            joueur: $joueur,
                             estDeplie: joueurDeplie == joueur.id,
                             peutModifier: peutModifier,
                             onFrappe: { planifierSauvegarde() },
@@ -257,9 +257,9 @@ struct ScoutingReportView: View {
                                     joueurDeplie = joueurDeplie == joueur.id ? nil : joueur.id
                                 }
                             },
-                            onSupprimer: {
+                            onSupprimer: { [id = joueur.id] in
                                 withAnimation(LiquidGlassKit.springDefaut) {
-                                    joueurs.remove(at: index)
+                                    joueurs.removeAll { $0.id == id }
                                     sauvegarderImmediatement()
                                 }
                             }
@@ -299,23 +299,24 @@ struct ScoutingReportView: View {
                     placeholderVide("Aucune force identifiée", icone: "bolt.slash")
                 } else {
                     ForEach(Array(forces.enumerated()), id: \.offset) { index, _ in
+                        let liaison = liaisonSecurisee($forces, index: index)
                         HStack(spacing: 12) {
                             Image(systemName: "checkmark.circle.fill")
                                 .foregroundStyle(PaletteMat.vert)
                                 .font(.body)
 
-                            TextField("Force de l'adversaire", text: $forces[index])
+                            TextField("Force de l'adversaire", text: liaison)
                                 .textFieldStyle(.roundedBorder)
-                                .onChange(of: forces[index]) { _, _ in planifierSauvegarde() }
+                                .onChange(of: liaison.wrappedValue) { _, _ in planifierSauvegarde() }
 
                             Button(role: .destructive) {
                                 withAnimation(LiquidGlassKit.springDefaut) {
-                                    forces.remove(at: index)
+                                    if index < forces.count { forces.remove(at: index) }
                                     sauvegarderImmediatement()
                                 }
                             } label: {
                                 Image(systemName: "minus.circle.fill")
-                                    .foregroundStyle(.red.opacity(0.6))
+                                    .foregroundStyle(PaletteMat.negatif.opacity(0.7))
                             }
                             .siAutorise(peutModifier)
                         }
@@ -354,23 +355,24 @@ struct ScoutingReportView: View {
                     placeholderVide("Aucune faiblesse identifiée", icone: "exclamationmark.triangle")
                 } else {
                     ForEach(Array(faiblesses.enumerated()), id: \.offset) { index, _ in
+                        let liaison = liaisonSecurisee($faiblesses, index: index)
                         HStack(spacing: 12) {
                             Image(systemName: "xmark.circle.fill")
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(PaletteMat.attention)
                                 .font(.body)
 
-                            TextField("Faiblesse de l'adversaire", text: $faiblesses[index])
+                            TextField("Faiblesse de l'adversaire", text: liaison)
                                 .textFieldStyle(.roundedBorder)
-                                .onChange(of: faiblesses[index]) { _, _ in planifierSauvegarde() }
+                                .onChange(of: liaison.wrappedValue) { _, _ in planifierSauvegarde() }
 
                             Button(role: .destructive) {
                                 withAnimation(LiquidGlassKit.springDefaut) {
-                                    faiblesses.remove(at: index)
+                                    if index < faiblesses.count { faiblesses.remove(at: index) }
                                     sauvegarderImmediatement()
                                 }
                             } label: {
                                 Image(systemName: "minus.circle.fill")
-                                    .foregroundStyle(.red.opacity(0.6))
+                                    .foregroundStyle(PaletteMat.negatif.opacity(0.7))
                             }
                             .siAutorise(peutModifier)
                         }
@@ -475,8 +477,8 @@ struct ScoutingReportView: View {
                 if strategies.isEmpty {
                     placeholderVide("Aucune stratégie recommandée", icone: "lightbulb.slash")
                 } else {
-                    ForEach(Array(strategies.enumerated()), id: \.element.id) { index, strategie in
-                        carteStrategie(index: index, strategie: strategie)
+                    ForEach($strategies) { $strategie in
+                        carteStrategie(strategie: $strategie)
                     }
                 }
             }
@@ -484,28 +486,28 @@ struct ScoutingReportView: View {
         .glassSection()
     }
 
-    private func carteStrategie(index: Int, strategie: StrategieRecommandee) -> some View {
+    private func carteStrategie(strategie: Binding<StrategieRecommandee>) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
                 // Indicateur priorité
-                badgePriorite(strategie.priorite)
+                badgePriorite(strategie.wrappedValue.priorite)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    TextField("Titre de la stratégie", text: $strategies[index].titre)
+                    TextField("Titre de la stratégie", text: strategie.titre)
                         .font(.headline)
-                        .onChange(of: strategies[index].titre) { _, _ in planifierSauvegarde() }
+                        .onChange(of: strategie.wrappedValue.titre) { _, _ in planifierSauvegarde() }
 
                     HStack(spacing: 12) {
-                        Picker("Priorité", selection: $strategies[index].priorite) {
+                        Picker("Priorité", selection: strategie.priorite) {
                             Text("Haute").tag(1)
                             Text("Moyenne").tag(2)
                             Text("Basse").tag(3)
                         }
                         .pickerStyle(.segmented)
                         .frame(width: 260)
-                        .onChange(of: strategies[index].priorite) { _, _ in planifierSauvegarde() }
+                        .onChange(of: strategie.wrappedValue.priorite) { _, _ in planifierSauvegarde() }
 
-                        Picker("Catégorie", selection: $strategies[index].categorie) {
+                        Picker("Catégorie", selection: strategie.categorie) {
                             Text("Catégorie").tag("")
                             ForEach(categoriesStrategie, id: \.self) { cat in
                                 Text(cat).tag(cat)
@@ -513,32 +515,33 @@ struct ScoutingReportView: View {
                         }
                         .pickerStyle(.menu)
                         .tint(PaletteMat.violet)
-                        .onChange(of: strategies[index].categorie) { _, _ in planifierSauvegarde() }
+                        .onChange(of: strategie.wrappedValue.categorie) { _, _ in planifierSauvegarde() }
                     }
                 }
 
                 Spacer()
 
                 Button(role: .destructive) {
+                    let id = strategie.wrappedValue.id
                     withAnimation(LiquidGlassKit.springDefaut) {
-                        strategies.remove(at: index)
+                        strategies.removeAll { $0.id == id }
                         sauvegarderImmediatement()
                     }
                 } label: {
                     Image(systemName: "trash")
                         .font(.caption)
-                        .foregroundStyle(.red.opacity(0.7))
+                        .foregroundStyle(PaletteMat.negatif.opacity(0.7))
                 }
                 .siAutorise(peutModifier)
             }
 
-            TextEditor(text: $strategies[index].description)
+            TextEditor(text: strategie.description)
                 .frame(minHeight: 60)
                 .scrollContentBackground(.hidden)
                 .background(Color(.tertiarySystemBackground))
                 .clipShape(RoundedRectangle(cornerRadius: LiquidGlassKit.rayonMini * 2, style: .continuous))
                 .overlay {
-                    if strategies[index].description.isEmpty {
+                    if strategie.wrappedValue.description.isEmpty {
                         Text("Description de la stratégie...")
                             .font(.footnote)
                             .foregroundStyle(PaletteMat.texteTertiaire)
@@ -547,10 +550,21 @@ struct ScoutingReportView: View {
                             .allowsHitTesting(false)
                     }
                 }
-                .onChange(of: strategies[index].description) { _, _ in planifierSauvegarde() }
+                .onChange(of: strategie.wrappedValue.description) { _, _ in planifierSauvegarde() }
         }
         .padding(12)
         .glassCard(teinte: PaletteMat.violet, cornerRadius: 14, ombre: true)
+    }
+
+    /// Binding sécurisé sur un tableau de chaînes — évite l'« index out of
+    /// range » pendant les transitions de suppression (revue finale, HIGH).
+    private func liaisonSecurisee(_ tableau: Binding<[String]>, index: Int) -> Binding<String> {
+        Binding(
+            get: { index < tableau.wrappedValue.count ? tableau.wrappedValue[index] : "" },
+            set: { nouvelle in
+                if index < tableau.wrappedValue.count { tableau.wrappedValue[index] = nouvelle }
+            }
+        )
     }
 
     // MARK: - 7. Notes générales
