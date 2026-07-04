@@ -348,56 +348,21 @@ struct MatchDetailView: View {
         let joueursEquipe = joueurs.filtreEquipe(codeEquipeActif)
         let pointsMatch = tousPoints.filter { $0.seanceID == seance.id }
         let actionsMatch = toutesActionsRallye.filter { $0.seanceID == seance.id }
+        let joueursIDs = Set(pointsMatch.compactMap(\.joueurID))
+            .union(actionsMatch.map(\.joueurID))
 
-        // Agrégation centralisée (remplace le switch historique dupliqué —
-        // sémantique verrouillée par AgregateurStatsMatchTests).
-        let compteurs = AgregateurStatsMatch.agreger(points: pointsMatch, actions: actionsMatch)
-        let joueursIDs = Set(compteurs.keys)
-
-        for (joueurID, c) in compteurs {
-            // Trouver ou créer StatsMatch
-            let stat: StatsMatch
-            if let existant = tousStatsMatch.first(where: { $0.seanceID == seance.id && $0.joueurID == joueurID }) {
-                stat = existant
-            } else {
-                stat = StatsMatch(seanceID: seance.id, joueurID: joueurID)
-                stat.codeEquipe = codeEquipeActif
-                modelContext.insert(stat)
-            }
-
-            // Comportement historique conservé : les compteurs s'AJOUTENT à un
-            // StatsMatch préexistant (saisie manuelle partielle), et le tout
-            // est protégé par le guard statsEntrees.
-            stat.kills += c.kills
-            stat.erreursAttaque += c.erreursAttaque
-            stat.tentativesAttaque += c.tentativesAttaque
-            stat.aces += c.aces
-            stat.erreursService += c.erreursService
-            stat.servicesTotaux += c.servicesTotaux
-            stat.blocsSeuls += c.blocsSeuls
-            stat.blocsAssistes += c.blocsAssistes
-            stat.erreursBloc += c.erreursBloc
-            stat.receptionsReussies += c.receptionsReussies
-            stat.erreursReception += c.erreursReception
-            stat.receptionsTotales += c.receptionsTotales
-            stat.passesDecisives += c.passesDecisives
-            stat.manchettes += c.manchettes
-            stat.setsJoues = c.setsJoues
-        }
-
-        // Cumul carrière : resynchronisation idempotente (même mécanique que
-        // le fix B2 du box score) au lieu de l'addition historique.
-        let joueursTouches = joueursEquipe.filter { joueursIDs.contains($0.id) }
-        AgregateurStatsMatch.resynchroniserCumul(
-            joueurs: joueursTouches,
-            statsMatch: tousStatsMatch.filtreEquipe(codeEquipeActif)
+        // Agrégation + StatsMatch + resynchronisation du cumul carrière,
+        // centralisées dans le service (couvre l'union des StatsMatch créés
+        // pendant l'appel — cf. FinalisationMatchTests). Pose statsEntrees.
+        AgregateurStatsMatch.finaliserStats(
+            seance: seance,
+            points: pointsMatch,
+            actions: actionsMatch,
+            statsExistants: tousStatsMatch.filtreEquipe(codeEquipeActif),
+            joueurs: joueursEquipe,
+            codeEquipe: codeEquipeActif,
+            contexte: modelContext
         )
-        for joueur in joueursTouches {
-            // Bump pour que le sweep coach republie les stats à jour vers la Public DB.
-            joueur.dateModification = Date()
-        }
-
-        seance.statsEntrees = true
         do {
             try modelContext.save()
             confirmeFinalisation = true

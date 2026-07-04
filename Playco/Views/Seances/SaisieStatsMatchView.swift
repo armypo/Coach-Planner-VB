@@ -37,6 +37,7 @@ struct SaisieStatsMatchView: View {
             return existant
         }
         let nouveau = StatsMatch(seanceID: seance.id, joueurID: joueur.id)
+        nouveau.codeEquipe = codeEquipeActif
         modelContext.insert(nouveau)
         return nouveau
     }

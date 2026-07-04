@@ -8,6 +8,7 @@
 //
 
 import Foundation
+import SwiftData
 
 /// Compteurs de stats d'un joueur pour un match (struct valeur, pur).
 struct CompteursJoueur: Equatable {
@@ -115,6 +116,69 @@ enum AgregateurStatsMatch {
             compteurs[joueurID]?.setsJoues = sets.count
         }
         return compteurs
+    }
+
+    /// Finalise un match : agrège les points/actions en StatsMatch (créés ou
+    /// complétés), puis resynchronise le cumul carrière des joueurs touchés.
+    /// IMPORTANT : les StatsMatch créés ICI sont unis à `statsExistants` avant
+    /// la resynchronisation — un snapshot @Query pris avant l'appel ne les
+    /// contient pas (finding CRITICAL de la revue Phase 1, couvert par
+    /// FinalisationMatchTests).
+    @MainActor
+    static func finaliserStats(
+        seance: Seance,
+        points: [PointMatch],
+        actions: [ActionRallye],
+        statsExistants: [StatsMatch],
+        joueurs: [JoueurEquipe],
+        codeEquipe: String,
+        contexte: ModelContext
+    ) {
+        guard !seance.statsEntrees else { return }
+
+        let compteurs = agreger(points: points, actions: actions)
+        var statsPourResync = statsExistants
+
+        for (joueurID, c) in compteurs {
+            let stat: StatsMatch
+            if let existant = statsExistants.first(where: {
+                $0.seanceID == seance.id && $0.joueurID == joueurID
+            }) {
+                stat = existant
+            } else {
+                stat = StatsMatch(seanceID: seance.id, joueurID: joueurID)
+                stat.codeEquipe = codeEquipe
+                contexte.insert(stat)
+                statsPourResync.append(stat)
+            }
+
+            // Comportement historique conservé : les compteurs s'AJOUTENT à un
+            // StatsMatch préexistant (saisie manuelle partielle).
+            stat.kills += c.kills
+            stat.erreursAttaque += c.erreursAttaque
+            stat.tentativesAttaque += c.tentativesAttaque
+            stat.aces += c.aces
+            stat.erreursService += c.erreursService
+            stat.servicesTotaux += c.servicesTotaux
+            stat.blocsSeuls += c.blocsSeuls
+            stat.blocsAssistes += c.blocsAssistes
+            stat.erreursBloc += c.erreursBloc
+            stat.receptionsReussies += c.receptionsReussies
+            stat.erreursReception += c.erreursReception
+            stat.receptionsTotales += c.receptionsTotales
+            stat.passesDecisives += c.passesDecisives
+            stat.manchettes += c.manchettes
+            stat.setsJoues = c.setsJoues
+        }
+
+        let joueursTouches = joueurs.filter { compteurs.keys.contains($0.id) }
+        resynchroniserCumul(joueurs: joueursTouches, statsMatch: statsPourResync)
+        for joueur in joueursTouches {
+            // Bump pour que le sweep coach republie les stats à jour (Public DB).
+            joueur.dateModification = Date()
+        }
+
+        seance.statsEntrees = true
     }
 
     /// Recalcule le cumul carrière d'un joueur depuis la somme de ses
