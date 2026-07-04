@@ -52,6 +52,7 @@ struct DashboardMatchLiveView: View {
     @State private var afficherRotation = false
     @State private var afficherDetailsJoueurs = false
     @State private var afficherFilMatch = false
+    @State private var afficherPlanMatch = false
     @State private var timerTempsMort: Int = 30
     @State private var timerActif = false
     @State private var afficherTTO = false
@@ -265,6 +266,11 @@ struct DashboardMatchLiveView: View {
                         .accessibilityLabel("Substitutions : \(viewModel.subsUtiliseesDansSet) sur \(viewModel.subsMaxParSet) utilisées dans ce set")
                         .accessibilityHint("Double-tapez pour gérer les substitutions")
                     }
+                }
+
+                // Plan de match (scouting adversaire) — replié par défaut
+                if !viewModel.seance.adversaire.isEmpty {
+                    sectionPlanMatch
                 }
 
                 // Tableau joueurs — masqué par défaut en courtside
@@ -640,6 +646,24 @@ struct DashboardMatchLiveView: View {
         .padding(.horizontal, LiquidGlassKit.espaceSM + LiquidGlassKit.espaceXS)
         .padding(.vertical, LiquidGlassKit.espaceXS + 2)
         .background(couleur.opacity(0.1), in: Capsule())
+    }
+
+    // MARK: - Plan de match (scouting)
+
+    /// Panneau repliable exposant le scouting de l'adversaire (lecture seule).
+    private var sectionPlanMatch: some View {
+        DisclosureGroup(isExpanded: $afficherPlanMatch.animation(LiquidGlassKit.springDefaut)) {
+            PlanMatchPanneau(adversaire: viewModel.seance.adversaire)
+                .padding(.top, LiquidGlassKit.espaceSM)
+        } label: {
+            Text("PLAN DE MATCH")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.secondary)
+                .tracking(0.5)
+        }
+        .padding(LiquidGlassKit.espaceMD)
+        .glassSection()
+        .accessibilityHint("Double-tapez pour afficher le plan de match contre \(viewModel.seance.adversaire)")
     }
 
     // MARK: - Tableau joueurs

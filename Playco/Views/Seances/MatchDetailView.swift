@@ -36,6 +36,7 @@ struct MatchDetailView: View {
     @State private var afficherConfirmationFinaliser = false
     @State private var confirmeFinalisation = false
     @State private var afficherAnalyseMatch = false
+    @State private var afficherPlanMatch = false
 
     /// Exercice conteneur pour le terrain — stocké en @State pour éviter la recréation
     @State private var exerciceTerrain: Exercice?
@@ -139,6 +140,22 @@ struct MatchDetailView: View {
                                 .background(Color.blue.opacity(0.1), in: Capsule())
                         }
 
+                        // Plan de match (scouting adversaire)
+                        if !seance.adversaire.isEmpty {
+                            Button { afficherPlanMatch = true } label: {
+                                HStack(spacing: 3) {
+                                    Image(systemName: "binoculars.fill")
+                                        .font(.caption)
+                                    Text("Scouting")
+                                        .font(.caption.weight(.medium))
+                                }
+                                .foregroundStyle(PaletteMat.violet)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(PaletteMat.violet.opacity(0.1), in: Capsule())
+                            }
+                        }
+
                         // Dashboard live
                         Button { afficherDashboardLive = true } label: {
                             HStack(spacing: 3) {
@@ -240,6 +257,22 @@ struct MatchDetailView: View {
         }
         .sheet(isPresented: $afficherAnalyseMatch) {
             AnalyseMatchSheet(seance: seance)
+        }
+        .sheet(isPresented: $afficherPlanMatch) {
+            NavigationStack {
+                ScrollView {
+                    PlanMatchPanneau(adversaire: seance.adversaire)
+                        .padding(LiquidGlassKit.espaceMD)
+                }
+                .navigationTitle("Plan de match")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Fermer") { afficherPlanMatch = false }
+                    }
+                }
+            }
+            .presentationDetents([.medium, .large])
         }
         .sheet(isPresented: $afficherComposition) {
             NavigationStack {
