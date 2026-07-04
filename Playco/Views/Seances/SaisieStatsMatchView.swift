@@ -279,32 +279,15 @@ struct SaisieStatsMatchView: View {
     // MARK: - Sauvegarder et synchroniser
 
     private func sauvegarderEtSync() {
-        // Sync : ajouter les stats du match aux stats cumulées des joueurs
-        for stat in statsMatch {
-            guard let joueur = joueursEquipe.first(where: { $0.id == stat.joueurID }) else { continue }
-
-            joueur.matchsJoues += 1
-            joueur.setsJoues += stat.setsJoues
-
-            joueur.attaquesReussies += stat.kills
-            joueur.erreursAttaque += stat.erreursAttaque
-            joueur.attaquesTotales += stat.tentativesAttaque
-
-            joueur.aces += stat.aces
-            joueur.erreursService += stat.erreursService
-            joueur.servicesTotaux += stat.servicesTotaux
-
-            joueur.blocsSeuls += stat.blocsSeuls
-            joueur.blocsAssistes += stat.blocsAssistes
-            joueur.erreursBloc += stat.erreursBloc
-
-            joueur.receptionsReussies += stat.receptionsReussies
-            joueur.erreursReception += stat.erreursReception
-            joueur.receptionsTotales += stat.receptionsTotales
-
-            joueur.passesDecisives += stat.passesDecisives
-            joueur.manchettes += stat.manchettes
-
+        // Resynchronisation idempotente (fix B2) : le cumul carrière est
+        // RECALCULÉ depuis la somme des StatsMatch — re-taper « Sauvegarder »
+        // ne double plus les stats et répare les cumuls déjà doublés.
+        let statsEquipe = tousStatsMatch.filtreEquipe(codeEquipeActif)
+        let joueursTouches = joueursEquipe.filter { joueur in
+            statsMatch.contains { $0.joueurID == joueur.id }
+        }
+        AgregateurStatsMatch.resynchroniserCumul(joueurs: joueursTouches, statsMatch: statsEquipe)
+        for joueur in joueursTouches {
             // Bump pour que le sweep coach republie les stats à jour vers la Public DB.
             joueur.dateModification = Date()
         }

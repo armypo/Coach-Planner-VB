@@ -349,12 +349,12 @@ struct MatchDetailView: View {
         let pointsMatch = tousPoints.filter { $0.seanceID == seance.id }
         let actionsMatch = toutesActionsRallye.filter { $0.seanceID == seance.id }
 
-        // Collecter tous les joueurs impliqués
-        var joueursIDs = Set<UUID>()
-        for p in pointsMatch { if let jid = p.joueurID { joueursIDs.insert(jid) } }
-        for a in actionsMatch { joueursIDs.insert(a.joueurID) }
+        // Agrégation centralisée (remplace le switch historique dupliqué —
+        // sémantique verrouillée par AgregateurStatsMatchTests).
+        let compteurs = AgregateurStatsMatch.agreger(points: pointsMatch, actions: actionsMatch)
+        let joueursIDs = Set(compteurs.keys)
 
-        for joueurID in joueursIDs {
+        for (joueurID, c) in compteurs {
             // Trouver ou créer StatsMatch
             let stat: StatsMatch
             if let existant = tousStatsMatch.first(where: { $0.seanceID == seance.id && $0.joueurID == joueurID }) {
@@ -365,88 +365,36 @@ struct MatchDetailView: View {
                 modelContext.insert(stat)
             }
 
-            // Agrégation PointMatch
-            let pointsJoueur = pointsMatch.filter { $0.joueurID == joueurID }
-            for point in pointsJoueur {
-                switch point.typeAction {
-                case .kill:
-                    stat.kills += 1
-                    stat.tentativesAttaque += 1
-                case .erreurAttaque:
-                    stat.erreursAttaque += 1
-                    stat.tentativesAttaque += 1
-                case .ace:
-                    stat.aces += 1
-                    stat.servicesTotaux += 1
-                case .erreurService:
-                    stat.erreursService += 1
-                    stat.servicesTotaux += 1
-                case .blocSeul, .bloc:
-                    stat.blocsSeuls += 1
-                case .blocAssiste:
-                    stat.blocsAssistes += 1
-                case .erreurBloc:
-                    stat.erreursBloc += 1
-                case .erreurReception:
-                    stat.erreursReception += 1
-                    stat.receptionsTotales += 1
-                case .erreurAdversaire, .fauteJeu, .erreurEquipe,
-                     .killAdversaire, .aceAdversaire, .blocAdversaire,
-                     .erreurAttaqueAdversaire, .erreurServiceAdversaire:
-                    break
-                }
-            }
+            // Comportement historique conservé : les compteurs s'AJOUTENT à un
+            // StatsMatch préexistant (saisie manuelle partielle), et le tout
+            // est protégé par le guard statsEntrees.
+            stat.kills += c.kills
+            stat.erreursAttaque += c.erreursAttaque
+            stat.tentativesAttaque += c.tentativesAttaque
+            stat.aces += c.aces
+            stat.erreursService += c.erreursService
+            stat.servicesTotaux += c.servicesTotaux
+            stat.blocsSeuls += c.blocsSeuls
+            stat.blocsAssistes += c.blocsAssistes
+            stat.erreursBloc += c.erreursBloc
+            stat.receptionsReussies += c.receptionsReussies
+            stat.erreursReception += c.erreursReception
+            stat.receptionsTotales += c.receptionsTotales
+            stat.passesDecisives += c.passesDecisives
+            stat.manchettes += c.manchettes
+            stat.setsJoues = c.setsJoues
+        }
 
-            // Agrégation ActionRallye
-            let actionsJoueur = actionsMatch.filter { $0.joueurID == joueurID }
-            for action in actionsJoueur {
-                switch action.typeAction {
-                case .manchette:
-                    stat.manchettes += 1
-                case .passeDecisive:
-                    stat.passesDecisives += 1
-                case .reception:
-                    stat.receptionsTotales += 1
-                    if action.qualite >= 2 {
-                        stat.receptionsReussies += 1
-                    }
-                case .tentativeAttaque:
-                    stat.tentativesAttaque += 1
-                case .serviceEnJeu, .dig:
-                    break
-                }
-            }
-
-            // Sets joués = nombre de sets distincts où le joueur apparaît
-            var setsJoueur = Set<Int>()
-            for p in pointsJoueur { setsJoueur.insert(p.set) }
-            for a in actionsJoueur { setsJoueur.insert(a.set) }
-            stat.setsJoues = setsJoueur.count
-
-            // Sync vers JoueurEquipe cumulatif
-            guard let joueur = joueursEquipe.first(where: { $0.id == joueurID }) else { continue }
-
-            joueur.matchsJoues += 1
-            joueur.setsJoues += stat.setsJoues
-
-            joueur.attaquesReussies += stat.kills
-            joueur.erreursAttaque += stat.erreursAttaque
-            joueur.attaquesTotales += stat.tentativesAttaque
-
-            joueur.aces += stat.aces
-            joueur.erreursService += stat.erreursService
-            joueur.servicesTotaux += stat.servicesTotaux
-
-            joueur.blocsSeuls += stat.blocsSeuls
-            joueur.blocsAssistes += stat.blocsAssistes
-            joueur.erreursBloc += stat.erreursBloc
-
-            joueur.receptionsReussies += stat.receptionsReussies
-            joueur.erreursReception += stat.erreursReception
-            joueur.receptionsTotales += stat.receptionsTotales
-
-            joueur.passesDecisives += stat.passesDecisives
-            joueur.manchettes += stat.manchettes
+        // Cumul carrière : resynchronisation idempotente (même mécanique que
+        // le fix B2 du box score) au lieu de l'addition historique.
+        let joueursTouches = joueursEquipe.filter { joueursIDs.contains($0.id) }
+        AgregateurStatsMatch.resynchroniserCumul(
+            joueurs: joueursTouches,
+            statsMatch: tousStatsMatch.filtreEquipe(codeEquipeActif)
+        )
+        for joueur in joueursTouches {
+            // Bump pour que le sweep coach republie les stats à jour vers la Public DB.
+            joueur.dateModification = Date()
         }
 
         seance.statsEntrees = true
