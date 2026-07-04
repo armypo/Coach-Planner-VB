@@ -1,9 +1,11 @@
 //  Playco
 //  Copyright © 2026 Christopher Dionne. Tous droits réservés.
 //
-//  Mode DÉMO : provisionne un coach + une équipe démo VIDES et ouvre une
-//  session, pour un build vitrine sans login ni paywall. Compilé uniquement
-//  sous la condition `DEMO` (absent des binaires Debug/Release de prod).
+//  Mode DÉMO : provisionne un coach + une équipe démo avec un jeu de données
+//  vitrine (roster, matchs terminés, exercices, scouting — voir
+//  DemoBootstrap+Donnees.swift) et ouvre une session, pour un build vitrine
+//  sans login ni paywall. Compilé uniquement sous la condition `DEMO`
+//  (absent des binaires Debug/Release de prod).
 //
 
 #if DEMO
@@ -18,10 +20,12 @@ enum DemoBootstrap {
     static let identifiantCoach = "demo.coach"
 
     /// Ouvre la session démo : récupère le coach démo existant ou le crée
-    /// (avec son équipe vide), puis marque la session comme connectée.
+    /// (avec son équipe), peuple le jeu de données vitrine si absent, puis
+    /// marque la session comme connectée.
     @MainActor
     static func demarrer(authService: AuthService, context: ModelContext) {
         let coach = coachExistant(context: context) ?? creer(context: context)
+        peuplerVitrineSiVide(coach: coach, context: context)
         authService.utilisateurConnecte = coach
     }
 
