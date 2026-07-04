@@ -45,6 +45,7 @@ struct MatchDetailView: View {
 
     /// Cherche ou crée l'exercice terrain lié à cette séance
     private func chargerExerciceTerrain() {
+        guard exerciceTerrain == nil else { return }
         // 1. Chercher dans la relation directe
         if let existant = (seance.exercices ?? []).first(where: { !$0.estArchive }) {
             exerciceTerrain = existant
@@ -115,6 +116,12 @@ struct MatchDetailView: View {
             }
         }
         .onAppear { chargerExerciceTerrain() }
+        // La vue peut être réutilisée pour une autre séance (sélection sidebar) :
+        // sans reset, le terrain resterait figé sur l'exercice du match précédent.
+        .onChange(of: seance.id) {
+            exerciceTerrain = nil
+            chargerExerciceTerrain()
+        }
         .navigationTitle(seance.nom)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

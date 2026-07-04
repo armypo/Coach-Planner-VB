@@ -22,6 +22,7 @@ struct ContentView: View {
     @Environment(AbonnementService.self) private var abonnementService
     @Environment(StoreKitService.self) private var storeKitService
     @Environment(CloudKitSharingService.self) private var sharingService
+    @Environment(CloudKitSyncService.self) private var syncService
     @Environment(\.scenePhase) private var scenePhase
     @State private var sectionActive: SectionApp?
     @State private var afficherProfil: Bool = false
@@ -115,6 +116,10 @@ struct ContentView: View {
             }
         }
         .onChange(of: scenePhase) { _, nouveau in
+            if nouveau == .background {
+                // Persister les événements de sync en attente du batch (journal)
+                syncService.flushJournal()
+            }
             guard nouveau == .active, authService.estConnecte else { return }
             Task { @MainActor in
                 verifierEtatSessionForeground()

@@ -1,7 +1,9 @@
 //  Playco
 //  Copyright © 2025 Christopher Dionne. Tous droits réservés.
 //
-//  Tests du modèle CredentialAthlete (private CloudKit DB).
+//  Tests du modèle CredentialAthlete (marqueur de membre, private CloudKit DB).
+//  SIWA strict : l'init n'accepte plus de mot de passe — `motDePasseClair`
+//  reste dans le schéma (compat CloudKit) mais doit TOUJOURS être vide.
 //
 
 import Testing
@@ -21,18 +23,18 @@ struct CredentialAthleteTests {
         )
     }
 
-    @Test("Création avec defaults")
+    @Test("Création avec defaults — aucun mot de passe stocké")
     func creationAvecDefaults() throws {
         let cred = CredentialAthlete(
             utilisateurID: UUID(),
             identifiant: "jean.dupont.1234",
-            motDePasseClair: "ABCDE_23",
             codeEquipe: "DIAB26"
         )
         #expect(cred.joueurEquipeID == nil)
         #expect(cred.identifiant == "jean.dupont.1234")
-        #expect(cred.motDePasseClair == "ABCDE_23")
         #expect(cred.codeEquipe == "DIAB26")
+        #expect(cred.motDePasseClair.isEmpty,
+                "Invariant sécurité : motDePasseClair doit toujours être vide (SIWA strict)")
     }
 
     @Test("Round-trip save/fetch via ModelContainer")
@@ -42,7 +44,6 @@ struct CredentialAthleteTests {
             utilisateurID: UUID(),
             joueurEquipeID: UUID(),
             identifiant: "alice.martin.0042",
-            motDePasseClair: "XYZAB_45",
             codeEquipe: "GARN26"
         )
         container.mainContext.insert(cred)
@@ -51,16 +52,18 @@ struct CredentialAthleteTests {
         let all = try container.mainContext.fetch(FetchDescriptor<CredentialAthlete>())
         #expect(all.count == 1)
         #expect(all.first?.identifiant == "alice.martin.0042")
+        #expect(all.first?.motDePasseClair.isEmpty == true,
+                "Invariant sécurité : aucun mot de passe en clair persisté")
     }
 
     @Test("filtreEquipe ne retourne que les creds de l'équipe demandée")
     func filtreEquipeActive() throws {
         let container = try nouveauContainer()
         let credA = CredentialAthlete(
-            utilisateurID: UUID(), identifiant: "a", motDePasseClair: "X", codeEquipe: "A1"
+            utilisateurID: UUID(), identifiant: "a", codeEquipe: "A1"
         )
         let credB = CredentialAthlete(
-            utilisateurID: UUID(), identifiant: "b", motDePasseClair: "Y", codeEquipe: "B2"
+            utilisateurID: UUID(), identifiant: "b", codeEquipe: "B2"
         )
         container.mainContext.insert(credA)
         container.mainContext.insert(credB)

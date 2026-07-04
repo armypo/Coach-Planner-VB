@@ -162,18 +162,7 @@ struct ListeSeancesView: View {
     }
 
     private func dupliquer(_ seance: Seance) {
-        let nouvelle = Seance(nom: "\(seance.nom) (copie)")
-        modelContext.insert(nouvelle)
-        for ex in (seance.exercices ?? []).sorted(by: { $0.ordre < $1.ordre }) {
-            let copie = Exercice(nom: ex.nom, ordre: ex.ordre, duree: ex.duree)
-            copie.seance = nouvelle
-            copie.notes = ex.notes
-            copierTerrain(de: ex, vers: copie) // P1-01 (inclut etapesData)
-            modelContext.insert(copie)
-            if nouvelle.exercices == nil { nouvelle.exercices = [] }
-            nouvelle.exercices?.append(copie)
-        }
-        seanceSelectionnee = nouvelle
+        seanceSelectionnee = Seance.dupliquer(seance, dans: modelContext)
     }
 }
 

@@ -33,11 +33,12 @@ struct SetsScoreView: View {
             }
 
             if setsLocaux.isEmpty {
-                Text("Aucun set enregistré")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.vertical, 8)
+                ContentUnavailableView(
+                    "Aucun set enregistré",
+                    systemImage: "list.number",
+                    description: Text("Ajoute le premier set pour saisir le score.")
+                )
+                .frame(maxHeight: 180)
             } else {
                 // Grille des sets
                 ForEach(setsLocaux.indices, id: \.self) { index in

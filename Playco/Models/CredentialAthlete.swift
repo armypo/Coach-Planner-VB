@@ -29,13 +29,12 @@ final class CredentialAthlete {
     init(utilisateurID: UUID,
          joueurEquipeID: UUID? = nil,
          identifiant: String,
-         motDePasseClair: String,
          codeEquipe: String) {
         self.id = UUID()
         self.utilisateurID = utilisateurID
         self.joueurEquipeID = joueurEquipeID
         self.identifiant = identifiant
-        self.motDePasseClair = motDePasseClair
+        self.motDePasseClair = ""
         self.codeEquipe = codeEquipe
         self.dateCreation = Date()
         self.dateModification = Date()

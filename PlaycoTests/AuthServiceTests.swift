@@ -1,38 +1,46 @@
 //  Playco
-//  Copyright © 2025 Christopher Dionne. Tous droits réservés.
+//  Copyright © 2026 Christopher Dionne. Tous droits réservés.
+//
+//  Tests AuthService (SIWA strict v2.1) : restauration de session,
+//  vérification d'état au foreground et déconnexion.
+//  Les tests de connexion par mot de passe / verrouillage / création de
+//  compte / migration de hash ont été retirés avec le flux correspondant —
+//  Sign in with Apple est désormais l'unique méthode d'authentification.
 //
 
 import Testing
 import Foundation
 import SwiftData
-import CryptoKit
 @testable import Playco
 
 /// Tests sérialisés : KeychainService est un store global iOS que nous ne pouvons
 /// pas isoler par test. L'exécution séquentielle évite les collisions entre tests
 /// qui écrivent/lisent la clé de session dans le Keychain.
-@Suite("AuthService", .serialized)
+@Suite("AuthService — session SIWA", .serialized)
+@MainActor
 struct AuthServiceTests {
 
+    // MARK: - Helpers
+
     private func creerContexteEnMemoire() throws -> ModelContext {
+        // Schéma avec fermeture de relations complète (Equipe référence aussi
+        // CreneauRecurrent + MatchCalendrier).
         let schema = Schema([Utilisateur.self, JoueurEquipe.self, Equipe.self,
-                             Etablissement.self, ProfilCoach.self, AssistantCoach.self])
+                             Etablissement.self, ProfilCoach.self, AssistantCoach.self,
+                             CreneauRecurrent.self, MatchCalendrier.self])
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
         let container = try ModelContainer(for: schema, configurations: [config])
         return ModelContext(container)
     }
 
-    /// Nettoie l'état Keychain global (session + verrouillage) avant chaque test.
-    /// Le Keychain iOS n'est pas isolable par suite, d'où le nettoyage explicite.
-    @MainActor
+    /// Nettoie la session Keychain globale (le Keychain iOS n'est pas isolable
+    /// par suite, d'où le nettoyage explicite avant chaque test).
     private func nettoyerKeychainGlobal() {
         KeychainService.supprimer(cle: SessionManager.cleKeychain)
-        KeychainService.supprimer(cle: AuthService.cleEtatVerrouillage)
     }
 
-    /// AuthService avec UserDefaults isolé — conservé pour la migration legacy
-    /// UserDefaults → Keychain. Le verrouillage lui-même est en Keychain global.
-    @MainActor
+    /// AuthService avec UserDefaults isolé — conservé pour la migration
+    /// session legacy UserDefaults → Keychain.
     private func creerAuthIsole() -> AuthService {
         nettoyerKeychainGlobal()
         let suite = UserDefaults(suiteName: "playco-test-\(UUID().uuidString)")!
@@ -40,323 +48,254 @@ struct AuthServiceTests {
     }
 
     /// Crée un AuthService isolé ET retourne aussi la suite UserDefaults
-    /// pour les tests qui doivent écrire dans le même store (ex: restaurerSession).
-    @MainActor
+    /// pour les tests qui doivent écrire dans le même store (migration legacy).
     private func creerAuthAvecSuite() -> (AuthService, UserDefaults) {
         nettoyerKeychainGlobal()
         let suite = UserDefaults(suiteName: "playco-test-\(UUID().uuidString)")!
         return (AuthService(userDefaults: suite), suite)
     }
 
-    // MARK: - Hash
-
-    @Test("Hash déterministe avec sel")
-    func hashDeterministe() {
-        let auth = creerAuthIsole()
-        let sel = "abc123"
-        let h1 = auth.hashMotDePasse("monMotDePasse", sel: sel)
-        let h2 = auth.hashMotDePasse("monMotDePasse", sel: sel)
-        #expect(h1 == h2, "Le hash doit être déterministe")
-        #expect(h1.count == 64, "SHA256 produit 64 caractères hex")
-    }
-
-    @Test("Hash différent avec sel différent")
-    func hashDifferentAvecSelDifferent() {
-        let auth = creerAuthIsole()
-        let h1 = auth.hashMotDePasse("test", sel: "sel1")
-        let h2 = auth.hashMotDePasse("test", sel: "sel2")
-        #expect(h1 != h2, "Sels différents doivent produire des hash différents")
-    }
-
-    @Test("Connexion rétrocompatible — ancien hash sans sel")
-    func connexionRetrocompatibleSansSel() throws {
-        let auth = creerAuthIsole()
-        let context = try creerContexteEnMemoire()
-
-        // Simuler un ancien hash SHA256 sans sel (comme le faisait la version initiale)
-        let motDePasse = "motdepasse"
-        let donnees = Data(motDePasse.utf8)
-        let hashAncien = SHA256.hash(data: donnees)
-            .compactMap { String(format: "%02x", $0) }.joined()
-
-        let user = Utilisateur(
-            identifiant: "ancien.compte",
-            motDePasseHash: hashAncien,
-            prenom: "Ancien",
-            nom: "Compte",
-            role: .etudiant
-        )
-        // Pas de sel — simule un compte pré-migration
+    /// Insère un utilisateur actif lié à un Apple ID (sans secret — SIWA strict).
+    private func insererUtilisateurApple(identifiant: String,
+                                         appleUserID: String,
+                                         role: RoleUtilisateur = .etudiant,
+                                         context: ModelContext) throws -> Utilisateur {
+        let user = Utilisateur(identifiant: identifiant, motDePasseHash: "",
+                               prenom: "Test", nom: "User", role: role)
+        user.appleUserID = appleUserID
         context.insert(user)
         try context.save()
-
-        auth.connexion(identifiant: "ancien.compte", motDePasse: motDePasse, context: context)
-        #expect(auth.estConnecte, "Doit accepter un ancien hash sans sel (rétrocompatibilité)")
-
-        // Après connexion réussie, le compte doit avoir été migré vers PBKDF2 600k
-        #expect(user.iterations == AuthService.iterationsParDefaut,
-                "Migration auto SHA256 → PBKDF2 au login")
-        #expect((user.sel?.isEmpty ?? true) == false,
-                "Migration a généré un sel aléatoire")
+        return user
     }
 
-    @Test("Migration hash v1.9 (SHA256+sel) → PBKDF2 au login")
-    func connexionMigrationSHA256Sel() throws {
+    // MARK: - Restauration de session
+
+    @Test("restaurerSession — aucune session sauvegardée → no-op")
+    func restaurerSessionSansSession() throws {
+        // Arrange
         let auth = creerAuthIsole()
         let context = try creerContexteEnMemoire()
 
-        // Simuler un compte v1.9 : sel présent, hash = SHA256(sel + mdp), iterations = 1
-        let motDePasse = "motdepassev19"
-        let sel = "7f3a9b21d4c6e8f05a1b3c2d4e5f6789"
-        let hashV19 = SHA256.hash(data: Data((sel + motDePasse).utf8))
-            .compactMap { String(format: "%02x", $0) }.joined()
+        // Act
+        auth.restaurerSession(context: context)
 
-        let user = Utilisateur(
-            identifiant: "v19.compte",
-            motDePasseHash: hashV19,
-            prenom: "Un",
-            nom: "Neuf",
-            role: .etudiant
-        )
-        user.sel = sel
-        user.iterations = 1 // chemin legacy v1.9
-        context.insert(user)
+        // Assert
+        #expect(!auth.estConnecte, "Sans session sauvegardée, personne ne doit être connecté")
+        #expect(auth.utilisateurConnecte == nil)
+    }
+
+    @Test("restaurerSession — session Keychain valide → utilisateur connecté")
+    func restaurerSessionKeychainValide() throws {
+        // Arrange
+        let auth = creerAuthIsole()
+        let context = try creerContexteEnMemoire()
+        let user = try insererUtilisateurApple(identifiant: "session.keychain",
+                                               appleUserID: "001.session", context: context)
+        user.sessionCreeeLe = Date()
         try context.save()
+        KeychainService.sauvegarder(cle: SessionManager.cleKeychain, valeur: user.id.uuidString)
 
-        auth.connexion(identifiant: "v19.compte", motDePasse: motDePasse, context: context)
-        #expect(auth.estConnecte, "Doit accepter un hash SHA256+sel legacy")
+        // Act
+        auth.restaurerSession(context: context)
 
-        // Migration vers PBKDF2 600k
-        #expect(user.iterations == AuthService.iterationsParDefaut,
-                "iterations doit être à 600k après migration")
-        #expect(user.motDePasseHash != hashV19,
-                "hash doit avoir changé (nouveau hash PBKDF2)")
-        #expect(user.sel != sel,
-                "sel doit avoir changé (migration régénère un sel)")
+        // Assert
+        #expect(auth.estConnecte)
+        #expect(auth.utilisateurConnecte?.id == user.id)
 
-        // Se reconnecter avec le même mot de passe après migration doit fonctionner
-        auth.deconnexion()
-        auth.connexion(identifiant: "v19.compte", motDePasse: motDePasse, context: context)
-        #expect(auth.estConnecte, "Le même mot de passe doit fonctionner post-migration")
+        // Cleanup
+        nettoyerKeychainGlobal()
     }
 
-    @Test("Génération de sel unique")
-    func genererSelUnique() {
-        let auth = creerAuthIsole()
-        let sel1 = auth.genererSel()
-        let sel2 = auth.genererSel()
-        #expect(sel1 != sel2, "Deux sels générés doivent être différents")
-        #expect(sel1.count == 32, "Sel = 16 bytes = 32 hex chars")
-    }
-
-    // MARK: - Lockout
-    // NB: tests de politique mdp NIST 800-63B déplacés vers PasswordPolicyTests
-
-    @Test("Verrouillage après 5 tentatives")
-    func lockoutApres5Tentatives() {
-        let auth = creerAuthIsole()
-        #expect(!auth.estVerrouille)
-        for _ in 0..<5 {
-            auth.enregistrerEchec()
-        }
-        #expect(auth.estVerrouille, "Doit être verrouillé après 5 échecs")
-        #expect(auth.tentativesEchouees == 5)
-        #expect(auth.tempsRestantVerrouillage > 0)
-    }
-
-    @Test("Pas de verrouillage avant 5 tentatives")
-    func pasLockoutAvant5() {
-        let auth = creerAuthIsole()
-        for _ in 0..<4 {
-            auth.enregistrerEchec()
-        }
-        #expect(!auth.estVerrouille)
-        #expect(auth.tentativesEchouees == 4)
-    }
-
-    // MARK: - Connexion
-
-    @Test("Connexion réussie")
-    func connexionReussie() throws {
-        let auth = creerAuthIsole()
-        let context = try creerContexteEnMemoire()
-
-        let sel = auth.genererSel()
-        let hash = auth.hashMotDePasse("secret123", sel: sel)
-        let user = Utilisateur(identifiant: "chris.dionne", motDePasseHash: hash, prenom: "Chris", nom: "Dionne", role: .admin)
-        user.sel = sel
-        user.iterations = AuthService.iterationsParDefaut
-        context.insert(user)
-        try context.save()
-
-        auth.connexion(identifiant: "chris.dionne", motDePasse: "secret123", context: context)
-        #expect(auth.estConnecte, "Doit être connecté après connexion réussie")
-        #expect(auth.utilisateurConnecte?.identifiant == "chris.dionne")
-        #expect(auth.erreur == nil)
-    }
-
-    @Test("Connexion échouée — mauvais mot de passe")
-    func connexionEchouee() throws {
-        let auth = creerAuthIsole()
-        let context = try creerContexteEnMemoire()
-
-        let sel = auth.genererSel()
-        let hash = auth.hashMotDePasse("correct", sel: sel)
-        let user = Utilisateur(identifiant: "test.user", motDePasseHash: hash, prenom: "Test", nom: "User", role: .etudiant)
-        user.sel = sel
-        user.iterations = AuthService.iterationsParDefaut
-        context.insert(user)
-        try context.save()
-
-        auth.connexion(identifiant: "test.user", motDePasse: "mauvais", context: context)
-        #expect(!auth.estConnecte)
-        #expect(auth.erreur != nil)
-        #expect(auth.tentativesEchouees == 1)
-    }
-
-    @Test("Connexion bloquée quand verrouillé")
-    func connexionBloquee() throws {
-        let auth = creerAuthIsole()
-        let context = try creerContexteEnMemoire()
-
-        // Forcer le verrouillage
-        for _ in 0..<5 { auth.enregistrerEchec() }
-
-        auth.connexion(identifiant: "n'importe", motDePasse: "quoi", context: context)
-        #expect(!auth.estConnecte)
-        #expect(auth.erreur?.contains("verrouillé") == true)
-    }
-
-    // MARK: - Session
-
-    @Test("Restauration de session")
-    func restaurerSession() throws {
+    @Test("restaurerSession — migration session legacy UserDefaults → Keychain")
+    func restaurerSessionMigrationLegacy() throws {
+        // Arrange
         let (auth, suite) = creerAuthAvecSuite()
         let context = try creerContexteEnMemoire()
-
-        let sel = auth.genererSel()
-        let hash = auth.hashMotDePasse("pass", sel: sel)
-        let user = Utilisateur(identifiant: "session.test", motDePasseHash: hash, prenom: "S", nom: "T", role: .etudiant)
-        user.sel = sel
-        user.iterations = AuthService.iterationsParDefaut
-        context.insert(user)
+        let user = try insererUtilisateurApple(identifiant: "session.legacy",
+                                               appleUserID: "002.legacy", context: context)
+        user.sessionCreeeLe = Date()
         try context.save()
-
         // Simuler une session legacy dans la suite injectée (non .standard !)
         suite.set(user.id.uuidString, forKey: "utilisateurConnecteID")
 
-        let auth2 = AuthService(userDefaults: suite)
-        auth2.restaurerSession(context: context)
-        #expect(auth2.estConnecte)
-        #expect(auth2.utilisateurConnecte?.id == user.id)
+        // Act
+        auth.restaurerSession(context: context)
+
+        // Assert
+        #expect(auth.estConnecte)
+        #expect(auth.utilisateurConnecte?.id == user.id)
+        #expect(auth.idSessionSauvegardee == user.id.uuidString,
+                "La session legacy doit avoir été migrée vers le Keychain")
+        #expect(suite.string(forKey: "utilisateurConnecteID") == nil,
+                "L'entrée UserDefaults legacy doit être purgée après migration")
 
         // Cleanup
         suite.removeObject(forKey: "utilisateurConnecteID")
-        KeychainService.supprimer(cle: SessionManager.cleKeychain)
+        nettoyerKeychainGlobal()
+    }
+
+    @Test("restaurerSession — utilisateur inactif → session supprimée")
+    func restaurerSessionUtilisateurInactif() throws {
+        // Arrange
+        let auth = creerAuthIsole()
+        let context = try creerContexteEnMemoire()
+        let user = try insererUtilisateurApple(identifiant: "ex.athlete",
+                                               appleUserID: "003.inactif", context: context)
+        user.estActif = false
+        try context.save()
+        KeychainService.sauvegarder(cle: SessionManager.cleKeychain, valeur: user.id.uuidString)
+
+        // Act
+        auth.restaurerSession(context: context)
+
+        // Assert
+        #expect(!auth.estConnecte, "Un compte désactivé ne doit pas être restauré")
+        #expect(auth.idSessionSauvegardee == nil, "La session orpheline doit être supprimée")
+    }
+
+    @Test("restaurerSession — session expirée (>30 jours) → erreur + déconnexion")
+    func restaurerSessionExpiree() throws {
+        // Arrange
+        let auth = creerAuthIsole()
+        let context = try creerContexteEnMemoire()
+        let user = try insererUtilisateurApple(identifiant: "session.vieille",
+                                               appleUserID: "004.expiree", context: context)
+        user.sessionCreeeLe = Date(timeIntervalSinceNow: -SessionManager.dureeMaxSecondes - 3600)
+        try context.save()
+        KeychainService.sauvegarder(cle: SessionManager.cleKeychain, valeur: user.id.uuidString)
+
+        // Act
+        auth.restaurerSession(context: context)
+
+        // Assert
+        #expect(!auth.estConnecte, "Une session > 30 jours ne doit pas être restaurée")
+        #expect(auth.erreur?.contains("expirée") == true)
+        #expect(auth.idSessionSauvegardee == nil, "La session expirée doit être supprimée")
+    }
+
+    @Test("restaurerSession — amorce sessionCreeeLe pour les comptes migrés")
+    func restaurerSessionAmorceCompteur() throws {
+        // Arrange : compte migré = sessionCreeeLe absent (pré-versions)
+        let auth = creerAuthIsole()
+        let context = try creerContexteEnMemoire()
+        let user = try insererUtilisateurApple(identifiant: "compte.migre",
+                                               appleUserID: "005.migre", context: context)
+        #expect(user.sessionCreeeLe == nil)
+        KeychainService.sauvegarder(cle: SessionManager.cleKeychain, valeur: user.id.uuidString)
+
+        // Act
+        auth.restaurerSession(context: context)
+
+        // Assert
+        #expect(auth.estConnecte)
+        #expect(user.sessionCreeeLe != nil,
+                "Le compteur d'expiration doit être amorcé pour ne pas bypasser la règle 30 jours")
+
+        // Cleanup
+        nettoyerKeychainGlobal()
     }
 
     // MARK: - État session (foreground check)
 
     @Test("verifierEtatSession retourne .valide pour compte actif")
     func etatSessionValide() throws {
+        // Arrange
         let auth = creerAuthIsole()
         let context = try creerContexteEnMemoire()
+        _ = try insererUtilisateurApple(identifiant: "actif.user",
+                                        appleUserID: "010.actif", context: context)
+        let etatConnexion = auth.connexionApple(appleUserID: "010.actif", prenom: "", nom: "", context: context)
+        guard case .connecte = etatConnexion else {
+            Issue.record("La connexion SIWA devrait réussir")
+            return
+        }
 
-        let sel = auth.genererSel()
-        let hash = auth.hashMotDePasse("pass", sel: sel)
-        let user = Utilisateur(identifiant: "actif.user", motDePasseHash: hash,
-                               prenom: "A", nom: "U", role: .etudiant)
-        user.sel = sel
-        user.iterations = AuthService.iterationsParDefaut
-        context.insert(user)
-        try context.save()
-
-        auth.connexion(identifiant: "actif.user", motDePasse: "pass", context: context)
-        #expect(auth.estConnecte)
-
+        // Act
         let etat = auth.verifierEtatSession(context: context)
+
+        // Assert
         #expect(etat == .valide)
+
+        // Cleanup
+        auth.deconnexion()
     }
 
     @Test("verifierEtatSession retourne .desactive si estActif = false")
     func etatSessionDesactive() throws {
+        // Arrange
         let auth = creerAuthIsole()
         let context = try creerContexteEnMemoire()
-
-        let sel = auth.genererSel()
-        let hash = auth.hashMotDePasse("pass", sel: sel)
-        let user = Utilisateur(identifiant: "ex.athlete", motDePasseHash: hash,
-                               prenom: "X", nom: "A", role: .etudiant)
-        user.sel = sel
-        user.iterations = AuthService.iterationsParDefaut
-        context.insert(user)
-        try context.save()
-
-        auth.connexion(identifiant: "ex.athlete", motDePasse: "pass", context: context)
+        let user = try insererUtilisateurApple(identifiant: "ex.athlete",
+                                               appleUserID: "011.desactive", context: context)
+        _ = auth.connexionApple(appleUserID: "011.desactive", prenom: "", nom: "", context: context)
         #expect(auth.estConnecte)
 
-        // Le coach désactive le compte en BD
+        // Act : le coach désactive le compte en BD
         user.estActif = false
         try context.save()
-
         let etat = auth.verifierEtatSession(context: context)
+
+        // Assert
         #expect(etat == .desactive)
+
+        // Cleanup
+        auth.deconnexion()
     }
 
     @Test("verifierEtatSession retourne .supprime si utilisateur absent")
     func etatSessionSupprime() throws {
+        // Arrange
         let auth = creerAuthIsole()
         let context = try creerContexteEnMemoire()
-
-        let sel = auth.genererSel()
-        let hash = auth.hashMotDePasse("pass", sel: sel)
-        let user = Utilisateur(identifiant: "fantome", motDePasseHash: hash,
-                               prenom: "F", nom: "T", role: .etudiant)
-        user.sel = sel
-        user.iterations = AuthService.iterationsParDefaut
-        context.insert(user)
-        try context.save()
-
-        auth.connexion(identifiant: "fantome", motDePasse: "pass", context: context)
+        let user = try insererUtilisateurApple(identifiant: "fantome",
+                                               appleUserID: "012.fantome", context: context)
+        _ = auth.connexionApple(appleUserID: "012.fantome", prenom: "", nom: "", context: context)
         #expect(auth.estConnecte)
 
-        // Suppression physique du compte
+        // Act : suppression physique du compte
         context.delete(user)
         try context.save()
-
         let etat = auth.verifierEtatSession(context: context)
+
+        // Assert
         #expect(etat == .supprime)
+
+        // Cleanup
+        auth.deconnexion()
     }
 
     @Test("verifierEtatSession retourne .valide si personne connecté")
     func etatSessionPasConnecte() throws {
+        // Arrange
         let auth = creerAuthIsole()
         let context = try creerContexteEnMemoire()
 
+        // Act
         let etat = auth.verifierEtatSession(context: context)
+
+        // Assert
         #expect(etat == .valide, "Si aucun utilisateur connecté, pas de vérif à faire")
     }
 
     // MARK: - Déconnexion
 
-    @Test("Déconnexion")
+    @Test("deconnexion efface l'utilisateur connecté et la session Keychain")
     func deconnexion() throws {
+        // Arrange
         let auth = creerAuthIsole()
         let context = try creerContexteEnMemoire()
-
-        let sel = auth.genererSel()
-        let hash = auth.hashMotDePasse("pass", sel: sel)
-        let user = Utilisateur(identifiant: "deco.test", motDePasseHash: hash, prenom: "D", nom: "T", role: .etudiant)
-        user.sel = sel
-        user.iterations = AuthService.iterationsParDefaut
-        context.insert(user)
-        try context.save()
-
-        auth.connexion(identifiant: "deco.test", motDePasse: "pass", context: context)
+        _ = try insererUtilisateurApple(identifiant: "deco.test",
+                                        appleUserID: "020.deco", context: context)
+        _ = auth.connexionApple(appleUserID: "020.deco", prenom: "", nom: "", context: context)
         #expect(auth.estConnecte)
+        #expect(auth.idSessionSauvegardee != nil)
 
+        // Act
         auth.deconnexion()
+
+        // Assert
         #expect(!auth.estConnecte)
         #expect(auth.utilisateurConnecte == nil)
+        #expect(auth.idSessionSauvegardee == nil, "La session Keychain doit être supprimée")
     }
 }

@@ -10,14 +10,12 @@ import PhotosUI
 struct ModifierUtilisateurView: View {
     @Bindable var utilisateur: Utilisateur
 
-    @Environment(AuthService.self) private var authService
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
     @State private var prenom: String = ""
     @State private var nom: String = ""
     @State private var identifiant: String = ""
-    @State private var nouveauMotDePasse: String = ""
     @State private var succes = false
     @State private var erreur: String?
     @State private var photoItem: PhotosPickerItem?
@@ -87,25 +85,6 @@ struct ModifierUtilisateurView: View {
                             .background(RoundedRectangle(cornerRadius: 12).fill(Color(.systemGray6)))
                         }
 
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Nouveau mot de passe (laisser vide pour garder l'ancien)")
-                                .font(.caption)
-                                .fontWeight(.semibold)
-                                .foregroundStyle(.secondary)
-                                .textCase(.uppercase)
-
-                            HStack(spacing: 12) {
-                                Image(systemName: "lock.fill")
-                                    .foregroundStyle(utilisateur.role.couleur)
-                                    .frame(width: 20)
-
-                                TextField("Nouveau mot de passe", text: $nouveauMotDePasse)
-                                    .autocorrectionDisabled()
-                                    .textInputAutocapitalization(.never)
-                            }
-                            .padding(14)
-                            .background(RoundedRectangle(cornerRadius: 12).fill(Color(.systemGray6)))
-                        }
                     }
 
                     // Section données physiques (élèves seulement)
@@ -409,21 +388,10 @@ struct ModifierUtilisateurView: View {
             return
         }
 
-        if !nouveauMotDePasse.isEmpty && nouveauMotDePasse.count < 6 {
-            erreur = "Le mot de passe doit contenir au moins 6 caractères."
-            return
-        }
-
         utilisateur.prenom = prenom.trimmingCharacters(in: .whitespaces)
         utilisateur.nom = nom.trimmingCharacters(in: .whitespaces)
-        utilisateur.identifiant = identifiant.uppercased().trimmingCharacters(in: .whitespaces)
-
-        if !nouveauMotDePasse.isEmpty {
-            let nouveauSel = authService.genererSel()
-            utilisateur.sel = nouveauSel
-            utilisateur.motDePasseHash = authService.hashMotDePasse(nouveauMotDePasse, sel: nouveauSel)
-            utilisateur.iterations = AuthService.iterationsParDefaut
-        }
+        // Normalisation cohérente avec genererIdentifiantUnique (minuscules)
+        utilisateur.identifiant = identifiant.lowercased().trimmingCharacters(in: .whitespaces)
 
         // Données physiques — convertir pieds/pouces → cm pour stockage
         let totalPouces = taillePieds * 12 + taillePouces
@@ -488,7 +456,6 @@ struct ModifierUtilisateurView: View {
         do {
             try modelContext.save()
             succes = true
-            nouveauMotDePasse = ""
         } catch {
             self.erreur = "Erreur lors de la sauvegarde."
         }

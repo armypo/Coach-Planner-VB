@@ -24,25 +24,29 @@ struct MessagerieView: View {
 
     @State private var conversationActive: ConversationID? = .equipe
 
+    // Caches @State — recalculés via mettreAJourCaches() (pattern perfo projet)
+    /// Membres de la même équipe (sauf moi)
+    @State private var membresEquipe: [Utilisateur] = []
+    /// Messages de mon équipe
+    @State private var messagesEquipe: [MessageEquipe] = []
+    /// Dernier message par conversation (fil d'équipe + fils privés)
+    @State private var derniersMessages: [ConversationID: MessageEquipe] = [:]
+    /// Nombre de non-lus par conversation
+    @State private var nonLusParConversation: [ConversationID: Int] = [:]
+
     private var utilisateur: Utilisateur? { authService.utilisateurConnecte }
     private var codeEquipe: String { utilisateur?.codeEcole ?? "" }
 
-    /// Membres de la même équipe (sauf moi)
-    private var membresEquipe: [Utilisateur] {
-        tousUtilisateurs.filter {
-            $0.codeEcole == codeEquipe && $0.id != utilisateur?.id && $0.estActif
-        }
+    /// Signature légère de lecture : `lecteurIDsData` grandit quand un message est
+    /// marqué lu SANS que le count des messages change — observer cette somme
+    /// permet d'invalider le cache des non-lus.
+    private var signatureLecture: Int {
+        tousMessages.reduce(0) { $0 + ($1.lecteurIDsData?.count ?? 0) }
     }
 
-    /// Messages de mon équipe
-    private var messagesEquipe: [MessageEquipe] {
-        tousMessages.filter { $0.codeEquipe == codeEquipe }
-    }
-
-    /// Nombre total de non-lus
+    /// Nombre total de non-lus (dans mes conversations)
     var nbNonLus: Int {
-        guard let uid = utilisateur?.id else { return 0 }
-        return messagesEquipe.filter { !$0.estLuPar(uid) }.count
+        nonLusParConversation.values.reduce(0, +)
     }
 
     var body: some View {
@@ -63,6 +67,11 @@ struct MessagerieView: View {
         }
         .navigationSplitViewStyle(.prominentDetail)
         .tint(PaletteMat.violet)
+        .onAppear { mettreAJourCaches() }
+        .onChange(of: tousMessages) { mettreAJourCaches() }
+        .onChange(of: tousUtilisateurs) { mettreAJourCaches() }
+        .onChange(of: signatureLecture) { mettreAJourCaches() }
+        .onChange(of: codeEquipe) { mettreAJourCaches() }
     }
 
     // MARK: - Sidebar
@@ -163,27 +172,54 @@ struct MessagerieView: View {
 
     // MARK: - Helpers
 
-    private func messagesPour(_ conv: ConversationID) -> [MessageEquipe] {
-        guard let uid = utilisateur?.id else { return [] }
-        switch conv {
-        case .equipe:
-            return messagesEquipe.filter { $0.estGroupe }
-        case .prive(let autreID):
-            return messagesEquipe.filter { msg in
-                !msg.estGroupe &&
-                ((msg.expediteurID == uid && msg.destinataireID == autreID) ||
-                 (msg.expediteurID == autreID && msg.destinataireID == uid))
-            }
-        }
-    }
-
     private func dernierMessage(pour conv: ConversationID) -> MessageEquipe? {
-        messagesPour(conv).last
+        derniersMessages[conv]
     }
 
     private func nbNonLusPour(_ conv: ConversationID) -> Int {
-        guard let uid = utilisateur?.id else { return 0 }
-        return messagesPour(conv).filter { !$0.estLuPar(uid) }.count
+        nonLusParConversation[conv] ?? 0
+    }
+
+    // MARK: - Mise à jour des caches
+
+    /// Recalcule membres, messages d'équipe, derniers messages et non-lus
+    /// en une seule passe (évite les filter répétés par ligne de conversation
+    /// et le décodage JSON de `estLuPar` à chaque render).
+    private func mettreAJourCaches() {
+        let uid = utilisateur?.id
+        let nouveauxMembres = tousUtilisateurs.filter {
+            $0.codeEcole == codeEquipe && $0.id != uid && $0.estActif
+        }
+        let nouveauxMessages = tousMessages.filter { $0.codeEquipe == codeEquipe }
+
+        var derniers: [ConversationID: MessageEquipe] = [:]
+        var nonLus: [ConversationID: Int] = [:]
+        for message in nouveauxMessages {
+            guard let conv = conversationID(pour: message, uid: uid) else { continue }
+            derniers[conv] = message // tri croissant par dateEnvoi → le dernier gagne
+            if let uid, !message.estLuPar(uid) {
+                nonLus[conv, default: 0] += 1
+            }
+        }
+
+        membresEquipe = nouveauxMembres
+        messagesEquipe = nouveauxMessages
+        derniersMessages = derniers
+        nonLusParConversation = nonLus
+    }
+
+    /// Conversation à laquelle appartient un message, du point de vue de l'utilisateur courant.
+    /// nil = message privé entre deux autres membres (invisible pour moi).
+    private func conversationID(pour message: MessageEquipe, uid: UUID?) -> ConversationID? {
+        if message.estGroupe { return .equipe }
+        guard let uid else { return nil }
+        if message.expediteurID == uid, let destinataire = message.destinataireID {
+            return .prive(destinataire)
+        }
+        if message.destinataireID == uid {
+            return .prive(message.expediteurID)
+        }
+        return nil
     }
 
     private var etatVide: some View {

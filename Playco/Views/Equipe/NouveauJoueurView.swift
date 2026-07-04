@@ -13,7 +13,6 @@ struct NouveauJoueurView: View {
     var onCreate: (JoueurEquipe) -> Void
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
-    @Environment(AuthService.self) private var authService
     @Environment(\.codeEquipeActif) private var codeEquipeActif
 
     @Query(filter: #Predicate<Utilisateur> { $0.roleRaw == "etudiant" && $0.estActif == true })
@@ -34,8 +33,6 @@ struct NouveauJoueurView: View {
     @State private var numero = 1
     @State private var poste: PosteJoueur = .recepteur
     @State private var taille = 0
-    @State private var identifiant = ""
-    @State private var motDePasse = ""
 
     enum ModeAjout {
         case menu, code, listeAthletes, manuel
@@ -389,99 +386,51 @@ struct NouveauJoueurView: View {
             }
 
             Section {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("IDENTIFIANT")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                    TextField("prenom.nom", text: $identifiant)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                }
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("MOT DE PASSE (min 6 car.)")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                    SecureField("Mot de passe", text: $motDePasse)
-                }
-            } footer: {
-                Text("Un profil global sera créé avec un code d'invitation unique.")
-                    .font(.caption2)
-            }
-
-            Section {
                 Button("Créer le joueur") {
                     creerJoueurComplet()
                 }
                 .disabled(!formulaireValide)
                 .frame(maxWidth: .infinity)
                 .fontWeight(.semibold)
+            } footer: {
+                Text("Un profil sera créé avec un code d'invitation unique (visible dans la fiche du joueur) — le joueur rejoint l'équipe avec Sign in with Apple.")
+                    .font(.caption2)
             }
         }
-        .onChange(of: prenom) { _, _ in genererIdentifiantAuto() }
-        .onChange(of: nom) { _, _ in genererIdentifiantAuto() }
     }
 
     private var formulaireValide: Bool {
         !prenom.trimmingCharacters(in: .whitespaces).isEmpty &&
-        !nom.trimmingCharacters(in: .whitespaces).isEmpty &&
-        !identifiant.trimmingCharacters(in: .whitespaces).isEmpty &&
-        motDePasse.count >= 6
-    }
-
-    private func genererIdentifiantAuto() {
-        let p = prenom.trimmingCharacters(in: .whitespaces).lowercased()
-            .folding(options: .diacriticInsensitive, locale: .current)
-            .replacingOccurrences(of: " ", with: "-")
-        let n = nom.trimmingCharacters(in: .whitespaces).lowercased()
-            .folding(options: .diacriticInsensitive, locale: .current)
-            .replacingOccurrences(of: " ", with: "-")
-        if !p.isEmpty && !n.isEmpty {
-            identifiant = "\(p).\(n)"
-        }
+        !nom.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
     // MARK: - Actions
 
-    /// Crée un joueur complet : Utilisateur global + JoueurEquipe lié
+    /// Crée un joueur complet : Utilisateur global + JoueurEquipe liés (SIWA :
+    /// aucun mot de passe — connexion par code d'invitation).
     private func creerJoueurComplet() {
-        let codeEcole = authService.utilisateurConnecte?.codeEcole ?? codeEquipeActif
-        let sel = authService.genererSel()
-        let hash = authService.hashMotDePasse(motDePasse, sel: sel)
+        // Scope multi-équipes : le parent assigne codeEquipeActif au JoueurEquipe —
+        // l'Utilisateur/CredentialAthlete doivent porter le MÊME code pour que la
+        // jointure SIWA (code équipe + code d'invitation) fonctionne.
+        let codeEquipe = codeEquipeActif
 
-        // 1. Créer le profil Utilisateur global
-        let idUnique = Utilisateur.genererIdentifiantUnique(prenom: prenom, nom: nom, context: modelContext)
-        let utilisateur = Utilisateur(
-            identifiant: idUnique,
-            motDePasseHash: hash,
-            prenom: prenom,
-            nom: nom,
-            role: .etudiant,
-            codeEcole: codeEcole
-        )
-        utilisateur.sel = sel
-        utilisateur.iterations = AuthService.iterationsParDefaut
-        utilisateur.numero = numero
-        utilisateur.posteRaw = poste.rawValue
-        utilisateur.codeInvitation = Utilisateur.genererCodeUniqueInvitation(context: modelContext)
-        if taille > 0 { utilisateur.tailleCm = taille }
-        modelContext.insert(utilisateur)
-
-        // 2. Créer le JoueurEquipe lié
         let joueur = JoueurEquipe(nom: nom, prenom: prenom, numero: numero, poste: poste)
-        joueur.utilisateurID = utilisateur.id
-        joueur.identifiant = identifiant.uppercased()
-        joueur.motDePasseHash = hash
-        joueur.sel = sel
         if taille > 0 { joueur.taille = taille }
 
-        // Lien bidirectionnel
-        utilisateur.joueurEquipeID = joueur.id
+        let membre = MembreFactory.creerMembre(
+            prenom: prenom, nom: nom,
+            role: .etudiant, codeEquipe: codeEquipe,
+            joueur: joueur,
+            context: modelContext
+        )
+        if taille > 0 { membre.utilisateur.tailleCm = taille }
 
         onCreate(joueur)
         dismiss()
     }
 
-    /// Ajoute un athlète existant à l'équipe (crée un JoueurEquipe lié)
+    /// Ajoute un athlète existant à l'équipe (crée un JoueurEquipe lié).
+    /// SIWA : aucun secret copié — l'athlète se connecte avec son Apple ID.
     private func creerDepuisAthlete(_ athlete: Utilisateur) {
         let joueur = JoueurEquipe(
             nom: athlete.nom,
@@ -491,8 +440,6 @@ struct NouveauJoueurView: View {
         )
         joueur.utilisateurID = athlete.id
         joueur.identifiant = athlete.identifiant
-        joueur.motDePasseHash = athlete.motDePasseHash
-        joueur.sel = athlete.sel
         if athlete.tailleCm > 0 { joueur.taille = athlete.tailleCm }
         if let dn = athlete.dateNaissance { joueur.dateNaissance = dn }
 
@@ -513,7 +460,5 @@ struct NouveauJoueurView: View {
         numero = 1
         poste = .recepteur
         taille = 0
-        identifiant = ""
-        motDePasse = ""
     }
 }

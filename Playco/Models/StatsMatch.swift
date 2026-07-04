@@ -47,6 +47,9 @@ final class StatsMatch {
         kills + aces + blocsSeuls + Int(Double(blocsAssistes) * 0.5)
     }
 
+    /// Hitting % en FRACTION 0-1 (convention des modèles — multiplier par 100
+    /// pour l'affichage). Le `StatsJoueur.hittingPct` du dashboard live est
+    /// lui déjà en pourcentage 0-100 : ne pas mélanger les deux conventions.
     var hittingPct: Double {
         guard tentativesAttaque > 0 else { return 0 }
         return Double(kills - erreursAttaque) / Double(tentativesAttaque)

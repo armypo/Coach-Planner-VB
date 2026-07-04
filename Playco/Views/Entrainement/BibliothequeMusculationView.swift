@@ -81,6 +81,9 @@ struct BibliothequeMusculationView: View {
                                 .swipeActions(edge: .trailing) {
                                     if peutModifier {
                                         Button(role: .destructive) {
+                                            // Sans risque pour les programmes : ExerciceProgramme
+                                            // COPIE nom + catégorie dans exercicesData (JSON) —
+                                            // aucune référence vive vers ExerciceMuscu.
                                             modelContext.delete(exo)
                                             try? modelContext.save()
                                         } label: {

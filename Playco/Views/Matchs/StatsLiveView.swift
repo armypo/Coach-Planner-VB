@@ -101,7 +101,7 @@ struct StatsLiveView: View {
                         sectionStats(titre: "NOS ERREURS", stats: statsCourtside.filter { $0.categorie == .pointContre }, couleur: .red)
 
                         // Stats adversaire essentielles en courtside
-                        sectionStatsAdversaire(titre: "ADVERSAIRE — SCORING", stats: DefinitionStat.statsAdversaireScoring, couleur: .red)
+                        sectionStats(titre: "ADVERSAIRE — SCORING", stats: DefinitionStat.statsAdversaireScoring, couleur: .red, estAdversaire: true)
                     } else {
                         // Stats pour nous
                         sectionStats(titre: "POINT POUR NOUS", stats: DefinitionStat.statsPourNous, couleur: .green)
@@ -110,10 +110,10 @@ struct StatsLiveView: View {
                         sectionStats(titre: "NOS ERREURS (POINT ADV.)", stats: DefinitionStat.statsContre, couleur: .red)
 
                         // Stats adversaire scoring (point contre nous)
-                        sectionStatsAdversaire(titre: "ADVERSAIRE — SCORING", stats: DefinitionStat.statsAdversaireScoring, couleur: .red)
+                        sectionStats(titre: "ADVERSAIRE — SCORING", stats: DefinitionStat.statsAdversaireScoring, couleur: .red, estAdversaire: true)
 
                         // Stats adversaire erreurs (point pour nous)
-                        sectionStatsAdversaire(titre: "ADVERSAIRE — ERREURS", stats: DefinitionStat.statsAdversaireErreurs, couleur: .green)
+                        sectionStats(titre: "ADVERSAIRE — ERREURS", stats: DefinitionStat.statsAdversaireErreurs, couleur: .green, estAdversaire: true)
                     }
 
                     // Annuler dernier point + historique simplifié en courtside
@@ -334,7 +334,9 @@ struct StatsLiveView: View {
         }
     }
 
-    private func sectionStats(titre: String, stats: [DefinitionStat], couleur: Color) -> some View {
+    /// Section grille de stats — partagée nous / adversaire (seul le bouton diffère :
+    /// sélection joueur pour nous, enregistrement direct pour l'adversaire).
+    private func sectionStats(titre: String, stats: [DefinitionStat], couleur: Color, estAdversaire: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: LiquidGlassKit.espaceSM) {
             Text(titre)
                 .font(courtside ? .subheadline.weight(.bold) : .caption.weight(.bold))
@@ -348,10 +350,34 @@ struct StatsLiveView: View {
 
             LazyVGrid(columns: columns, spacing: courtside ? LiquidGlassKit.espaceMD : LiquidGlassKit.espaceSM) {
                 ForEach(stats) { stat in
-                    boutonStat(stat: stat, couleur: couleur)
+                    if estAdversaire {
+                        boutonStatAdversaire(stat: stat, couleur: couleur)
+                    } else {
+                        boutonStat(stat: stat, couleur: couleur)
+                    }
                 }
             }
         }
+    }
+
+    /// Label visuel d'une cellule de stat (icône + libellé, dimensions courtside) —
+    /// partagé entre `boutonStat` et `boutonStatAdversaire`.
+    private func labelCelluleStat(stat: DefinitionStat, couleur: Color) -> some View {
+        VStack(spacing: courtside ? 8 : 4) {
+            Image(systemName: stat.icone)
+                .font(courtside ? .title2 : .title3)
+            Text(stat.label)
+                .font(courtside ? .caption.weight(.bold) : .caption2.weight(.semibold))
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, courtside ? 20 : 14)
+        .background(couleur.opacity(0.08), in: RoundedRectangle(cornerRadius: LiquidGlassKit.rayonPetit))
+        .overlay {
+            RoundedRectangle(cornerRadius: LiquidGlassKit.rayonPetit)
+                .strokeBorder(couleur.opacity(0.2), lineWidth: 0.5)
+        }
+        .foregroundStyle(couleur)
     }
 
     /// Bouton pour une statistique — au clic, ouvre le dropdown de sélection du joueur
@@ -385,46 +411,13 @@ struct StatsLiveView: View {
                 }
             }
         } label: {
-            VStack(spacing: courtside ? 8 : 4) {
-                Image(systemName: stat.icone)
-                    .font(courtside ? .title2 : .title3)
-                Text(stat.label)
-                    .font(courtside ? .caption.weight(.bold) : .caption2.weight(.semibold))
-                    .lineLimit(1)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, courtside ? 20 : 14)
-            .background(couleur.opacity(0.08), in: RoundedRectangle(cornerRadius: LiquidGlassKit.rayonPetit))
-            .overlay {
-                RoundedRectangle(cornerRadius: LiquidGlassKit.rayonPetit)
-                    .strokeBorder(couleur.opacity(0.2), lineWidth: 0.5)
-            }
-            .foregroundStyle(couleur)
+            labelCelluleStat(stat: stat, couleur: couleur)
         }
         .accessibilityLabel("Ajouter un \(stat.label)")
         .accessibilityHint("Double-tapez pour choisir le joueur et enregistrer le point")
     }
 
     // MARK: - Stats adversaire (entrée par équipe, pas par joueur)
-
-    private func sectionStatsAdversaire(titre: String, stats: [DefinitionStat], couleur: Color) -> some View {
-        VStack(alignment: .leading, spacing: LiquidGlassKit.espaceSM) {
-            Text(titre)
-                .font(courtside ? .subheadline.weight(.bold) : .caption.weight(.bold))
-                .foregroundStyle(couleur)
-                .tracking(0.5)
-
-            let columns = courtside
-                ? [GridItem(.adaptive(minimum: LiquidGlassKit.grilleCourtside), spacing: LiquidGlassKit.espaceMD)]
-                : [GridItem(.adaptive(minimum: 100), spacing: LiquidGlassKit.espaceSM)]
-
-            LazyVGrid(columns: columns, spacing: courtside ? LiquidGlassKit.espaceMD : LiquidGlassKit.espaceSM) {
-                ForEach(stats) { stat in
-                    boutonStatAdversaire(stat: stat, couleur: couleur)
-                }
-            }
-        }
-    }
 
     /// Bouton stat adversaire — enregistrement direct sans sélection de joueur
     private func boutonStatAdversaire(stat: DefinitionStat, couleur: Color) -> some View {
@@ -433,21 +426,7 @@ struct StatsLiveView: View {
                 viewModel.enregistrerStat(action: stat.action, joueurID: nil)
             }
         } label: {
-            VStack(spacing: courtside ? 8 : 4) {
-                Image(systemName: stat.icone)
-                    .font(courtside ? .title2 : .title3)
-                Text(stat.label)
-                    .font(courtside ? .caption.weight(.bold) : .caption2.weight(.semibold))
-                    .lineLimit(1)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, courtside ? 20 : 14)
-            .background(couleur.opacity(0.08), in: RoundedRectangle(cornerRadius: LiquidGlassKit.rayonPetit))
-            .overlay {
-                RoundedRectangle(cornerRadius: LiquidGlassKit.rayonPetit)
-                    .strokeBorder(couleur.opacity(0.2), lineWidth: 0.5)
-            }
-            .foregroundStyle(couleur)
+            labelCelluleStat(stat: stat, couleur: couleur)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Stat adversaire : \(stat.label)")

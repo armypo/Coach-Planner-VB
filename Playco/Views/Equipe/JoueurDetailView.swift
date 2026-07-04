@@ -12,9 +12,8 @@ struct JoueurDetailView: View {
     @Environment(AuthService.self) private var authService
     @Environment(\.modelContext) private var modelContext
     @State private var afficherEdition = false
-    @State private var afficherMotDePasse = false
-    @State private var afficherConfirmationReinit = false
-    @State private var motDePasseTemporaire: String?
+    /// Code d'invitation de l'Utilisateur lié — cache @State (évite un fetch par render)
+    @State private var codeInvitationJoueur: String?
     @Query private var toutesPresences: [Presence]
 
     // Présences de ce joueur
@@ -156,22 +155,8 @@ struct JoueurDetailView: View {
         .sheet(isPresented: $afficherEdition) {
             EditionJoueurView(joueur: joueur)
         }
-        .alert("Réinitialiser le mot de passe", isPresented: $afficherConfirmationReinit) {
-            Button("Annuler", role: .cancel) { }
-            Button("Réinitialiser", role: .destructive) {
-                reinitialiserMotDePasseJoueur()
-            }
-        } message: {
-            Text("Le mot de passe de \(joueur.prenom) sera réinitialisé à « volleyball123 ». Communiquez-lui le nouveau mot de passe.")
-        }
-        .alert("Nouveau mot de passe", isPresented: Binding(
-            get: { motDePasseTemporaire != nil },
-            set: { if !$0 { motDePasseTemporaire = nil } }
-        )) {
-            Button("OK") { motDePasseTemporaire = nil }
-        } message: {
-            Text("Mot de passe réinitialisé à : volleyball123\n\nCommuniquez ce mot de passe à \(joueur.prenom).")
-        }
+        .onAppear { chargerCodeInvitation() }
+        .onChange(of: joueur.utilisateurID) { chargerCodeInvitation() }
     }
 
     // MARK: - En-tête
@@ -272,53 +257,51 @@ struct JoueurDetailView: View {
             .padding(12)
             .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: LiquidGlassKit.rayonPetit))
 
-            // Mot de passe
+            // Code d'invitation (SIWA : remplace le mot de passe — le joueur
+            // rejoint l'équipe avec Sign in with Apple + ce code)
             HStack {
-                Text("Mot de passe")
+                Text("Code d'invitation")
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.secondary)
                 Spacer()
-                Button {
-                    afficherConfirmationReinit = true
-                } label: {
-                    Label("Réinitialiser", systemImage: "arrow.counterclockwise")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.orange)
+                if let code = codeInvitationJoueur, !code.isEmpty {
+                    Text(code)
+                        .font(.subheadline.weight(.semibold).monospaced())
+                        .foregroundStyle(.primary)
+                        .textSelection(.enabled)
+                    Button {
+                        UIPasteboard.general.string = code
+                    } label: {
+                        Image(systemName: "doc.on.doc")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                } else {
+                    Text("Non défini")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
                 }
             }
             .padding(12)
             .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: LiquidGlassKit.rayonPetit))
 
-            Text("Utilisez « Réinitialiser » pour définir un mot de passe temporaire à communiquer au joueur.")
+            Text("Le joueur se connecte avec Sign in with Apple : communique-lui le code d'équipe et ce code d'invitation.")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
         }
         .glassSection()
     }
 
-    private func reinitialiserMotDePasseJoueur() {
-        let nouveauMdp = "volleyball123"
-        let sel = authService.genererSel()
-        let hash = authService.hashMotDePasse(nouveauMdp, sel: sel)
-
-        // Mettre à jour le JoueurEquipe
-        joueur.motDePasseHash = hash
-        joueur.sel = sel
-
-        // Mettre à jour l'Utilisateur lié si existant
-        if let utilisateurID = joueur.utilisateurID {
-            let descriptor = FetchDescriptor<Utilisateur>(
-                predicate: #Predicate { $0.id == utilisateurID }
-            )
-            if let utilisateur = try? modelContext.fetch(descriptor).first {
-                utilisateur.motDePasseHash = hash
-                utilisateur.sel = sel
-                utilisateur.iterations = AuthService.iterationsParDefaut
-            }
+    /// Charge le code d'invitation de l'Utilisateur lié à ce joueur (nil si non lié).
+    private func chargerCodeInvitation() {
+        guard let utilisateurID = joueur.utilisateurID else {
+            codeInvitationJoueur = nil
+            return
         }
-
-        try? modelContext.save()
-        motDePasseTemporaire = nouveauMdp
+        let descriptor = FetchDescriptor<Utilisateur>(
+            predicate: #Predicate { $0.id == utilisateurID }
+        )
+        codeInvitationJoueur = try? modelContext.fetch(descriptor).first?.codeInvitation
     }
 
     // MARK: - Résumé général

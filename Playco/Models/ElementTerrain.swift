@@ -16,6 +16,9 @@ struct ElementTerrain: Identifiable, Codable, Equatable {
 
     var id: UUID = UUID()
     var type: TypeElement
+    /// Coordonnées NORMALISÉES [0, 1] relatives au terrain (0 = gauche/haut,
+    /// 1 = droite/bas) — jamais en points absolus. Tout consommateur (overlay,
+    /// export PDF, miniatures) multiplie par la taille de SON canvas.
     var x: Double
     var y: Double
     var toX: Double?

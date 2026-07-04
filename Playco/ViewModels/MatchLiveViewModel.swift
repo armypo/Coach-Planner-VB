@@ -247,39 +247,26 @@ final class MatchLiveViewModel {
 
         let estPointPourNous = point.estPointPourNous
 
-        // Détecter si un sideout avait eu lieu lors de ce point en analysant l'état actuel.
-        // Après sideout nous → nousServons == true, rotation a changé
-        // Après sideout adv  → nousServons == false, rotationAdv a changé
-        let avaitSideoutNous = estPointPourNous && nousServons
-        let avaitSideoutAdv = !estPointPourNous && !nousServons
+        // Qui servait AVANT le point annulé — MÊME règle que chargerSet :
+        // l'équipe qui a marqué le point précédent sert ; s'il n'y a pas de
+        // point précédent, le serveur du début de set s'applique.
+        let serveurAvantPoint = pointPrecedent(avant: point)?.estPointPourNous
+            ?? serveurDebutDeSet()
 
-        // Restaurer la rotation depuis les données du point enregistré
-        if avaitSideoutNous {
-            // Annuler la rotation de notre équipe et rendre le service à l'adversaire
+        // Sideout réel : l'équipe qui a marqué ne servait pas → sa rotation
+        // avait avancé, il faut la restaurer et retirer l'entrée d'historique.
+        if estPointPourNous && !serveurAvantPoint {
             rotationActuelle = point.rotationAuMoment
-            nousServons = false
-            // Nettoyer l'historique de rotation (retirer l'entrée fantôme)
-            var hist = seance.rotationsHistorique
-            if var setHist = hist[setActuel], !setHist.isEmpty {
-                setHist.removeLast()
-                hist[setActuel] = setHist
-            }
-            seance.rotationsHistorique = hist
+            retirerDerniereRotationHistorique()
             logger.info("Undo sideout nous — retour R\(point.rotationAuMoment)")
-        } else if avaitSideoutAdv {
-            // Annuler la rotation adverse et rendre le service à notre équipe
+        } else if !estPointPourNous && serveurAvantPoint {
             rotationAdversaire = point.rotationAdvAuMoment
-            nousServons = true
-            // Nettoyer l'historique de rotation adversaire
-            var histAdv = seance.rotationsHistoriqueAdv
-            if var setHistAdv = histAdv[setActuel], !setHistAdv.isEmpty {
-                setHistAdv.removeLast()
-                histAdv[setActuel] = setHistAdv
-            }
-            seance.rotationsHistoriqueAdv = histAdv
+            retirerDerniereRotationHistoriqueAdv()
             logger.info("Undo sideout adv — retour R\(point.rotationAdvAuMoment)")
         }
-        // Sinon (pas de sideout) : les rotations et le service ne changent pas
+        // Sinon (pas de sideout) : les rotations ne changent pas
+
+        nousServons = serveurAvantPoint
 
         if estPointPourNous {
             scoreNous = Swift.max(0, scoreNous - 1)
@@ -291,6 +278,42 @@ final class MatchLiveViewModel {
         dernierPoint = nil
         afficherPanneauRallye = false
         sauvegarderSet()
+    }
+
+    /// Dernier point du set actuel AVANT le point donné (nil si c'était le premier).
+    private func pointPrecedent(avant point: PointMatch) -> PointMatch? {
+        let seanceIDCapture = seance.id
+        let setCapture = setActuel
+        let pointID = point.id
+        let points = (try? modelContext.fetch(
+            FetchDescriptor<PointMatch>(
+                predicate: #Predicate {
+                    $0.seanceID == seanceIDCapture && $0.set == setCapture && $0.id != pointID
+                },
+                sortBy: [SortDescriptor(\.horodatage)]
+            )
+        )) ?? []
+        return points.last
+    }
+
+    /// Retire la dernière entrée de l'historique de rotation (sideout annulé).
+    private func retirerDerniereRotationHistorique() {
+        var hist = seance.rotationsHistorique
+        if var setHist = hist[setActuel], !setHist.isEmpty {
+            setHist.removeLast()
+            hist[setActuel] = setHist
+        }
+        seance.rotationsHistorique = hist
+    }
+
+    /// Retire la dernière entrée de l'historique de rotation adversaire (sideout annulé).
+    private func retirerDerniereRotationHistoriqueAdv() {
+        var histAdv = seance.rotationsHistoriqueAdv
+        if var setHistAdv = histAdv[setActuel], !setHistAdv.isEmpty {
+            setHistAdv.removeLast()
+            histAdv[setActuel] = setHistAdv
+        }
+        seance.rotationsHistoriqueAdv = histAdv
     }
 
     // MARK: - Substitutions
@@ -390,18 +413,21 @@ final class MatchLiveViewModel {
             // Set vide → état initial
             rotationActuelle = 1
             rotationAdversaire = 1
-            // Déterminer qui sert au début du set
-            // Set impair → même que le début du match, set pair → inversé
-            if setActuel == 1 {
-                nousServons = seance.nousServonsEnPremier
-            } else {
-                nousServons = (setActuel % 2 == 1) == seance.nousServonsEnPremier
-            }
+            nousServons = serveurDebutDeSet()
             dernierPoint = nil
             logger.info("chargerSet \(self.setActuel) — set vide, rotation=1, service=\(self.nousServons)")
         }
 
         afficherPanneauRallye = false
+    }
+
+    /// Qui sert au début du set actuel : set 1 → `nousServonsEnPremier`,
+    /// puis alternance (set impair = même service qu'au début du match, set pair = inversé).
+    private func serveurDebutDeSet() -> Bool {
+        if setActuel == 1 {
+            return seance.nousServonsEnPremier
+        }
+        return (setActuel % 2 == 1) == seance.nousServonsEnPremier
     }
 
     // MARK: - Modification de rotation manuelle

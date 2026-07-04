@@ -39,8 +39,17 @@ actor CloudKitPublicSyncAbonnement {
     func publierStatut(codeEquipe: String, tierRaw: String, isActive: Bool, dateExpiration: Date?) async {
         guard !codeEquipe.isEmpty else { return }
         let id = recordID(codeEquipe)
-        let record = (try? await publicDB.record(for: id))
-            ?? CKRecord(recordType: RecordType.abonnement, recordID: id)
+        // Distinguer « record absent » (création légitime) d'une erreur réseau :
+        // sur erreur réseau, reporter la publication plutôt que d'écraser à l'aveugle.
+        let record: CKRecord
+        do {
+            record = try await publicDB.record(for: id)
+        } catch let erreur as CKError where erreur.code == .unknownItem {
+            record = CKRecord(recordType: RecordType.abonnement, recordID: id)
+        } catch {
+            logger.warning("publierStatut: fetch record impossible (\(error.localizedDescription)) — publication reportée")
+            return
+        }
 
         record["codeEquipe"] = codeEquipe as CKRecordValue
         record["tierRaw"] = tierRaw as CKRecordValue

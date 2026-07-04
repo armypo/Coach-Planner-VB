@@ -334,6 +334,15 @@ final class CloudKitSyncService {
 
     // MARK: - Journal de sync
 
+    /// Écritures UserDefaults espacées : en match live le journal peut recevoir
+    /// plusieurs événements par minute — sérialiser + écrire à CHAQUE événement
+    /// coûte cher (I/O disque). `flushJournal()` garantit la persistance au
+    /// passage en arrière-plan.
+    @ObservationIgnored private var derniereEcritureJournal: Date = .distantPast
+    @ObservationIgnored private var evenementsDepuisEcriture = 0
+    private static let intervalleEcritureJournal: TimeInterval = 5
+    private static let seuilEvenementsEcriture = 10
+
     /// Ajoute un événement au journal de sync
     private func ajouterAuJournal(type: EvenementSync.TypeEvenementSync, message: String, estErreur: Bool = false) {
         let evenement = EvenementSync(type: type, message: message, estErreur: estErreur)
@@ -342,7 +351,13 @@ final class CloudKitSyncService {
         if journalSync.count > 50 {
             journalSync = Array(journalSync.suffix(50))
         }
-        sauvegarderJournal()
+        evenementsDepuisEcriture += 1
+        // Les erreurs sont persistées immédiatement (diagnostic post-crash)
+        if estErreur
+            || Date().timeIntervalSince(derniereEcritureJournal) > Self.intervalleEcritureJournal
+            || evenementsDepuisEcriture >= Self.seuilEvenementsEcriture {
+            sauvegarderJournal()
+        }
     }
 
     /// Charge le journal depuis UserDefaults
@@ -353,6 +368,14 @@ final class CloudKitSyncService {
     /// Sauvegarde le journal dans UserDefaults
     private func sauvegarderJournal() {
         JournalSyncStorage.sauvegarder(journalSync)
+        derniereEcritureJournal = Date()
+        evenementsDepuisEcriture = 0
+    }
+
+    /// Écrit immédiatement le journal — à appeler au passage en arrière-plan
+    /// pour ne pas perdre les événements en attente du batch.
+    func flushJournal() {
+        sauvegarderJournal()
     }
 
     /// Efface le journal de sync

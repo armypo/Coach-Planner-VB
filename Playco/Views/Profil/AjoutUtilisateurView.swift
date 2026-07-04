@@ -4,10 +4,15 @@
 
 import SwiftUI
 import SwiftData
+import os
 
-/// Vue pour ajouter un nouvel élève ou coach (accessible par le coach/admin)
+private let logger = Logger(subsystem: "com.origotech.playco", category: "AjoutUtilisateur")
+
+/// Vue pour ajouter un nouvel athlète ou assistant (accessible par le coach/admin).
+/// Le rôle Coach n'est PAS proposé : la jointure SIWA (`roleJonctionAutorise`)
+/// n'accepte que athlète/assistant — un membre « Coach » ne pourrait jamais se connecter.
 struct AjoutUtilisateurView: View {
-    let codeEcole: String
+    let codeEquipe: String
     var roleParDefaut: RoleUtilisateur = .etudiant
 
     @Environment(AuthService.self) private var authService
@@ -19,7 +24,6 @@ struct AjoutUtilisateurView: View {
     @State private var prenom = ""
     @State private var nom = ""
     @State private var identifiant = ""
-    @State private var motDePasse = ""
     @State private var roleChoisi: RoleUtilisateur = .etudiant
     @State private var erreur: String?
     @State private var succes = false
@@ -27,12 +31,6 @@ struct AjoutUtilisateurView: View {
     // Sheet récap (athlètes/assistants uniquement)
     @State private var afficherRecap = false
     @State private var credACopier: [CredentialRecap] = []
-
-    /// Vrai si le rôle utilise les identifiants/mdp auto-générés (athlète, assistant).
-    /// Les coachs/admins gardent la saisie manuelle classique.
-    private var estRoleAutoGen: Bool {
-        roleChoisi == .etudiant || roleChoisi == .assistantCoach
-    }
 
     // Données physiques (pour élèves)
     @State private var numero = ""
@@ -51,14 +49,11 @@ struct AjoutUtilisateurView: View {
     }
 
     private var formulaireValide: Bool {
-        // Pour les rôles auto-gen (athlète/assistant), le mot de passe interne est
-        // généré automatiquement à l'enregistrement — pas de saisie requise (la
-        // connexion se fait par Sign in with Apple + code d'invitation).
-        let mdpOK = estRoleAutoGen || motDePasse.count >= 6
-        return !prenom.trimmingCharacters(in: .whitespaces).isEmpty &&
+        // SIWA strict : aucun mot de passe — tous les rôles se connectent par
+        // Sign in with Apple + code d'invitation.
+        !prenom.trimmingCharacters(in: .whitespaces).isEmpty &&
             !nom.trimmingCharacters(in: .whitespaces).isEmpty &&
-            !identifiant.trimmingCharacters(in: .whitespaces).isEmpty &&
-            mdpOK
+            !identifiant.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
     var body: some View {
@@ -91,17 +86,8 @@ struct AjoutUtilisateurView: View {
                             Picker("Rôle", selection: $roleChoisi) {
                                 Text("Athlète").tag(RoleUtilisateur.etudiant)
                                 Text("Assistant").tag(RoleUtilisateur.assistantCoach)
-                                Text("Coach").tag(RoleUtilisateur.coach)
                             }
                             .pickerStyle(.segmented)
-                            .onChange(of: roleChoisi) { _, newRole in
-                                // Régénère mdp si on bascule vers un rôle auto-gen
-                                if newRole == .etudiant || newRole == .assistantCoach {
-                                    if motDePasse.isEmpty || !motDePasse.contains("_") {
-                                        motDePasse = Utilisateur.genererMotDePasseAthlete()
-                                    }
-                                }
-                            }
                     }
 
                     // Formulaire
@@ -136,54 +122,24 @@ struct AjoutUtilisateurView: View {
                                 .background(RoundedRectangle(cornerRadius: 12).fill(Color(.systemGray6)))
                             }
 
-                            if estRoleAutoGen {
-                                // Rôles auto-gen (athlète/assistant) : connexion via Sign in
-                                // with Apple + code d'invitation. Pas de mot de passe à saisir —
-                                // le code d'invitation s'affiche après la création.
-                                HStack(spacing: 8) {
-                                    Image(systemName: "ticket.fill")
-                                        .foregroundStyle(roleChoisi.couleur)
-                                    Text("Un code d'invitation sera généré pour rejoindre l'équipe avec Sign in with Apple.")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                .padding(12)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(roleChoisi.couleur.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
-                            } else {
-                                VStack(alignment: .leading, spacing: 6) {
-                                    Text("Mot de passe (min. 6 caractères)")
-                                        .font(.caption)
-                                        .fontWeight(.semibold)
-                                        .foregroundStyle(.secondary)
-                                        .textCase(.uppercase)
-
-                                    HStack(spacing: 12) {
-                                        Image(systemName: "lock.fill")
-                                            .foregroundStyle(roleChoisi.couleur)
-                                            .frame(width: 20)
-
-                                        TextField("Mot de passe", text: $motDePasse)
-                                            .autocorrectionDisabled()
-                                            .textInputAutocapitalization(.never)
-
-                                        Button {
-                                            motDePasse = genererMotDePasse()
-                                        } label: {
-                                            Image(systemName: "dice.fill")
-                                                .foregroundStyle(roleChoisi.couleur)
-                                        }
-                                    }
-                                    .padding(14)
-                                    .background(RoundedRectangle(cornerRadius: 12).fill(Color(.systemGray6)))
-                                }
+                            // Tous les rôles : connexion via Sign in with Apple + code
+                            // d'invitation. Aucun mot de passe — le code d'invitation
+                            // s'affiche après la création.
+                            HStack(spacing: 8) {
+                                Image(systemName: "ticket.fill")
+                                    .foregroundStyle(roleChoisi.couleur)
+                                Text("Un code d'invitation sera généré pour rejoindre l'équipe avec Sign in with Apple.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
                             }
-
-                            // Info code école
+                            .padding(12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(roleChoisi.couleur.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+                            // Info code équipe
                             HStack(spacing: 8) {
                                 Image(systemName: "building.2.fill")
                                     .foregroundStyle(.secondary)
-                                Text("École : \(codeEcole)")
+                                Text("Équipe : \(codeEquipe)")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
@@ -367,11 +323,9 @@ struct AjoutUtilisateurView: View {
                 }
             }
             .onAppear {
-                roleChoisi = roleParDefaut
-                // Pré-remplir mdp pour les rôles auto-gen
-                if (roleChoisi == .etudiant || roleChoisi == .assistantCoach) && motDePasse.isEmpty {
-                    motDePasse = Utilisateur.genererMotDePasseAthlete()
-                }
+                // Clamp : la jointure SIWA est réservée athlète/assistant — un rôle
+                // coach/admin passé en défaut créerait un membre incapable de se connecter.
+                roleChoisi = roleParDefaut == .etudiant ? .etudiant : .assistantCoach
             }
             .onChange(of: prenom) { autoRefreshIdentifiant() }
             .onChange(of: nom) { autoRefreshIdentifiant() }
@@ -405,11 +359,10 @@ struct AjoutUtilisateurView: View {
         }
     }
 
-    /// Auto-régénère l'identifiant au format `prenom.nom.XXXX` pour les rôles
-    /// auto-gen dès que prénom+nom sont saisis.
+    /// Auto-régénère l'identifiant au format `prenom.nom.XXXX` dès que
+    /// prénom+nom sont saisis.
     private func autoRefreshIdentifiant() {
-        guard estRoleAutoGen,
-              !prenom.trimmingCharacters(in: .whitespaces).isEmpty,
+        guard !prenom.trimmingCharacters(in: .whitespaces).isEmpty,
               !nom.trimmingCharacters(in: .whitespaces).isEmpty
         else { return }
         identifiant = Utilisateur.genererIdentifiantUnique(
@@ -430,131 +383,106 @@ struct AjoutUtilisateurView: View {
             return
         }
 
-        // Générer un identifiant unique si vide
+        guard let idFinal = validerEtNormaliserIdentifiant() else { return }
+
+        // Athlète : le JoueurEquipe est créé AVANT la factory et passé via `joueur:`
+        // pour qu'elle pose les liens croisés (identifiant, utilisateurID et
+        // CredentialAthlete.joueurEquipeID).
+        let joueurLie: JoueurEquipe? = roleChoisi == .etudiant ? creerJoueurLie() : nil
+
+        // SIWA strict : création sans mot de passe (Utilisateur + CredentialAthlete)
+        let membre = MembreFactory.creerMembre(
+            prenom: prenom, nom: nom,
+            role: roleChoisi, codeEquipe: codeEquipe,
+            joueur: joueurLie,
+            identifiantSouhaite: idFinal,
+            context: modelContext
+        )
+        if let joueurLie {
+            enrichirDonneesAthlete(membre.utilisateur, joueur: joueurLie)
+        }
+
+        do {
+            try modelContext.save()
+        } catch {
+            annulerInsertion(membre: membre, joueur: joueurLie)
+            logger.error("Échec de sauvegarde à la création du membre: \(error.localizedDescription)")
+            self.erreur = "Erreur lors de la création du compte. Veuillez réessayer."
+            return
+        }
+
+        publierMembre(membre.utilisateur, joueur: joueurLie)
+
+        succes = true
+
+        // Afficher le sheet récap (code d'invitation) pour tous les rôles —
+        // SIWA strict : c'est l'unique moyen de connexion du nouveau membre.
+        credACopier = [membre.recap]
+        afficherRecap = true
+    }
+
+    /// Normalise l'identifiant saisi (ou en génère un si vide) et vérifie
+    /// l'unicité. Retourne nil (et renseigne `erreur`) si invalide.
+    private func validerEtNormaliserIdentifiant() -> String? {
         let idFinal = identifiant.trimmingCharacters(in: .whitespaces).isEmpty
             ? Utilisateur.genererIdentifiantUnique(prenom: prenom, nom: nom, context: modelContext)
             : identifiant.lowercased().trimmingCharacters(in: .whitespaces)
 
-        let resultat = authService.creerCompte(
-            identifiant: idFinal,
-            motDePasse: motDePasse,
-            prenom: prenom,
-            nom: nom,
-            role: roleChoisi,
-            context: modelContext
+        guard idFinal.count >= 3 else {
+            erreur = "L'identifiant doit contenir au moins 3 caractères."
+            return nil
+        }
+        let idRechercheUnicite = idFinal
+        let descUnicite = FetchDescriptor<Utilisateur>(
+            predicate: #Predicate { $0.identifiant == idRechercheUnicite }
         )
+        if (try? modelContext.fetch(descUnicite).first) != nil {
+            erreur = "Cet identifiant existe déjà."
+            return nil
+        }
+        return idFinal
+    }
 
-        if let messageErreur = resultat {
-            erreur = messageErreur
-        } else {
-            // Assigner le codeEcole (code équipe) sur l'utilisateur créé
-            let descriptor = FetchDescriptor<Utilisateur>(
-                predicate: #Predicate { $0.identifiant == idFinal }
-            )
-            if let utilisateur = try? modelContext.fetch(descriptor).first {
-                utilisateur.codeEcole = codeEcole
-            }
+    /// Crée et insère le JoueurEquipe d'un athlète (données physiques du formulaire).
+    private func creerJoueurLie() -> JoueurEquipe {
+        let joueur = JoueurEquipe(nom: nom, prenom: prenom,
+                                  numero: Int(numero) ?? 0, poste: posteChoisi)
+        joueur.codeEquipe = codeEquipe
+        joueur.taille = Int(round(Double(taillePieds * 12 + taillePouces) * 2.54))
+        if let dateN = construireDate() {
+            joueur.dateNaissance = dateN
+        }
+        modelContext.insert(joueur)
+        return joueur
+    }
 
-            // Créer aussi un JoueurEquipe lié (pour les athlètes)
-            if roleChoisi == .etudiant {
-                let numJoueur = Int(numero) ?? 0
-                let joueur = JoueurEquipe(nom: nom, prenom: prenom, numero: numJoueur, poste: posteChoisi)
-                joueur.codeEquipe = codeEcole
-                let tailleCm = Int(round(Double(taillePieds * 12 + taillePouces) * 2.54))
-                joueur.taille = tailleCm
-                if let dateN = construireDate() {
-                    joueur.dateNaissance = dateN
-                }
-                modelContext.insert(joueur)
+    /// Recopie les données physiques du formulaire athlète sur l'Utilisateur lié.
+    private func enrichirDonneesAthlete(_ utilisateur: Utilisateur, joueur: JoueurEquipe) {
+        utilisateur.tailleCm = joueur.taille
+        utilisateur.numero = joueur.numero
+        utilisateur.posteRaw = posteChoisi.rawValue
+        if let p = Double(poids), p > 0 {
+            utilisateur.poidKg = p
+        }
+        if let dateN = joueur.dateNaissance {
+            utilisateur.dateNaissance = dateN
+        }
+    }
 
-                // Lier l'utilisateur au joueur
-                if let utilisateur = try? modelContext.fetch(descriptor).first {
-                    utilisateur.joueurEquipeID = joueur.id
-                    utilisateur.tailleCm = tailleCm
-                    utilisateur.numero = numJoueur
-                    utilisateur.posteRaw = posteChoisi.rawValue
-                    if let p = Double(poids), p > 0 {
-                        utilisateur.poidKg = p
-                    }
-                    if let dateN = construireDate() {
-                        utilisateur.dateNaissance = dateN
-                    }
-                }
-                try? modelContext.save()
-            }
+    /// Rollback : retire du contexte les entités insérées par cette création.
+    private func annulerInsertion(membre: MembreFactory.Membre, joueur: JoueurEquipe?) {
+        modelContext.delete(membre.credential)
+        modelContext.delete(membre.utilisateur)
+        if let joueur {
+            modelContext.delete(joueur)
+        }
+    }
 
-            // Publier vers CloudKit public DB
-            let idRecherche = idFinal
-            let descriptorPub = FetchDescriptor<Utilisateur>(
-                predicate: #Predicate { $0.identifiant == idRecherche }
-            )
-            if let utilisateurPub = try? modelContext.fetch(descriptorPub).first {
-                // Scope l'utilisateur à l'équipe pour la jointure CloudKit publique.
-                if utilisateurPub.codeEquipe.isEmpty { utilisateurPub.codeEquipe = codeEcole }
-                try? modelContext.save()
-                var joueurPub: JoueurEquipe?
-                if let jID = utilisateurPub.joueurEquipeID {
-                    let descJoueur = FetchDescriptor<JoueurEquipe>(
-                        predicate: #Predicate { $0.id == jID }
-                    )
-                    joueurPub = try? modelContext.fetch(descJoueur).first
-                }
-                let codeEquipePub = codeEcole
-                Task {
-                    await sharingService.publierNouvelUtilisateur(utilisateurPub, joueur: joueurPub, codeEquipe: codeEquipePub)
-                }
-            }
-
-            succes = true
-
-            // Pour les rôles auto-gen : créer un CredentialAthlete + afficher
-            // le sheet récap pour que le coach puisse copier/partager les accès.
-            if estRoleAutoGen {
-                let descCred = FetchDescriptor<Utilisateur>(
-                    predicate: #Predicate { $0.identifiant == idFinal }
-                )
-                // Code d'invitation pour la jointure Sign in with Apple (généré à
-                // l'init de l'Utilisateur). Fallback vide si l'utilisateur est introuvable.
-                var codeInvitationMembre = ""
-                if let utilisateur = try? modelContext.fetch(descCred).first {
-                    codeInvitationMembre = utilisateur.codeInvitation
-                    // CredentialAthlete = marqueur de membre. SÉCURITÉ : aucun mot de
-                    // passe en clair (connexion via SIWA + code d'invitation).
-                    let cred = CredentialAthlete(
-                        utilisateurID: utilisateur.id,
-                        joueurEquipeID: utilisateur.joueurEquipeID,
-                        identifiant: idFinal,
-                        motDePasseClair: "",
-                        codeEquipe: codeEcole
-                    )
-                    modelContext.insert(cred)
-                    try? modelContext.save()
-                }
-
-                credACopier = [CredentialRecap(
-                    nomComplet: "\(prenom) \(nom)",
-                    identifiant: idFinal,
-                    codeEquipe: codeEcole,
-                    codeInvitation: codeInvitationMembre,
-                    role: roleChoisi == .etudiant ? "Athlète" : "Assistant"
-                )]
-                afficherRecap = true
-                return  // dismiss() viendra après fermeture du sheet
-            }
-
-            // Reset le formulaire (chemin coach/admin sans sheet)
-            prenom = ""
-            nom = ""
-            identifiant = ""
-            motDePasse = ""
-            numero = ""
-            poids = ""
-            posteChoisi = .recepteur
-            taillePieds = 5
-            taillePouces = 10
-            jourNaissance = ""
-            moisNaissance = ""
-            anneeNaissance = ""
+    /// Publie le nouveau membre vers la Public DB CloudKit (asynchrone, ne bloque pas).
+    private func publierMembre(_ utilisateur: Utilisateur, joueur: JoueurEquipe?) {
+        let codeEquipePub = codeEquipe
+        Task {
+            await sharingService.publierNouvelUtilisateur(utilisateur, joueur: joueur, codeEquipe: codeEquipePub)
         }
     }
 
@@ -575,9 +503,4 @@ struct AjoutUtilisateurView: View {
         return String((0..<6).compactMap { _ in caracteres.randomElement() })
     }
 
-    /// Génère un mot de passe aléatoire de 12 caractères (sans ambigus : 0/O, 1/l/I)
-    private func genererMotDePasse() -> String {
-        let caracteres = Array("abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789")
-        return String((0..<12).compactMap { _ in caracteres.randomElement() })
-    }
 }

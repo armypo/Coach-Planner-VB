@@ -97,12 +97,15 @@ struct CompositionMatchView: View {
     // MARK: - Postes 1-6
 
     private var sectionPostes: some View {
-        VStack(spacing: LiquidGlassKit.espaceSM) {
+        // Calculé UNE fois par rendu (au lieu de 6× — un par slot)
+        let joueursLibres = joueursEquipe.filter { !joueursAssignesIDs.contains($0.id) }
+
+        return VStack(spacing: LiquidGlassKit.espaceSM) {
             // Rangée avant (postes 4, 3, 2) — côté filet
             HStack(spacing: LiquidGlassKit.espaceSM) {
-                slotPoste(poste: 4, label: "Poste 4", description: "Avant gauche")
-                slotPoste(poste: 3, label: "Poste 3", description: "Avant centre")
-                slotPoste(poste: 2, label: "Poste 2", description: "Avant droit")
+                slotPoste(poste: 4, label: "Poste 4", description: "Avant gauche", joueursLibres: joueursLibres)
+                slotPoste(poste: 3, label: "Poste 3", description: "Avant centre", joueursLibres: joueursLibres)
+                slotPoste(poste: 2, label: "Poste 2", description: "Avant droit", joueursLibres: joueursLibres)
             }
 
             HStack {
@@ -113,18 +116,20 @@ struct CompositionMatchView: View {
 
             // Rangée arrière (postes 5, 6, 1)
             HStack(spacing: LiquidGlassKit.espaceSM) {
-                slotPoste(poste: 5, label: "Poste 5", description: "Arrière gauche")
-                slotPoste(poste: 6, label: "Poste 6", description: "Arrière centre")
-                slotPoste(poste: 1, label: "Poste 1", description: "Arrière droit (service)")
+                slotPoste(poste: 5, label: "Poste 5", description: "Arrière gauche", joueursLibres: joueursLibres)
+                slotPoste(poste: 6, label: "Poste 6", description: "Arrière centre", joueursLibres: joueursLibres)
+                slotPoste(poste: 1, label: "Poste 1", description: "Arrière droit (service)", joueursLibres: joueursLibres)
             }
         }
     }
 
-    private func slotPoste(poste: Int, label: String, description: String) -> some View {
+    private func slotPoste(poste: Int, label: String, description: String, joueursLibres: [JoueurEquipe]) -> some View {
         let joueurAssigne = postesAssignes[poste].flatMap { id in joueursEquipe.first(where: { $0.id == id }) }
-        let joueursDisponibles = joueursEquipe.filter {
-            !joueursAssignesIDs.contains($0.id) || postesAssignes[poste] == $0.id
-        }
+        // Slot vide : liste partagée pré-calculée. Slot assigné : le joueur de CE
+        // poste reste sélectionnable (réinséré à sa place d'origine).
+        let joueursDisponibles = joueurAssigne == nil
+            ? joueursLibres
+            : joueursEquipe.filter { !joueursAssignesIDs.contains($0.id) || postesAssignes[poste] == $0.id }
 
         return VStack(spacing: 4) {
             Text(label)

@@ -13,12 +13,34 @@ struct ComparaisonView: View {
            sort: \JoueurEquipe.numero) private var tousJoueurs: [JoueurEquipe]
     @Environment(\.codeEquipeActif) private var codeEquipeActif
 
-    private var joueursEquipe: [JoueurEquipe] {
-        tousJoueurs.filtreEquipe(codeEquipeActif).filter { $0.matchsJoues > 0 }
+    /// Moyennes d'équipe pré-calculées — cache @State (pattern perfo projet) :
+    /// évite 12 reduce sur les joueurs à chaque render.
+    private struct MoyennesEquipe: Equatable {
+        var kills = 0.0
+        var hittingPct = 0.0
+        var erreursAttaque = 0.0
+        var aces = 0.0
+        var erreursService = 0.0
+        var servicesTotaux = 0.0
+        var blocsSeuls = 0.0
+        var blocsAssistes = 0.0
+        var receptionsReussies = 0.0
+        var efficaciteReception = 0.0
+        var passesDecisives = 0.0
+        var manchettes = 0.0
     }
 
-    private var nbJoueurs: Double {
-        max(1, Double(joueursEquipe.count))
+    @State private var moyennes = MoyennesEquipe()
+
+    /// Invalide le cache sur mutation in-place (stats saisies/modifiées) — .onChange(collection) ne voit que les insertions/suppressions.
+    private var signatureStats: Int {
+        tousJoueurs.reduce(0) {
+            $0 + $1.matchsJoues + $1.attaquesReussies + $1.erreursAttaque + $1.attaquesTotales
+                + $1.aces + $1.erreursService + $1.servicesTotaux
+                + $1.blocsSeuls + $1.blocsAssistes
+                + $1.receptionsReussies + $1.receptionsTotales
+                + $1.passesDecisives + $1.manchettes
+        }
     }
 
     var body: some View {
@@ -61,6 +83,34 @@ struct ComparaisonView: View {
         }
         .navigationTitle("Comparaison")
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear { mettreAJourMoyennes() }
+        .onChange(of: tousJoueurs) { mettreAJourMoyennes() }
+        .onChange(of: signatureStats) { mettreAJourMoyennes() }
+        .onChange(of: codeEquipeActif) { mettreAJourMoyennes() }
+    }
+
+    // MARK: - Mise à jour du cache
+
+    private func mettreAJourMoyennes() {
+        let equipe = tousJoueurs.filtreEquipe(codeEquipeActif).filter { $0.matchsJoues > 0 }
+        let nb = max(1, Double(equipe.count))
+        func moyenne(_ valeur: (JoueurEquipe) -> Double) -> Double {
+            equipe.reduce(0.0) { $0 + valeur($1) } / nb
+        }
+        moyennes = MoyennesEquipe(
+            kills: moyenne { Double($0.attaquesReussies) },
+            hittingPct: moyenne { $0.pourcentageAttaque },
+            erreursAttaque: moyenne { Double($0.erreursAttaque) },
+            aces: moyenne { Double($0.aces) },
+            erreursService: moyenne { Double($0.erreursService) },
+            servicesTotaux: moyenne { Double($0.servicesTotaux) },
+            blocsSeuls: moyenne { Double($0.blocsSeuls) },
+            blocsAssistes: moyenne { Double($0.blocsAssistes) },
+            receptionsReussies: moyenne { Double($0.receptionsReussies) },
+            efficaciteReception: moyenne { $0.efficaciteReception },
+            passesDecisives: moyenne { Double($0.passesDecisives) },
+            manchettes: moyenne { Double($0.manchettes) }
+        )
     }
 
     // MARK: - Section catégorie
@@ -143,51 +193,39 @@ struct ComparaisonView: View {
     // MARK: - Données comparatives
 
     private var statsAttaque: [(label: String, joueur: Double, equipe: Double, format: String)] {
-        let moyKills = joueursEquipe.reduce(0.0) { $0 + Double($1.attaquesReussies) } / nbJoueurs
-        let moyHit = joueursEquipe.reduce(0.0) { $0 + $1.pourcentageAttaque } / nbJoueurs
-        let moyErr = joueursEquipe.reduce(0.0) { $0 + Double($1.erreursAttaque) } / nbJoueurs
-        return [
-            ("Kills", Double(joueur.attaquesReussies), moyKills, "%.0f"),
-            ("Hitting %", joueur.pourcentageAttaque * 100, moyHit * 100, "%.1f%%"),
-            ("Erreurs attaque", Double(joueur.erreursAttaque), moyErr, "%.0f"),
+        [
+            ("Kills", Double(joueur.attaquesReussies), moyennes.kills, "%.0f"),
+            ("Hitting %", joueur.pourcentageAttaque * 100, moyennes.hittingPct * 100, "%.1f%%"),
+            ("Erreurs attaque", Double(joueur.erreursAttaque), moyennes.erreursAttaque, "%.0f"),
         ]
     }
 
     private var statsService: [(label: String, joueur: Double, equipe: Double, format: String)] {
-        let moyAces = joueursEquipe.reduce(0.0) { $0 + Double($1.aces) } / nbJoueurs
-        let moyErr = joueursEquipe.reduce(0.0) { $0 + Double($1.erreursService) } / nbJoueurs
-        let moyTotal = joueursEquipe.reduce(0.0) { $0 + Double($1.servicesTotaux) } / nbJoueurs
-        return [
-            ("Aces", Double(joueur.aces), moyAces, "%.0f"),
-            ("Erreurs service", Double(joueur.erreursService), moyErr, "%.0f"),
-            ("Total services", Double(joueur.servicesTotaux), moyTotal, "%.0f"),
+        [
+            ("Aces", Double(joueur.aces), moyennes.aces, "%.0f"),
+            ("Erreurs service", Double(joueur.erreursService), moyennes.erreursService, "%.0f"),
+            ("Total services", Double(joueur.servicesTotaux), moyennes.servicesTotaux, "%.0f"),
         ]
     }
 
     private var statsBloc: [(label: String, joueur: Double, equipe: Double, format: String)] {
-        let moySeuls = joueursEquipe.reduce(0.0) { $0 + Double($1.blocsSeuls) } / nbJoueurs
-        let moyAss = joueursEquipe.reduce(0.0) { $0 + Double($1.blocsAssistes) } / nbJoueurs
-        return [
-            ("Blocs seuls", Double(joueur.blocsSeuls), moySeuls, "%.0f"),
-            ("Blocs assistés", Double(joueur.blocsAssistes), moyAss, "%.0f"),
+        [
+            ("Blocs seuls", Double(joueur.blocsSeuls), moyennes.blocsSeuls, "%.0f"),
+            ("Blocs assistés", Double(joueur.blocsAssistes), moyennes.blocsAssistes, "%.0f"),
         ]
     }
 
     private var statsReception: [(label: String, joueur: Double, equipe: Double, format: String)] {
-        let moyReussies = joueursEquipe.reduce(0.0) { $0 + Double($1.receptionsReussies) } / nbJoueurs
-        let moyEff = joueursEquipe.reduce(0.0) { $0 + $1.efficaciteReception } / nbJoueurs
-        return [
-            ("Réceptions réussies", Double(joueur.receptionsReussies), moyReussies, "%.0f"),
-            ("Efficacité réception", joueur.efficaciteReception * 100, moyEff * 100, "%.1f%%"),
+        [
+            ("Réceptions réussies", Double(joueur.receptionsReussies), moyennes.receptionsReussies, "%.0f"),
+            ("Efficacité réception", joueur.efficaciteReception * 100, moyennes.efficaciteReception * 100, "%.1f%%"),
         ]
     }
 
     private var statsJeu: [(label: String, joueur: Double, equipe: Double, format: String)] {
-        let moyPasses = joueursEquipe.reduce(0.0) { $0 + Double($1.passesDecisives) } / nbJoueurs
-        let moyManch = joueursEquipe.reduce(0.0) { $0 + Double($1.manchettes) } / nbJoueurs
-        return [
-            ("Passes décisives", Double(joueur.passesDecisives), moyPasses, "%.0f"),
-            ("Manchettes", Double(joueur.manchettes), moyManch, "%.0f"),
+        [
+            ("Passes décisives", Double(joueur.passesDecisives), moyennes.passesDecisives, "%.0f"),
+            ("Manchettes", Double(joueur.manchettes), moyennes.manchettes, "%.0f"),
         ]
     }
 }
