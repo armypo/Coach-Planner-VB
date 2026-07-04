@@ -39,6 +39,11 @@ enum PaletteMat {
     static let textePrincipal  = Color(.label)
     static let texteSecondaire = Color(.secondaryLabel)
     static let texteTertiaire  = Color(.tertiaryLabel)
+
+    // Sémantique stats — un seul endroit pour « bon / mauvais / neutre »
+    static let positif = vert
+    static let negatif = Color(hex: "#E85C5C")   // rouge mat aligné sur la palette
+    static let attention = Color(hex: "#E8A54A") // orange d'alerte mat
 }
 
 // MARK: - Glass Modifiers (Liquid Glass natif — iOS 26+)

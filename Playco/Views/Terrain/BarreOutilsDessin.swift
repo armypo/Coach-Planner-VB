@@ -104,17 +104,8 @@ struct BarreOutilsDessin: View {
                     menuJoueursBD
                 }
 
-                // ── Ballon (emoji 🏐)
-                Button {
-                    modeActif = .ballon
-                } label: {
-                    Text("🏐")
-                        .font(.system(size: 18))
-                        .frame(width: 36, height: 38)
-                        .background(modeActif == .ballon ? Color.yellow.opacity(0.18) : .clear)
-                        .clipShape(RoundedRectangle(cornerRadius: 7))
-                }
-                .help("Ballon")
+                // ── Ballon
+                outilBtn("volleyball.fill", "Ballon", .ballon, accent: .yellow)
 
                 sep
 
