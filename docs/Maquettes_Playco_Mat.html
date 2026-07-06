@@ -1,0 +1,639 @@
+<title>Playco Mat — maquettes</title>
+<style>
+  :root{
+    --fond:#F6F4F1; --surface:#FFFFFF; --creuse:#EFECE7;
+    --encre:#1A1918; --encre2:#55524D; --encre3:#8B8781; --filet:#E4E1DB;
+    --live:#D9382E; --pos:#337A5B; --neg:#C05B52;
+    --accent:#3D5A80; --accent-ink:#FFFFFF;
+    --ombre-flottant:0 10px 24px rgba(0,0,0,.10);
+  }
+  [data-theme="ardoise"]{
+    --fond:#121110; --surface:#1C1B19; --creuse:#262421;
+    --encre:#F1EFEA; --encre2:#A5A19A; --encre3:#6E6A64; --filet:#2E2C28;
+    --live:#E0473D; --pos:#4FA37E; --neg:#D4726A;
+    --ombre-flottant:0 10px 24px rgba(0,0,0,.45);
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0; background:var(--fond); color:var(--encre);
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display","Helvetica Neue",Arial,sans-serif;
+    font-size:17px; line-height:24px;
+    transition:background-color .15s ease, color .15s ease;
+  }
+  @media (prefers-reduced-motion:reduce){ *{transition:none!important;animation:none!important} }
+
+  /* ——— Échelle typographique (tokens de la spec) ——— */
+  .t-affiche{font-size:40px;line-height:44px;font-weight:700;letter-spacing:-.02em;text-wrap:balance}
+  .t-score{font-size:76px;line-height:76px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:0}
+  .t-titre1{font-size:28px;line-height:34px;font-weight:600;letter-spacing:-.014em}
+  .t-titre2{font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.009em}
+  .t-corps{font-size:17px;line-height:24px;font-weight:400}
+  .t-corpsfort{font-size:17px;line-height:24px;font-weight:600}
+  .t-detail{font-size:15px;line-height:20px;font-weight:400}
+  .t-donnee{font-size:15px;line-height:20px;font-weight:500;font-variant-numeric:tabular-nums}
+  .t-note{font-size:13px;line-height:18px;font-weight:400;color:var(--encre2)}
+  .t-etiquette{font-size:11px;line-height:13px;font-weight:600;letter-spacing:.055em;text-transform:uppercase;color:var(--encre2)}
+  .t-code{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:15px;line-height:20px;font-weight:500;letter-spacing:.03em}
+
+  /* ——— Structure de page ——— */
+  .page{max-width:1060px;margin:0 auto;padding:48px 24px 96px}
+  .lecture{max-width:680px}
+  section{margin-top:64px}
+  .entete-section{display:flex;flex-direction:column;gap:6px;border-bottom:.5px solid var(--filet);padding-bottom:12px;margin-bottom:24px}
+  .filet{border:none;border-top:.5px solid var(--filet);margin:0}
+
+  .carte{background:var(--surface);border:.5px solid var(--filet);border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.04)}
+  .creusee{background:var(--creuse);border-radius:6px}
+
+  /* ——— Contrôles (chrome de la page) ——— */
+  .controles{display:flex;flex-wrap:wrap;gap:24px;align-items:center;margin-top:24px}
+  .groupe-ctrl{display:flex;gap:8px;align-items:center}
+  .bouton-mode{
+    font:inherit;font-size:13px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;
+    padding:8px 14px;border-radius:6px;border:.5px solid var(--filet);
+    background:var(--surface);color:var(--encre2);cursor:pointer;
+  }
+  .bouton-mode[aria-pressed="true"]{background:var(--encre);color:var(--fond);border-color:var(--encre)}
+  .bouton-mode:focus-visible,.pastille-accent:focus-visible,.btn-live:focus-visible,.cta:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .pastille-accent{width:26px;height:26px;border-radius:6px;border:.5px solid var(--filet);cursor:pointer;padding:0}
+  .pastille-accent[aria-pressed="true"]{outline:2px solid var(--encre);outline-offset:2px}
+
+  /* ——— Nuancier ——— */
+  .nuancier{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px}
+  .teinte{border:.5px solid var(--filet);border-radius:10px;overflow:hidden;background:var(--surface)}
+  .teinte .bloc{height:56px;border-bottom:.5px solid var(--filet)}
+  .teinte .infos{padding:8px 10px;display:flex;flex-direction:column;gap:1px}
+
+  /* ——— Échelle typo (tableau) ——— */
+  .ligne-typo{display:grid;grid-template-columns:1fr auto;gap:16px;align-items:baseline;padding:12px 0;border-bottom:.5px solid var(--filet)}
+  .ligne-typo:last-child{border-bottom:none}
+
+  /* ——— Glyphes ——— */
+  .glyphes{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px}
+  .glyphe{display:flex;flex-direction:column;align-items:center;gap:10px;padding:20px 8px;background:var(--surface);border:.5px solid var(--filet);border-radius:10px}
+  .glyphe svg{stroke:var(--encre);fill:none;stroke-width:1.5;stroke-linecap:round}
+  .chips{display:flex;flex-wrap:wrap;gap:8px}
+  .chip{font-size:13px;line-height:18px;padding:4px 10px;border:.5px solid var(--filet);border-radius:6px;background:var(--surface);color:var(--encre2)}
+
+  /* ——— Composants ——— */
+  .grille-compo{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:20px;align-items:start}
+  .carte-match{padding:16px;display:flex;flex-direction:column;gap:8px}
+  .carte-match .ligne-score{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+  .carte-match .score{font-size:22px;line-height:28px;font-weight:600;font-variant-numeric:tabular-nums}
+  .carte-live{border-top:2px solid var(--live)}
+  .mot-direct{color:var(--live)}
+  .pastille-vd{display:inline-flex;width:22px;height:22px;border-radius:6px;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex:none}
+  .pastille-v{background:var(--encre);color:var(--fond)}
+  .pastille-d{border:1.5px solid var(--encre3);color:var(--encre2)}
+
+  table.stats{width:100%;border-collapse:collapse}
+  table.stats th{text-align:right;font-size:11px;line-height:13px;font-weight:600;letter-spacing:.055em;text-transform:uppercase;color:var(--encre2);padding:10px 8px;border-bottom:.5px solid var(--filet)}
+  table.stats th:first-child,table.stats td:first-child{text-align:left}
+  table.stats td{padding:9px 8px;font-size:15px;line-height:20px;font-variant-numeric:tabular-nums;text-align:right;border-bottom:.5px solid var(--filet)}
+  table.stats td:first-child{font-weight:600;font-variant-numeric:normal}
+  table.stats tr.total td{border-top:3px double var(--encre);border-bottom:none;font-weight:600}
+  .conteneur-table{overflow-x:auto}
+
+  .cellule-joueur{display:flex;align-items:center;gap:12px;padding:12px 16px}
+  .num-joueur{width:34px;height:34px;border:1.5px solid var(--encre3);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:500;font-variant-numeric:tabular-nums;flex:none}
+  .cellule-joueur .fiche{display:flex;flex-direction:column;flex:1;min-width:0}
+  .cellule-joueur .stat{font-size:15px;font-weight:500;font-variant-numeric:tabular-nums}
+
+  /* ——— Maquettes d'écrans ——— */
+  .ecran{border:.5px solid var(--filet);border-radius:14px;overflow:hidden;background:var(--fond);display:flex;flex-direction:column;min-height:480px}
+  .ecran-noir{background:#000;color:#fff}
+  .corps-ecran{flex:1;padding:24px;display:flex;flex-direction:column;gap:16px;min-width:0}
+  .tabbar{display:flex;border-top:.5px solid var(--filet);background:var(--surface)}
+  .onglet{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 4px 12px;color:var(--encre3);background:none;border:none;cursor:default;font:inherit}
+  .onglet svg{stroke:currentColor;fill:none;stroke-width:1.5;stroke-linecap:round;width:26px;height:20px}
+  .onglet .dotplein{fill:currentColor;stroke:none}
+  .onglet span{font-size:10px;line-height:12px;font-weight:600;letter-spacing:.04em}
+  .onglet.actif{color:var(--encre)}
+  .cta{
+    font:inherit;font-size:15px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;
+    background:var(--accent);color:var(--accent-ink);border:none;border-radius:10px;
+    padding:14px 20px;cursor:pointer;align-self:flex-start;
+  }
+  .cta:active{transform:scale(.98);opacity:.88}
+  .liste-afaire{display:flex;flex-direction:column}
+  .liste-afaire .item{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:.5px solid var(--filet)}
+  .liste-afaire .item:last-child{border-bottom:none}
+
+  /* Courtside */
+  .zone-score{display:flex;justify-content:center;align-items:baseline;gap:20px;padding:8px 0 0}
+  .score-courtside{font-size:min(76px,14vw);line-height:1;font-weight:800;font-variant-numeric:tabular-nums}
+  .grille-live{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+  .btn-live{
+    font:inherit;font-size:18px;font-weight:700;letter-spacing:.05em;
+    min-height:60px;border-radius:10px;border:none;cursor:pointer;
+    background:var(--accent);color:var(--accent-ink);
+  }
+  .btn-live.adv{background:#000;color:#fff;border:1px solid #6E6A64}
+  .btn-live:active{transform:scale(.98);opacity:.88}
+  .btn-annuler{grid-column:1/-1;background:#000;color:#fff;border:1px solid #6E6A64;font-size:15px;min-height:52px}
+  .chips-rotation{display:flex;justify-content:center;gap:12px}
+  .chip-rot{font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;padding:4px 10px;border-radius:6px;border:1px solid #6E6A64}
+
+  /* Terrain */
+  .cadre-terrain{background:var(--surface);border:.5px solid var(--filet);border-radius:10px;padding:20px;overflow-x:auto}
+  .terrain-svg{display:block;width:100%;height:auto}
+  .legende-terrain{display:flex;flex-wrap:wrap;gap:20px;margin-top:14px}
+  .item-legende{display:flex;align-items:center;gap:8px}
+  .item-legende svg{display:block}
+
+  /* Clips */
+  .groupe-clips{display:flex;flex-direction:column;gap:8px}
+  .rangee-clips{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+  .clip{border:.5px solid var(--filet);border-radius:10px;overflow:hidden;background:var(--surface)}
+  .clip .apercu{height:76px;background:var(--creuse);display:flex;align-items:flex-end;justify-content:flex-end;padding:6px}
+  .clip .duree{font-size:11px;font-weight:600;font-variant-numeric:tabular-nums;background:var(--encre);color:var(--fond);border-radius:4px;padding:1px 6px}
+  .clip .infos{padding:8px 10px;display:flex;flex-direction:column;gap:2px}
+
+  /* Lois */
+  .lois{counter-reset:loi;display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:0 40px}
+  .loi{padding:14px 0;border-bottom:.5px solid var(--filet);display:flex;gap:14px;align-items:baseline}
+  .loi .no{font-variant-numeric:tabular-nums;font-weight:600;color:var(--encre3);flex:none;width:24px;text-align:right}
+
+  .duo{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:24px;align-items:start}
+  .note-bloc{border-left:2px solid var(--encre);padding:4px 0 4px 16px;margin:0}
+</style>
+
+<div class="page">
+
+  <!-- ═══════════ EN-TÊTE ═══════════ -->
+  <header>
+    <p class="t-etiquette">Playco 3.0 — Système de design · Juillet 2026</p>
+    <h1 class="t-affiche" style="margin:10px 0 8px">Playco Mat</h1>
+    <p class="t-note lecture">La feuille de match. Éditorial, exact, calme — maquettes vivantes du langage visuel approuvé.
+    Référence écrite : <span class="t-code" style="font-size:13px">docs/Vision_Playco_3.0.md</span> §2.</p>
+
+    <div class="controles">
+      <div class="groupe-ctrl" role="group" aria-label="Mode d'affichage">
+        <span class="t-etiquette">Mode</span>
+        <button class="bouton-mode" id="btn-papier" aria-pressed="true">Papier</button>
+        <button class="bouton-mode" id="btn-ardoise" aria-pressed="false">Ardoise</button>
+      </div>
+      <div class="groupe-ctrl" role="group" aria-label="Couleur d'équipe">
+        <span class="t-etiquette">Couleur d'équipe</span>
+        <span id="accents"></span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ═══════════ MANIFESTE ═══════════ -->
+  <section>
+    <div class="entete-section">
+      <p class="t-etiquette">01 — Manifeste</p>
+    </div>
+    <blockquote class="note-bloc lecture">
+      <p class="t-corps" style="margin:0">Playco n'est pas une app de sport. C'est l'instrument de travail d'un coach.
+      Chaque écran se lit comme un document imprimé avec soin : de l'encre sur du papier, des chiffres qui tombent juste,
+      des traits qui veulent dire quelque chose. Rien ne brille, rien ne clignote, rien ne décore.
+      La seule couleur qui compte est celle de l'équipe ; le seul rouge est celui du direct.
+      Le calme de l'interface, c'est le respect du travail du coach.</p>
+    </blockquote>
+  </section>
+
+  <!-- ═══════════ COULEUR ═══════════ -->
+  <section>
+    <div class="entete-section">
+      <p class="t-etiquette">02 — Couleur &amp; matière</p>
+      <h2 class="t-titre1">L'encre, le papier, une seule couleur</h2>
+    </div>
+    <div class="nuancier" id="nuancier"></div>
+    <p class="t-note" style="margin-top:16px">Le verre est délégué au chrome système ; tout le contenu est opaque.
+    La profondeur vient du papier (trois niveaux), pas de l'ombre. Aucune information n'est portée par la couleur seule.</p>
+  </section>
+
+  <!-- ═══════════ TYPOGRAPHIE ═══════════ -->
+  <section>
+    <div class="entete-section">
+      <p class="t-etiquette">03 — Typographie</p>
+      <h2 class="t-titre1">Onze tokens, une seule famille</h2>
+    </div>
+    <div class="carte" style="padding:8px 20px">
+      <div class="ligne-typo"><span class="t-affiche">Affiche — Élans de Garneau</span><span class="t-donnee" style="color:var(--encre3)">40/44 · Bold · −0,8</span></div>
+      <div class="ligne-typo"><span class="t-score">25–19</span><span class="t-donnee" style="color:var(--encre3)">76/76 · Heavy · tabulaire</span></div>
+      <div class="ligne-typo"><span class="t-titre1">Titre 1 — Analyse du match</span><span class="t-donnee" style="color:var(--encre3)">28/34 · Semibold</span></div>
+      <div class="ligne-typo"><span class="t-titre2">Titre 2 — Sherbrooke</span><span class="t-donnee" style="color:var(--encre3)">22/28 · Semibold</span></div>
+      <div class="ligne-typo"><span class="t-corps">Corps — La réception tient, la transition suit.</span><span class="t-donnee" style="color:var(--encre3)">17/24 · Regular</span></div>
+      <div class="ligne-typo"><span class="t-corpsfort">Corps fort — Totaux et emphase.</span><span class="t-donnee" style="color:var(--encre3)">17/24 · Semibold</span></div>
+      <div class="ligne-typo"><span class="t-detail">Détail — 12 présences · dernière pratique mardi</span><span class="t-donnee" style="color:var(--encre3)">15/20 · Regular</span></div>
+      <div class="ligne-typo"><span class="t-donnee">Donnée — .350 · 14 · 82,5 %</span><span class="t-donnee" style="color:var(--encre3)">15/20 · Medium · tabulaire</span></div>
+      <div class="ligne-typo"><span class="t-note">Note — Légendes et aide contextuelle.</span><span class="t-donnee" style="color:var(--encre3)">13/18 · Regular</span></div>
+      <div class="ligne-typo"><span class="t-etiquette">Étiquette — Saison 2026 · Domicile</span><span class="t-donnee" style="color:var(--encre3)">11/13 · Semibold · +0,6 · MAJ</span></div>
+      <div class="ligne-typo"><span class="t-code">CODE — ELANS-7K2M</span><span class="t-donnee" style="color:var(--encre3)">SF Mono 15/20 · codes seulement</span></div>
+    </div>
+  </section>
+
+  <!-- ═══════════ GLYPHES ═══════════ -->
+  <section>
+    <div class="entete-section">
+      <p class="t-etiquette">04 — Glyphes</p>
+      <h2 class="t-titre1">Cinq plans, pas de métaphores</h2>
+    </div>
+    <div class="glyphes">
+      <div class="glyphe" role="img" aria-label="Glyphe Aujourd'hui : le point du jour">
+        <svg width="44" height="34" viewBox="0 0 44 34"><circle cx="22" cy="14" r="5" fill="currentColor" stroke="none" style="color:var(--encre)"/><line x1="6" y1="26" x2="38" y2="26"/></svg>
+        <span class="t-etiquette">Aujourd'hui</span><span class="t-note">Le point du jour</span>
+      </div>
+      <div class="glyphe" role="img" aria-label="Glyphe Préparer : le plan">
+        <svg width="44" height="34" viewBox="0 0 44 34"><line x1="8" y1="8" x2="20" y2="8"/><line x1="26" y1="8" x2="38" y2="8"/><line x1="8" y1="17" x2="20" y2="17"/><line x1="26" y1="17" x2="38" y2="17"/><line x1="8" y1="26" x2="20" y2="26"/><line x1="26" y1="26" x2="38" y2="26"/></svg>
+        <span class="t-etiquette">Préparer</span><span class="t-note">Le plan</span>
+      </div>
+      <div class="glyphe" role="img" aria-label="Glyphe Coacher : le terrain">
+        <svg width="44" height="34" viewBox="0 0 44 34"><rect x="6" y="8" width="32" height="16" rx="1"/><line x1="22" y1="8" x2="22" y2="24"/></svg>
+        <span class="t-etiquette">Coacher</span><span class="t-note">Le terrain 2:1</span>
+      </div>
+      <div class="glyphe" role="img" aria-label="Glyphe Analyser : la mesure">
+        <svg width="44" height="34" viewBox="0 0 44 34"><line x1="6" y1="27" x2="38" y2="27"/><line x1="14" y1="27" x2="14" y2="19"/><line x1="22" y1="27" x2="22" y2="13"/><line x1="30" y1="27" x2="30" y2="7"/></svg>
+        <span class="t-etiquette">Analyser</span><span class="t-note">La mesure</span>
+      </div>
+      <div class="glyphe" role="img" aria-label="Glyphe Équipe : la rotation, six points aux positions un à six">
+        <svg width="44" height="34" viewBox="0 0 44 34"><g fill="currentColor" stroke="none" style="color:var(--encre)"><circle cx="12" cy="10" r="2.6"/><circle cx="22" cy="10" r="2.6"/><circle cx="32" cy="10" r="2.6"/><circle cx="12" cy="24" r="2.6"/><circle cx="22" cy="24" r="2.6"/><circle cx="32" cy="24" r="2.6"/></g></svg>
+        <span class="t-etiquette">Équipe</span><span class="t-note">La rotation</span>
+      </div>
+    </div>
+    <p class="t-note" style="margin:20px 0 8px">La liste fermée des glyphes fonctionnels — tout ajout passe par une revue de design, pas par un commit :</p>
+    <div class="chips">
+      <span class="chip">chevron</span><span class="chip">croix</span><span class="chip">plus</span><span class="chip">partage</span>
+      <span class="chip">lecture / pause</span><span class="chip">recherche</span><span class="chip">coche</span><span class="chip">poubelle + mot</span>
+      <span class="chip">retour</span><span class="chip">œil</span><span class="chip">cadenas</span><span class="chip">personne</span>
+      <span class="chip">envoyer</span><span class="chip">filtre</span><span class="chip">calendrier</span><span class="chip">REC</span>
+    </div>
+  </section>
+
+  <!-- ═══════════ COMPOSANTS ═══════════ -->
+  <section>
+    <div class="entete-section">
+      <p class="t-etiquette">05 — Composants</p>
+      <h2 class="t-titre1">La fiche, le tableau, le bouton</h2>
+    </div>
+    <div class="grille-compo">
+
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <p class="t-etiquette">Carte de match</p>
+        <div class="carte carte-match">
+          <p class="t-etiquette">Sam. 14 nov. — Domicile</p>
+          <div class="ligne-score"><span class="t-titre2">Sherbrooke</span><span class="score">3–1</span></div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span class="pastille-vd pastille-v" role="img" aria-label="Victoire">V</span>
+            <span class="t-note">25-19 · 23-25 · 25-21 · 25-17</span>
+          </div>
+        </div>
+        <div class="carte carte-match carte-live">
+          <p class="t-etiquette mot-direct">Direct — Set 3</p>
+          <div class="ligne-score"><span class="t-titre2">Lévis</span><span class="score" id="mini-score">18–14</span></div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span class="t-note">R2 nous · R4 adv. · 2 temps morts restants</span>
+          </div>
+        </div>
+
+        <p class="t-etiquette" style="margin-top:12px">Cellule joueur</p>
+        <div class="carte">
+          <div class="cellule-joueur" style="border-bottom:.5px solid var(--filet)">
+            <span class="num-joueur">7</span>
+            <div class="fiche"><span class="t-corpsfort">Laurie Tremblay</span><span class="t-etiquette">Passeuse</span></div>
+            <span class="stat">38 passes D.</span>
+          </div>
+          <div class="cellule-joueur">
+            <span class="num-joueur">12</span>
+            <div class="fiche"><span class="t-corpsfort">Maude Bélanger</span><span class="t-etiquette">Attaquante</span></div>
+            <span class="stat">.412</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <p class="t-etiquette">Tableau de stats — double filet comptable</p>
+        <div class="carte conteneur-table" style="padding:4px 16px 12px">
+          <table class="stats">
+            <thead><tr><th scope="col">Joueuse</th><th scope="col">K</th><th scope="col">E</th><th scope="col">Att.</th><th scope="col">Hitting</th></tr></thead>
+            <tbody>
+              <tr><td>M. Bélanger</td><td>14</td><td>3</td><td>27</td><td>.407</td></tr>
+              <tr><td>C. Roy</td><td>11</td><td>4</td><td>25</td><td>.280</td></tr>
+              <tr><td>A. Fortin</td><td>8</td><td>2</td><td>19</td><td>.316</td></tr>
+              <tr><td>S. Gagnon</td><td>6</td><td>5</td><td>18</td><td>.056</td></tr>
+              <tr class="total"><td>Total</td><td>39</td><td>14</td><td>89</td><td>.281</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="t-note">Chiffres tabulaires alignés à droite, hitting en convention volleyball « .350 »,
+        filets horizontaux seuls, totaux sous double filet. Deltas toujours signés : <span class="t-donnee" style="color:var(--pos)">+.041</span> ·
+        <span class="t-donnee" style="color:var(--neg)">−.023</span>.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ ÉCRANS ═══════════ -->
+  <section>
+    <div class="entete-section">
+      <p class="t-etiquette">06 — Écrans</p>
+      <h2 class="t-titre1">Quatre moments, un langage</h2>
+    </div>
+
+    <div class="duo">
+      <!-- Aujourd'hui -->
+      <div>
+        <p class="t-etiquette" style="margin-bottom:10px">Aujourd'hui — la carte héro sait quel jour on est</p>
+        <div class="ecran">
+          <div class="corps-ecran">
+            <div>
+              <p class="t-etiquette">Saison 2026 — Élans</p>
+              <p class="t-titre1" style="margin:4px 0 0">Mardi 8 septembre</p>
+            </div>
+            <div class="carte carte-match carte-live">
+              <p class="t-etiquette mot-direct">Jour de match</p>
+              <div class="ligne-score"><span class="t-titre2">Sherbrooke · 19 h</span></div>
+              <p class="t-note" style="margin:0">Plan de match prêt · 6 de départ du dernier match</p>
+              <button class="cta" type="button">Coacher ce match</button>
+            </div>
+            <div class="carte" style="padding:14px 16px">
+              <p class="t-etiquette" style="margin-bottom:6px">À faire</p>
+              <div class="liste-afaire">
+                <div class="item"><span class="t-corps">Confirmer les présences</span><span class="t-donnee" style="color:var(--encre3)">9/12</span></div>
+                <div class="item"><span class="t-corps">Scouting Sherbrooke — tendances zonales</span><span class="t-note">brouillon</span></div>
+              </div>
+            </div>
+          </div>
+          <nav class="tabbar" aria-label="Espaces">
+            <button class="onglet actif" type="button"><svg viewBox="0 0 44 34"><circle class="dotplein" cx="22" cy="13" r="4.5"/><line x1="8" y1="24" x2="36" y2="24"/></svg><span>Aujourd'hui</span></button>
+            <button class="onglet" type="button"><svg viewBox="0 0 44 34"><line x1="9" y1="9" x2="20" y2="9"/><line x1="25" y1="9" x2="36" y2="9"/><line x1="9" y1="17" x2="20" y2="17"/><line x1="25" y1="17" x2="36" y2="17"/><line x1="9" y1="25" x2="20" y2="25"/><line x1="25" y1="25" x2="36" y2="25"/></svg><span>Préparer</span></button>
+            <button class="onglet" type="button"><svg viewBox="0 0 44 34"><rect x="7" y="9" width="30" height="15" rx="1"/><line x1="22" y1="9" x2="22" y2="24"/></svg><span>Coacher</span></button>
+            <button class="onglet" type="button"><svg viewBox="0 0 44 34"><line x1="8" y1="26" x2="36" y2="26"/><line x1="15" y1="26" x2="15" y2="19"/><line x1="22" y1="26" x2="22" y2="13"/><line x1="29" y1="26" x2="29" y2="8"/></svg><span>Analyser</span></button>
+            <button class="onglet" type="button"><svg viewBox="0 0 44 34"><g class="dotplein"><circle cx="13" cy="11" r="2.4"/><circle cx="22" cy="11" r="2.4"/><circle cx="31" cy="11" r="2.4"/><circle cx="13" cy="23" r="2.4"/><circle cx="22" cy="23" r="2.4"/><circle cx="31" cy="23" r="2.4"/></g></svg><span>Équipe</span></button>
+          </nav>
+        </div>
+      </div>
+
+      <!-- Courtside -->
+      <div>
+        <p class="t-etiquette" style="margin-bottom:10px">Match live courtside — noir pur, boutons typographiques (essayez-les)</p>
+        <div class="ecran ecran-noir">
+          <div class="corps-ecran" style="justify-content:center;gap:20px">
+            <div style="text-align:center">
+              <p class="t-etiquette" style="color:#A5A19A">Set 3 · <span class="mot-direct">Direct</span></p>
+              <div class="zone-score">
+                <span class="score-courtside" id="score-nous">18</span>
+                <span class="score-courtside" style="color:#6E6A64">–</span>
+                <span class="score-courtside" style="color:#A5A19A" id="score-adv">14</span>
+              </div>
+              <div class="chips-rotation" style="margin-top:10px">
+                <span class="chip-rot" style="border-color:var(--accent);color:#fff">Nous R2</span>
+                <span class="chip-rot" style="color:#A5A19A">Adv. R4</span>
+              </div>
+            </div>
+            <div class="grille-live">
+              <button class="btn-live" type="button" data-pt="nous">KILL</button>
+              <button class="btn-live" type="button" data-pt="nous">ACE</button>
+              <button class="btn-live" type="button" data-pt="nous">BLOC</button>
+              <button class="btn-live adv" type="button" data-pt="adv">ERREUR</button>
+              <button class="btn-live btn-annuler" type="button" id="btn-annuler">ANNULER LE POINT</button>
+            </div>
+            <p class="t-note" style="color:#6E6A64;text-align:center;margin:0">Cibles 60 pt · contraste AAA · aucune opacité &lt; 1</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Terrain Le Trait -->
+    <div style="margin-top:32px">
+      <p class="t-etiquette" style="margin-bottom:10px">Le terrain « Le Trait » — un plan d'architecte, pas un décor</p>
+      <div class="cadre-terrain">
+        <svg class="terrain-svg" viewBox="0 0 720 400" role="img" aria-label="Terrain de volleyball dessiné au trait : réception en rotation 2, trois déplacements, un trajet de ballon et une attaque">
+          <g id="g-terrain">
+            <!-- surface -->
+            <rect x="30" y="30" width="660" height="300" fill="var(--creuse)"/>
+            <!-- lignes -->
+            <g stroke="var(--encre)" stroke-opacity=".85" fill="none">
+              <rect x="30" y="30" width="660" height="300" stroke-width="2"/>
+              <line x1="360" y1="30" x2="360" y2="330" stroke-width="1.25"/>
+              <line x1="250" y1="30" x2="250" y2="330" stroke-width="1.25"/>
+              <line x1="470" y1="30" x2="470" y2="330" stroke-width="1.25"/>
+              <line x1="250" y1="12" x2="250" y2="30" stroke-width="1" stroke-dasharray="3 4"/>
+              <line x1="250" y1="330" x2="250" y2="348" stroke-width="1" stroke-dasharray="3 4"/>
+              <line x1="470" y1="12" x2="470" y2="30" stroke-width="1" stroke-dasharray="3 4"/>
+              <line x1="470" y1="330" x2="470" y2="348" stroke-width="1" stroke-dasharray="3 4"/>
+              <!-- filet : double trait + poteaux -->
+              <line x1="357" y1="18" x2="357" y2="342" stroke-width="1"/>
+              <line x1="363" y1="18" x2="363" y2="342" stroke-width="1"/>
+            </g>
+            <circle cx="360" cy="14" r="2.5" fill="var(--encre)"/>
+            <circle cx="360" cy="346" r="2.5" fill="var(--encre)"/>
+            <!-- zones (notre demi-terrain, à droite) -->
+            <g fill="var(--encre3)" font-size="11" font-weight="600" letter-spacing=".06em">
+              <text x="415" y="80">4</text><text x="415" y="188">3</text><text x="415" y="300">2</text>
+              <text x="600" y="80">5</text><text x="600" y="188">6</text><text x="600" y="300">1</text>
+            </g>
+            <!-- trajectoires sémantiques -->
+            <g fill="none">
+              <!-- ballon : service adverse → réception (arc fin) -->
+              <path d="M 120 300 Q 350 120 540 218" stroke="var(--encre)" stroke-width="1.5"/>
+              <!-- déplacements : pointillés -->
+              <path d="M 545 235 Q 520 280 470 288" stroke="var(--accent)" stroke-width="1.75" stroke-dasharray="5 5"/>
+              <path d="M 620 120 Q 585 140 560 165" stroke="var(--accent)" stroke-width="1.75" stroke-dasharray="5 5"/>
+              <!-- attaque : trait épais, tête pleine -->
+              <path d="M 452 110 Q 380 90 260 70" stroke="var(--accent)" stroke-width="3.5"/>
+              <path d="M 272 63 L 254 69 L 269 80 Z" fill="var(--accent)" stroke="none"/>
+            </g>
+            <!-- jetons adverses : au contour -->
+            <g fill="var(--surface)" stroke="var(--encre3)" stroke-width="1.75">
+              <circle cx="330" cy="90" r="15"/><circle cx="330" cy="180" r="15"/><circle cx="330" cy="270" r="15"/>
+            </g>
+            <!-- jetons nous : pleins accent -->
+            <g id="jetons-nous" font-size="12" font-weight="600" text-anchor="middle">
+              <g><circle cx="452" cy="110" r="16" fill="var(--accent)"/><text x="452" y="114" fill="var(--accent-ink)">12</text></g>
+              <g><circle cx="430" cy="200" r="16" fill="var(--accent)"/><text x="430" y="204" fill="var(--accent-ink)">7</text></g>
+              <g><circle cx="452" cy="290" r="16" fill="var(--accent)"/><text x="452" y="294" fill="var(--accent-ink)">3</text></g>
+              <g><circle cx="620" cy="120" r="16" fill="var(--accent)"/><text x="620" y="124" fill="var(--accent-ink)">9</text></g>
+              <g><circle cx="545" cy="218" r="16" fill="var(--accent)"/><text x="545" y="222" fill="var(--accent-ink)">5</text></g>
+              <g><circle cx="620" cy="290" r="16" fill="var(--accent)"/><text x="620" y="294" fill="var(--accent-ink)">11</text></g>
+            </g>
+          </g>
+        </svg>
+        <div class="legende-terrain">
+          <span class="item-legende"><svg width="36" height="8"><line x1="0" y1="4" x2="36" y2="4" stroke="var(--accent)" stroke-width="1.75" stroke-dasharray="5 5"/></svg><span class="t-note">Déplacement</span></span>
+          <span class="item-legende"><svg width="36" height="8"><line x1="0" y1="4" x2="36" y2="4" stroke="var(--encre)" stroke-width="1.5"/></svg><span class="t-note">Trajet du ballon</span></span>
+          <span class="item-legende"><svg width="36" height="8"><line x1="0" y1="4" x2="30" y2="4" stroke="var(--accent)" stroke-width="3.5"/><path d="M 28 0 L 36 4 L 28 8 Z" fill="var(--accent)"/></svg><span class="t-note">Attaque / service</span></span>
+          <span class="item-legende"><svg width="16" height="16"><circle cx="8" cy="8" r="6.5" fill="var(--accent)"/></svg><span class="t-note">Nous</span></span>
+          <span class="item-legende"><svg width="16" height="16"><circle cx="8" cy="8" r="6" fill="none" stroke="var(--encre3)" stroke-width="1.75"/></svg><span class="t-note">Adversaire</span></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Clips -->
+    <div style="margin-top:32px">
+      <p class="t-etiquette" style="margin-bottom:10px">Revue de clips — la vidéo vit dans l'exercice, pas dans une section</p>
+      <div class="ecran" style="min-height:0">
+        <div class="corps-ecran">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap">
+            <div>
+              <p class="t-etiquette">Pratique de mardi — 8 sept.</p>
+              <p class="t-titre2" style="margin:4px 0 0">14 clips · 3 exercices</p>
+            </div>
+            <span class="chip">Filtrer par joueuse</span>
+          </div>
+          <div class="groupe-clips">
+            <p class="t-etiquette" style="border-bottom:.5px solid var(--filet);padding-bottom:8px">Réception R2 — 3 touches</p>
+            <div class="rangee-clips">
+              <div class="clip"><div class="apercu"><span class="duree">0:42</span></div><div class="infos"><span class="t-detail">Vague 1 — service flottant</span><span class="t-note">2 tags · #7 #12</span></div></div>
+              <div class="clip"><div class="apercu"><span class="duree">1:05</span></div><div class="infos"><span class="t-detail">Vague 2 — cible zone 5</span><span class="t-note">1 tag · #9</span></div></div>
+              <div class="clip"><div class="apercu"><span class="duree">0:38</span></div><div class="infos"><span class="t-detail">Vague 3 — correction posture</span><span class="t-note">Partagé à #7</span></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ LES 10 LOIS ═══════════ -->
+  <section>
+    <div class="entete-section">
+      <p class="t-etiquette">07 — Les dix lois</p>
+      <h2 class="t-titre1">Vérifiables en revue de code</h2>
+    </div>
+    <div class="lois">
+      <div class="loi"><span class="no t-donnee">1</span><span class="t-detail"><strong>L'image fonctionnelle.</strong> Toute image appartient aux listes fermées (16 glyphes, 8 outils, 5 onglets). Le reste disparaît.</span></div>
+      <div class="loi"><span class="no t-donnee">2</span><span class="t-detail"><strong>L'accent unique.</strong> La seule couleur du contenu est celle de l'équipe. Exception : les postes, sur les jetons du terrain seulement.</span></div>
+      <div class="loi"><span class="no t-donnee">3</span><span class="t-detail"><strong>Le chiffre tabulaire.</strong> Tout nombre comparable est tabulaire, aligné à droite.</span></div>
+      <div class="loi"><span class="no t-donnee">4</span><span class="t-detail"><strong>Le verre-chrome.</strong> Le verre n'existe que sur la tab bar, les toolbars et les présentations système.</span></div>
+      <div class="loi"><span class="no t-donnee">5</span><span class="t-detail"><strong>Le papier.</strong> Fonds unis par tokens ; toute surface porte son filet de 0,5 pt.</span></div>
+      <div class="loi"><span class="no t-donnee">6</span><span class="t-detail"><strong>Le style nommé.</strong> Onze tokens typographiques, aucune taille libre, jamais d'arrondi.</span></div>
+      <div class="loi"><span class="no t-donnee">7</span><span class="t-detail"><strong>L'ombre unique.</strong> Seul le flottant projette une ombre.</span></div>
+      <div class="loi"><span class="no t-donnee">8</span><span class="t-detail"><strong>Le calme.</strong> Rien ne bouge sans cause utilisateur ; les chiffres roulent, les cadres jamais.</span></div>
+      <div class="loi"><span class="no t-donnee">9</span><span class="t-detail"><strong>La redondance.</strong> Aucune information portée par la couleur seule — plein/contour, V/D, signes, « DIRECT ».</span></div>
+      <div class="loi"><span class="no t-donnee">10</span><span class="t-detail"><strong>Le gymnase.</strong> Courtside : noir pur, AAA, cibles 60 pt, boutons en mots.</span></div>
+    </div>
+  </section>
+
+  <footer style="margin-top:64px">
+    <hr class="filet">
+    <p class="t-note" style="margin-top:16px">Playco Mat — maquettes vivantes · Origotech, juillet 2026.
+    Spécification : docs/Vision_Playco_3.0.md · Exécution : docs/Roadmap_Playco_v2.2_v3.x.md (patch 2.4, vague 1).</p>
+  </footer>
+</div>
+
+<script>
+(function(){
+  var racine = document.documentElement;
+
+  // ——— Mode Papier / Ardoise ———
+  var btnPapier = document.getElementById('btn-papier');
+  var btnArdoise = document.getElementById('btn-ardoise');
+  function setMode(m){
+    if(m==='ardoise'){ racine.setAttribute('data-theme','ardoise'); }
+    else { racine.removeAttribute('data-theme'); }
+    btnPapier.setAttribute('aria-pressed', String(m!=='ardoise'));
+    btnArdoise.setAttribute('aria-pressed', String(m==='ardoise'));
+    appliquerAccent(); rendreNuancier();
+  }
+  btnPapier.addEventListener('click', function(){ setMode('papier'); });
+  btnArdoise.addEventListener('click', function(){ setMode('ardoise'); });
+
+  // ——— Couleur d'équipe (matifiée, variante par mode) ———
+  var equipes = [
+    { nom:'Élans — bleu ardoise', clair:'#3D5A80', sombre:'#8FB0D1' },
+    { nom:'Forêt', clair:'#3E6B4F', sombre:'#8FC0A3' },
+    { nom:'Bordeaux', clair:'#7A3B47', sombre:'#C98D99' },
+    { nom:'Ocre', clair:'#7A5E23', sombre:'#CBA85E' }
+  ];
+  var accentActif = 0;
+  var conteneurAccents = document.getElementById('accents');
+  equipes.forEach(function(e,i){
+    var b = document.createElement('button');
+    b.className = 'pastille-accent'; b.type='button';
+    b.style.background = e.clair;
+    b.setAttribute('aria-label','Couleur d’équipe : '+e.nom);
+    b.setAttribute('aria-pressed', String(i===0));
+    b.addEventListener('click', function(){
+      accentActif = i;
+      conteneurAccents.querySelectorAll('button').forEach(function(x,j){ x.setAttribute('aria-pressed', String(j===i)); });
+      appliquerAccent();
+    });
+    conteneurAccents.appendChild(b);
+  });
+  function appliquerAccent(){
+    var sombre = racine.getAttribute('data-theme')==='ardoise';
+    var e = equipes[accentActif];
+    racine.style.setProperty('--accent', sombre ? e.sombre : e.clair);
+    racine.style.setProperty('--accent-ink', sombre ? '#121110' : '#FFFFFF');
+  }
+
+  // ——— Nuancier (hex par mode) ———
+  var jeux = {
+    papier: [
+      ['fond','#F6F4F1','Fond d’app — grège, jamais blanc pur'],
+      ['surface','#FFFFFF','Cartes et tableaux'],
+      ['surfaceCreuse','#EFECE7','Champs et zones inset'],
+      ['encre','#1A1918','Texte principal'],
+      ['encre2','#55524D','Secondaire'],
+      ['encre3','#8B8781','Décoratif seulement'],
+      ['filet','#E4E1DB','Hairlines 0,5 pt'],
+      ['live','#D9382E','Le direct — jamais seul'],
+      ['deltaPositif','#337A5B','Toujours signé +'],
+      ['deltaNégatif','#C05B52','Toujours signé −']
+    ],
+    ardoise: [
+      ['fond','#121110','Fond d’app'],
+      ['surface','#1C1B19','Cartes et tableaux'],
+      ['surfaceCreuse','#262421','Champs et zones inset'],
+      ['encre','#F1EFEA','Texte principal'],
+      ['encre2','#A5A19A','Secondaire'],
+      ['encre3','#6E6A64','Décoratif seulement'],
+      ['filet','#2E2C28','Hairlines 0,5 pt'],
+      ['live','#E0473D','Le direct — jamais seul'],
+      ['deltaPositif','#4FA37E','Toujours signé +'],
+      ['deltaNégatif','#D4726A','Toujours signé −']
+    ]
+  };
+  var nuancier = document.getElementById('nuancier');
+  function rendreNuancier(){
+    var mode = racine.getAttribute('data-theme')==='ardoise' ? 'ardoise' : 'papier';
+    nuancier.innerHTML = '';
+    jeux[mode].forEach(function(t){
+      var d = document.createElement('div'); d.className='teinte';
+      d.innerHTML = '<div class="bloc" style="background:'+t[1]+'"></div>'+
+        '<div class="infos"><span class="t-donnee">'+t[0]+'</span>'+
+        '<span class="t-code" style="font-size:12px;color:var(--encre3)">'+t[1]+'</span>'+
+        '<span class="t-note">'+t[2]+'</span></div>';
+      nuancier.appendChild(d);
+    });
+    // + l'accent courant
+    var e = equipes[accentActif];
+    var hex = (mode==='ardoise') ? e.sombre : e.clair;
+    var d = document.createElement('div'); d.className='teinte';
+    d.innerHTML = '<div class="bloc" style="background:'+hex+'"></div>'+
+      '<div class="infos"><span class="t-donnee">accentEquipe</span>'+
+      '<span class="t-code" style="font-size:12px;color:var(--encre3)">'+hex+'</span>'+
+      '<span class="t-note">La couleur de l’équipe, matifiée</span></div>';
+    nuancier.appendChild(d);
+  }
+
+  // ——— Courtside interactif (les chiffres roulent, les cadres jamais) ———
+  var nous = 18, adv = 14, historique = [];
+  var elNous = document.getElementById('score-nous');
+  var elAdv = document.getElementById('score-adv');
+  var elMini = document.getElementById('mini-score');
+  function rafraichirScores(){
+    elNous.textContent = nous; elAdv.textContent = adv;
+    if(elMini) elMini.textContent = nous + '–' + adv;
+  }
+  document.querySelectorAll('.btn-live[data-pt]').forEach(function(b){
+    b.addEventListener('click', function(){
+      var cible = b.getAttribute('data-pt');
+      if(cible==='nous'){ nous++; } else { adv++; }
+      historique.push(cible);
+      rafraichirScores();
+    });
+  });
+  document.getElementById('btn-annuler').addEventListener('click', function(){
+    var dernier = historique.pop();
+    if(!dernier) return;
+    if(dernier==='nous' && nous>0){ nous--; } else if(dernier==='adv' && adv>0){ adv--; }
+    rafraichirScores();
+  });
+
+  appliquerAccent(); rendreNuancier();
+})();
+</script>
