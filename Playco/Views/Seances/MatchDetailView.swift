@@ -33,6 +33,7 @@ struct MatchDetailView: View {
     @State private var afficherExportPDF = false
     @State private var afficherDashboardLive = false
     @State private var afficherModeLive = false
+    @State private var afficherRepriseLive = false
     @State private var afficherConfirmationFinaliser = false
     @State private var confirmeFinalisation = false
     @State private var afficherAnalyseMatch = false
@@ -117,7 +118,14 @@ struct MatchDetailView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .onAppear { chargerExerciceTerrain() }
+        .onAppear {
+            chargerExerciceTerrain()
+            // 2.2.a — State Restoration : si l'app a été tuée pendant le live
+            // de CE match (marqueur encore présent), proposer la reprise.
+            if !seance.statsEntrees, MatchLiveRestauration.correspond(a: seance.id) {
+                afficherRepriseLive = true
+            }
+        }
         // La vue peut être réutilisée pour une autre séance (sélection sidebar) :
         // sans reset, le terrain resterait figé sur l'exercice du match précédent.
         .onChange(of: seance.id) {
@@ -317,6 +325,12 @@ struct MatchDetailView: View {
                     }
             }
         }
+        .alert("Reprendre le match en direct ?", isPresented: $afficherRepriseLive) {
+            Button("Reprendre") { afficherModeLive = true }
+            Button("Non", role: .cancel) { MatchLiveRestauration.effacer() }
+        } message: {
+            Text("La saisie de ce match était en cours. Le score, les rotations et le service seront restaurés là où vous étiez rendu.")
+        }
         .alert("Finaliser le match ?", isPresented: $afficherConfirmationFinaliser) {
             Button("Finaliser", role: .destructive) { finaliserMatch() }
             Button("Annuler", role: .cancel) { }
@@ -395,6 +409,11 @@ struct MatchDetailView: View {
 
     private func finaliserMatch() {
         guard !seance.statsEntrees else { return }
+
+        // 2.2.a — un match finalisé ne doit plus proposer de reprise live
+        if MatchLiveRestauration.correspond(a: seance.id) {
+            MatchLiveRestauration.effacer()
+        }
 
         let joueursEquipe = joueurs.filtreEquipe(codeEquipeActif)
         let pointsMatch = tousPoints.filter { $0.seanceID == seance.id }

@@ -72,9 +72,22 @@ final class TerrainEditeurViewModel {
         }
     }
 
-    private(set) var pileUndo: [TerrainSnapshot] = []
-    private(set) var pileRedo: [TerrainSnapshot] = []
+    // 2.2.a — piles PAR ÉTAPE (clé stable) : naviguer entre les étapes ne détruit
+    // plus l'historique ; seul le chargement d'un document (charger) le remet à zéro.
+    private var pilesUndo: [String: [TerrainSnapshot]] = [:]
+    private var pilesRedo: [String: [TerrainSnapshot]] = [:]
     private let maxUndo = 15
+
+    private static let clePrincipal = "principal"
+
+    /// Clé stable de l'étape active : UUID de l'étape, ou "principal" pour l'étape 0.
+    private var cleEtapeActive: String {
+        guard etapeActive > 0, etapeActive - 1 < etapes.count else { return Self.clePrincipal }
+        return etapes[etapeActive - 1].id.uuidString
+    }
+
+    var pileUndo: [TerrainSnapshot] { pilesUndo[cleEtapeActive] ?? [] }
+    var pileRedo: [TerrainSnapshot] { pilesRedo[cleEtapeActive] ?? [] }
 
     var peutAnnuler: Bool  { !pileUndo.isEmpty }
     var peutRetablir: Bool { !pileRedo.isEmpty }
@@ -97,16 +110,18 @@ final class TerrainEditeurViewModel {
 
     /// Enregistre l'état actuel avant une modification (snapshot complet)
     func enregistrerEtat(description: String = "") {
+        let cle = cleEtapeActive
         let snapshot = TerrainSnapshot(elements: elements, drawing: drawing, description: description)
-        pileUndo.append(snapshot)
-        pileRedo.removeAll()
-        if pileUndo.count > maxUndo { pileUndo.removeFirst() }
+        pilesUndo[cle, default: []].append(snapshot)
+        pilesRedo[cle] = []
+        if pilesUndo[cle]!.count > maxUndo { pilesUndo[cle]!.removeFirst() }
         aDesModifications = true
     }
 
     func annuler() {
-        if let snapshot = pileUndo.popLast() {
-            pileRedo.append(TerrainSnapshot(elements: elements, drawing: drawing, description: ""))
+        let cle = cleEtapeActive
+        if let snapshot = pilesUndo[cle]?.popLast() {
+            pilesRedo[cle, default: []].append(TerrainSnapshot(elements: elements, drawing: drawing, description: ""))
             elements = snapshot.elements
             drawing = snapshot.drawing
         } else {
@@ -115,8 +130,9 @@ final class TerrainEditeurViewModel {
     }
 
     func retablir() {
-        if let snapshot = pileRedo.popLast() {
-            pileUndo.append(TerrainSnapshot(elements: elements, drawing: drawing, description: ""))
+        let cle = cleEtapeActive
+        if let snapshot = pilesRedo[cle]?.popLast() {
+            pilesUndo[cle, default: []].append(TerrainSnapshot(elements: elements, drawing: drawing, description: ""))
             elements = snapshot.elements
             drawing = snapshot.drawing
         } else {
@@ -224,9 +240,8 @@ final class TerrainEditeurViewModel {
     }
 
     func chargerEtapeActive(dessinData: Data?, elementsData: Data?) {
-        pileUndo.removeAll()
-        pileRedo.removeAll()
-
+        // 2.2.a — ne vide plus l'historique : chaque étape garde ses piles
+        // (le reset global vit dans charger(), au chargement d'un document).
         if etapeActive == 0 {
             if let d = dessinData, let pk = try? PKDrawing(data: d) { drawing = pk }
             else { drawing = PKDrawing() }
@@ -297,6 +312,11 @@ final class TerrainEditeurViewModel {
         let idx = index - 1
         guard idx < etapes.count else { return }
 
+        // 2.2.a — purge l'historique de l'étape supprimée (clé stable)
+        let cle = etapes[idx].id.uuidString
+        pilesUndo[cle] = nil
+        pilesRedo[cle] = nil
+
         if etapeActive == index {
             etapeActive = 0
             chargerEtapeActive(dessinData: dessinData, elementsData: elementsData)
@@ -310,6 +330,10 @@ final class TerrainEditeurViewModel {
     // MARK: - Persistance (P2-07)
 
     func charger(dessinData: Data?, elementsData: Data?, etapesData: Data?) {
+        // Nouveau document : l'historique undo/redo repart à zéro (2.2.a)
+        pilesUndo.removeAll()
+        pilesRedo.removeAll()
+
         if let d = etapesData {
             do {
                 etapes = try JSONCoderCache.decoder.decode([EtapeExercice].self, from: d)

@@ -46,7 +46,26 @@ final class MatchLiveViewModel {
         self.tousJoueurs = joueurs
         self.codeEquipeActif = codeEquipe
         self.nousServons = seance.nousServonsEnPremier
+        restaurerSetActuel()
         chargerSet()
+    }
+
+    /// 2.2.a — State Restoration : reprendre au set où le match était rendu
+    /// (le plus avancé entre les PointMatch persistés et les scores de sets),
+    /// au lieu de retomber sur le set 1 à chaque réouverture du live.
+    private func restaurerSetActuel() {
+        let seanceIDCapture = seance.id
+        let points = (try? modelContext.fetch(
+            FetchDescriptor<PointMatch>(
+                predicate: #Predicate { $0.seanceID == seanceIDCapture }
+            )
+        )) ?? []
+        let dernierSetJoue = points.map(\.set).max() ?? 0
+        let dernierSetScore = seance.sets.map(\.numero).max() ?? 0
+        let restaure = max(dernierSetJoue, dernierSetScore)
+        if restaure >= 1 {
+            setActuel = min(restaure, 5)
+        }
     }
 
     // MARK: - Joueurs sur le terrain

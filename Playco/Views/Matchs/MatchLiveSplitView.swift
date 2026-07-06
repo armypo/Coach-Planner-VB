@@ -111,12 +111,16 @@ struct MatchLiveSplitView: View {
                 // Activer mode match automatiquement
                 syncService.activerModeMatch(true)
             }
+            // 2.2.a — marqueur de reprise : survit à un kill de l'app,
+            // effacé à la sortie propre (onDisappear).
+            MatchLiveRestauration.marquer(seanceID: seance.id)
         }
         .onDisappear {
             // Désactiver mode match quand on quitte le match live
             if syncService.modeMatchActif {
                 syncService.activerModeMatch(false)
             }
+            MatchLiveRestauration.effacer()
         }
         .onChange(of: joueursEquipe) {
             viewModel?.mettreAJourJoueurs(joueursEquipe, codeEquipe: codeEquipeActif)

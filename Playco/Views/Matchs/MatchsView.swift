@@ -42,6 +42,15 @@ struct MatchsView: View {
         matchsPasses = matchs.filter { $0.date <= Date() }.sorted { $0.date > $1.date }
     }
 
+    /// 2.2.a — State Restoration : si l'app a été tuée pendant un match live,
+    /// resélectionne ce match pour que MatchDetailView propose la reprise.
+    private func restaurerSelectionLive() {
+        guard matchSelectionne == nil,
+              let id = MatchLiveRestauration.seanceEnCours(),
+              let match = matchs.first(where: { $0.id == id && !$0.statsEntrees }) else { return }
+        matchSelectionne = match
+    }
+
     private var peutModifier: Bool {
         authService.utilisateurConnecte?.role.peutModifierSeances ?? false
     }
@@ -106,7 +115,10 @@ struct MatchsView: View {
                 matchSelectionne = match
             }
         }
-        .onAppear { recalculerMatchs() }
+        .onAppear {
+            recalculerMatchs()
+            restaurerSelectionLive()
+        }
         .onChange(of: toutesSeances) { recalculerMatchs() }
         .onChange(of: codeEquipeActif) { recalculerMatchs() }
         .sensoryFeedback(.success, trigger: matchs.count)
