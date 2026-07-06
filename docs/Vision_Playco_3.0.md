@@ -15,18 +15,22 @@ Trajectoire bottom-up : le coach d'abord, l'athlète comme boucle virale, le clu
 
 Le concurrent n°1 reste **le papier + Google Sheets + Messenger** : c'est lui que l'onboarding < 10 min, la logistique gratuite et le ton du produit doivent battre. Détail marché : [annexe 05](./Vision_Playco_3.0_Annexes/passe1-05-marche-concurrence.md).
 
-## 2. Design « Playco Mat » — l'identité visuelle
+## 2. Design « Playco Mat Nuit » — l'identité visuelle
 
-Identité : **Éditorial. Exact. Calme.** Chaque écran se lit comme un document imprimé avec soin — de l'encre sur du papier, des chiffres qui tombent juste, des traits qui veulent dire quelque chose. Rien ne brille, rien ne clignote, rien ne décore. Spécification complète : [annexe 09](./Vision_Playco_3.0_Annexes/passe2-09-langage-playco-mat.md).
+> **Révision fondateur (2026-07-06)** — quatre directives amendent la spec d'origine ([annexe 09](./Vision_Playco_3.0_Annexes/passe2-09-langage-playco-mat.md), conservée comme matériau source) : (1) **interaction directe** — la carte EST le bouton, pas de gros CTA en mots ; (2) **courtside refondu mais essence et practicité conservées** ; (3) **les 5 couleurs d'espace sont CONSERVÉES, en tons neutres, sur un fond sombre/noir** (l'« accent unique couleur d'équipe » comme seule couleur du contenu est abandonné) ; (4) **pas de séparation mat/chrome : le Liquid Glass 3.0, poussé au meilleur, est la matière** de l'app.
 
-- **Doctrine sans-symbole** : trois castes d'images — décorative (interdite), métaphorique de navigation (interdite), fonctionnelle (autorisée dans des **listes fermées** : ~16 glyphes fonctionnels ; 8 glyphes d'outils d'éditeur [C2] ; 5 glyphes de tab bar maison au trait dérivés de la géométrie du terrain, toujours étiquetés, `accessibilityLabel` explicites). Règle d'or : *masque l'image — si l'écran perd une action, elle reste ; s'il reste compréhensible, elle disparaît.*
-- **Typographie** : SF Pro droite exclusivement (fin du `.rounded`), SF Mono pour les codes seulement. Échelle nommée de 11 tokens (Affiche 40 → Étiquette 11 pt MAJUSCULES tracking +0,6, repli casse normale au-delà de Dynamic Type accessibility1). Chiffres tabulaires partout où deux nombres se comparent ; **double filet comptable** au-dessus des totaux (signature maison).
-- **Couleur & matière** : neutres chauds « Papier » (`fond #F6F4F1`, `surface #FFFFFF`, `encre #1A1918`, `filet #E4E1DB`) / « Ardoise » sombre ; **un seul accent = la couleur de l'équipe, matifiée** (saturation ≤ 62 %, contraste ≥ 4,5:1 garanti ; défaut `#3D5A80`) — les 4 couleurs de section disparaissent. Rouge scindé : `live #D9382E` / `deltaNegatif`. `encre3` réservé au décoratif (contraste insuffisant pour l'information). **Le verre = le chrome système uniquement ; tout contenu opaque + filet 0,5 pt ; zéro gradient d'ambiance ; profondeur par le papier (3 niveaux), ombre réservée au flottant.**
-- **Le terrain « Le Trait » = la signature de marque** : plan d'architecte — surface mate unie, lignes encre fines, zones en Étiquette, jetons pleins (nous) / au contour (adversaire), heatmap monochrome accent. Décliné en icône d'app, splash, en-têtes PDF.
-- **Motion du calme** : 3 springs existants conservés ; rien ne bouge sans cause utilisateur ; les chiffres roulent (`.numericText()`), les cadres jamais ; plafond 350 ms.
-- **Courtside** : noir pur, AAA ≥ 7:1, boutons typographiques (mots ≥ 18-20 pt, jamais tronqués), cibles ≥ 60 pt, Score 96 pt.
-- **10 lois vérifiables en revue de code** — portées par le skill `/playco-mat-review` (lois 1, 2, 4, 10 bloquantes).
-- Migration en 3 chantiers « corps-sans-signatures » (pattern éprouvé lors du passage `.glassEffect` de juin 2026, dont le coût irrécupérable est assumé [C10]) : tokens → composants → signatures.
+Identité : **Éditorial. Exact. Calme — dans la nuit.** Des chiffres qui tombent juste, des traits qui veulent dire quelque chose, du verre sombre qui laisse respirer le noir. Rien ne clignote, rien ne décore.
+
+- **Doctrine sans-symbole (inchangée)** : trois castes d'images — décorative (interdite), métaphorique de navigation (interdite), fonctionnelle (autorisée dans des **listes fermées** : ~16 glyphes fonctionnels ; 8 glyphes d'outils d'éditeur [C2] ; 5 glyphes de tab bar maison au trait, toujours étiquetés, `accessibilityLabel` explicites). Règle d'or : *masque l'image — si l'écran perd une action, elle reste ; s'il reste compréhensible, elle disparaît.*
+- **Typographie (inchangée)** : SF Pro droite exclusivement, SF Mono pour les codes seulement. Échelle nommée de 11 tokens, chiffres tabulaires, **double filet comptable** au-dessus des totaux.
+- **Couleur — la nuit et les cinq tons** : fond `nuit #0D0D0F` (noir par défaut, unique) ; encre claire `#F2F1ED` / `encre2 #ABA9A3` / `encre3 #6F6D68` (décoratif) ; filet = blanc 10 %. **Les 5 couleurs d'espace, calibrées en tons neutres sur la nuit** : Séances `#C08A64` (terre) · Matchs `#BE6B63` (brique) · Stratégies `#7292B4` (ardoise) · Équipe `#74A98D` (sauge) · Entraînement `#9789BD` (lavande) — jamais les hex vifs v2, jamais en grands aplats de texte, toujours redondées (loi 9). La **couleur d'équipe** reste celle de l'identité (jetons « nous » au terrain, en-tête d'équipe). Rouge vif = `live #E0473D` seulement.
+- **Matière — Liquid Glass 3.0, le meilleur possible** : le verre EST la surface (cartes, panneaux, tab bar), pas un chrome à part. Sa discipline : (1) le verre est toujours **sombre** (luminance plafonnée — l'encre claire garde ≥ 7:1 dessus, la leçon NN/g intégrée) ; (2) **teinté à la couleur de son espace à 8-12 %** maximum ; (3) **une seule couche de verre à la fois** — jamais de verre sur verre ; (4) reflet spéculaire discret (1 px en haut) + bordure blanche 8-10 % + ombre douce pour détacher du noir ; (5) les tableaux de chiffres reposent sur verre à teinte renforcée (quasi opaque) — la donnée prime sur la matière ; (6) le morphing du verre (`glassEffectID`) est réservé aux transitions d'espace ; (7) zéro gradient d'ambiance.
+- **Interaction directe** : tout objet actionnable se tape directement — la carte héro lance le match d'un tap sur la carte, pas via un bouton « [COACHER CE MATCH] ». Les boutons en mots subsistent là où l'action n'a pas d'objet (courtside, formulaires, destructif).
+- **Le terrain « Le Trait » (inchangé, transposé nuit)** : plan d'architecte — surface sombre mate, lignes claires fines, jetons pleins (nous, couleur d'équipe) / au contour (adversaire), heatmap monochrome. Signature de marque (icône, splash, PDF).
+- **Motion du calme (inchangée)** : 3 springs, rien ne bouge sans cause utilisateur, les chiffres roulent, plafond 350 ms.
+- **Courtside — l'essence conservée** : refonte visuelle alignée nuit, mais les acquis pratiques sont intouchables — fond opaque pur (le verre s'efface : exception assumée), AAA ≥ 7:1, boutons typographiques (mots ≥ 18-20 pt, jamais tronqués), cibles ≥ 60 pt, Score 96 pt, pavé rapide, haptiques.
+- **10 lois vérifiables** — portées par `/playco-mat-review`, lois 2/4/5 réécrites par cette révision (couleur calibrée / verre sombre / nuit) ; lois 1, 2, 4, 10 bloquantes.
+- Migration en 3 chantiers « corps-sans-signatures » : tokens → composants → signatures. La migration `.glassEffect` de juin 2026 n'est plus un coût irrécupérable [C10 caduc] : elle devient la fondation directe du verre 3.0.
 
 ## 3. Architecture d'information — 5 espaces par moment d'usage
 
@@ -34,9 +38,9 @@ Un coach ne pense pas « je consulte le type Stratégies » ; il pense *je prép
 
 | Espace | Contenu |
 |---|---|
-| **AUJOURD'HUI** | Carte héro contextuelle (jour de match → « [COACHER CE MATCH] » ; jour de pratique → « [DÉMARRER] »), actions rapides, dernier match, « À faire » (onboarding progressif), messages inline |
+| **AUJOURD'HUI** | Carte héro contextuelle **tappable en entier** (jour de match : un tap sur la carte → pré-match ; jour de pratique : un tap → mode exécution — pas de bouton CTA), actions rapides, dernier match, « À faire » (onboarding progressif), messages inline |
 | **PRÉPARER** | Calendrier racine, séances, Playbook (fusion Bibliothèque + Stratégies + Formations — livrée avec le retour de Séances 2.0), Adversaires (scouting en objet de première classe), programmes physiques |
-| **COACHER** | Dark par défaut ; [COACHER LE MATCH] avec 6 de départ pré-rempli, [MATCH ÉCLAIR] 2 champs, mode exécution de pratique, capture vidéo ; courtside proposé à l'entrée du live |
+| **COACHER** | Nuit par nature ; la carte du match du jour se tape directement (6 de départ pré-rempli), match éclair 2 champs, mode exécution de pratique, capture vidéo ; courtside proposé à l'entrée du live |
 | **ANALYSER** | Saison, analyse match pré-filtrée (box score/fil/rotations/heatmap), joueurs, exports, debrief IA (backlog) |
 | **ÉQUIPE** | Roster (fiche segmentée + QR d'invitation + statut disponibilité), staff & permissions, messagerie, réglages/abonnement |
 
