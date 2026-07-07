@@ -143,6 +143,39 @@ struct MatchLiveViewModelTests {
         #expect(vm.rotationActuelle == 1)
     }
 
+    @Test("init — des PointMatch sans aucun SetScore suffisent à reprendre le bon set")
+    func initRestaureDepuisPointsSansSetScore() throws {
+        // Arrange : sets vides (SetScore jamais écrit — kill avant sauvegarderSet),
+        // mais un point persiste au set 2. Discrimine la source PointMatch (ME-002).
+        let (context, seance, joueurs) = try creerMatch()
+        seance.sets = []
+        let point = PointMatch(seanceID: seance.id, set: 2, joueurID: joueurs[0].id, typeAction: .kill)
+        context.insert(point)
+        try context.save()
+
+        // Act
+        let vm = creerVM(seance: seance, context: context, joueurs: joueurs)
+
+        // Assert
+        #expect(vm.setActuel == 2)
+    }
+
+    @Test("init — la restauration du set est plafonnée au nombre maximal de sets")
+    func initRestaureSetPlafonne() throws {
+        // Arrange : donnée corrompue / sync partielle — un point au set 8
+        let (context, seance, joueurs) = try creerMatch()
+        let point = PointMatch(seanceID: seance.id, set: 8, joueurID: joueurs[0].id, typeAction: .kill)
+        context.insert(point)
+        seance.sets = [SetScore(numero: 7, scoreEquipe: 1, scoreAdversaire: 0)]
+        try context.save()
+
+        // Act
+        let vm = creerVM(seance: seance, context: context, joueurs: joueurs)
+
+        // Assert : jamais au-delà du dernier set possible
+        #expect(vm.setActuel == MatchLiveViewModel.nombreMaxDeSets)
+    }
+
     @Test("chargerSet — alternance du service : sets pairs inversés, sets impairs identiques au set 1")
     func chargerSetAlternanceService() throws {
         // Arrange

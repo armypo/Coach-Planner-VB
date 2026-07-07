@@ -92,6 +92,30 @@ final class TerrainEditeurViewModel {
     var peutAnnuler: Bool  { !pileUndo.isEmpty }
     var peutRetablir: Bool { !pileRedo.isEmpty }
 
+    /// Budget GLOBAL de snapshots undo, toutes étapes confondues (revue LO-002) :
+    /// chaque snapshot embarque le dessin PencilKit sérialisé — sans borne
+    /// globale, la mémoire croît en 15 × (nombre d'étapes). L'étape active
+    /// garde toujours ses maxUndo snapshots ; au-delà du budget, les plus
+    /// anciens des étapes NON actives sont évincés.
+    private let maxSnapshotsTotal = 60
+
+    /// Coutures de test (revue LO-003) — permettent de vérifier la purge de
+    /// supprimerEtape et le budget global sans exposer les dictionnaires.
+    var nombreDePilesUndo: Int { pilesUndo.count }
+    var nombreSnapshotsUndoTotal: Int { pilesUndo.values.reduce(0) { $0 + $1.count } }
+
+    private func appliquerBudgetGlobal() {
+        var total = nombreSnapshotsUndoTotal
+        guard total > maxSnapshotsTotal else { return }
+        let cleActive = cleEtapeActive
+        for cle in pilesUndo.keys.sorted() where cle != cleActive {
+            while total > maxSnapshotsTotal, !(pilesUndo[cle]?.isEmpty ?? true) {
+                pilesUndo[cle]?.removeFirst()
+                total -= 1
+            }
+        }
+    }
+
     // MARK: - Verrouillage
 
     var verrouille: Bool {
@@ -115,6 +139,7 @@ final class TerrainEditeurViewModel {
         pilesUndo[cle, default: []].append(snapshot)
         pilesRedo[cle] = []
         if pilesUndo[cle]!.count > maxUndo { pilesUndo[cle]!.removeFirst() }
+        appliquerBudgetGlobal()
         aDesModifications = true
     }
 

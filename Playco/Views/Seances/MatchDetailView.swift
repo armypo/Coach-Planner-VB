@@ -122,7 +122,9 @@ struct MatchDetailView: View {
             chargerExerciceTerrain()
             // 2.2.a — State Restoration : si l'app a été tuée pendant le live
             // de CE match (marqueur encore présent), proposer la reprise.
-            if !seance.statsEntrees, MatchLiveRestauration.correspond(a: seance.id) {
+            // Gardée par le rôle (revue HI-001) : le mode live est réservé aux
+            // rôles qui peuvent modifier les séances — même gate que la toolbar.
+            if peutModifier, !seance.statsEntrees, MatchLiveRestauration.correspond(a: seance.id) {
                 afficherRepriseLive = true
             }
         }

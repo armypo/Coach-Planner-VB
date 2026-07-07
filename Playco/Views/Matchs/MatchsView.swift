@@ -44,8 +44,12 @@ struct MatchsView: View {
 
     /// 2.2.a — State Restoration : si l'app a été tuée pendant un match live,
     /// resélectionne ce match pour que MatchDetailView propose la reprise.
+    /// Gardée par le rôle (revue HI-001) : un utilisateur qui ne peut pas
+    /// modifier les séances ne déclenche pas la reprise (et ne consomme pas
+    /// le marqueur du coach — il reste vivant pour la bonne session).
     private func restaurerSelectionLive() {
-        guard matchSelectionne == nil,
+        guard peutModifier,
+              matchSelectionne == nil,
               let id = MatchLiveRestauration.seanceEnCours(),
               let match = matchs.first(where: { $0.id == id && !$0.statsEntrees }) else { return }
         matchSelectionne = match

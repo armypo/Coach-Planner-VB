@@ -168,7 +168,7 @@ struct TerrainEditeurViewModelTests {
         #expect(vm.elements.isEmpty)
     }
 
-    @Test("supprimer une étape purge son historique — une nouvelle étape repart à neuf")
+    @Test("supprimer une étape purge son historique (la pile disparaît du dictionnaire)")
     func suppressionPurgeHistorique() {
         let vm = TerrainEditeurViewModel()
         var dessin: Data? = nil
@@ -178,13 +178,82 @@ struct TerrainEditeurViewModelTests {
         vm.enregistrerEtat(description: "action sur l'étape 1")
         vm.elements = [elementJoueur()]
         #expect(vm.peutAnnuler)
+        #expect(vm.nombreDePilesUndo == 1) // seule l'étape 1 a un historique
 
         vm.supprimerEtape(index: 1, dessinData: dessin, elementsData: elems)
         #expect(vm.etapeActive == 0)
 
+        // La purge est vérifiée sur la couture, pas par déduction d'UUID :
+        // la pile de l'étape supprimée a bel et bien disparu.
+        #expect(vm.nombreDePilesUndo == 0)
+        #expect(vm.nombreSnapshotsUndoTotal == 0)
+
         vm.ajouterEtape(dessinData: &dessin, elementsData: &elems)
         #expect(!vm.peutAnnuler) // pas d'historique hérité de l'étape supprimée
         #expect(!vm.peutRetablir)
+    }
+
+    @Test("redo survit à la navigation entre étapes (aller-retour puis rétablir)")
+    func redoSurvitALaNavigation() {
+        let vm = TerrainEditeurViewModel()
+        var dessin: Data? = nil
+        var elems: Data? = nil
+
+        // Principal : action puis annulation → un redo disponible
+        vm.enregistrerEtat(description: "avant ajout")
+        vm.elements = [elementJoueur(label: "1")]
+        vm.annuler()
+        #expect(vm.elements.isEmpty)
+        #expect(vm.peutRetablir)
+
+        // Aller sur une étape vierge : ni undo ni redo, et annuler() y est
+        // un no-op sur les éléments (fallback canvas, pas de vol de pile)
+        vm.ajouterEtape(dessinData: &dessin, elementsData: &elems)
+        #expect(!vm.peutAnnuler)
+        #expect(!vm.peutRetablir)
+        vm.annuler()
+        #expect(vm.elements.isEmpty)
+
+        // Retour au principal : le redo est toujours là et ré-applique
+        vm.changerEtape(index: 0, dessinData: &dessin, elementsData: &elems)
+        #expect(vm.peutRetablir)
+        vm.retablir()
+        #expect(vm.elements.count == 1)
+        #expect(vm.elements.first?.label == "1")
+    }
+
+    @Test("maxUndo est appliqué PAR étape (20 actions → 15 snapshots, l'autre étape intacte)")
+    func maxUndoParEtape() {
+        let vm = TerrainEditeurViewModel()
+        var dessin: Data? = nil
+        var elems: Data? = nil
+
+        for i in 1...20 { vm.enregistrerEtat(description: "action \(i)") }
+        #expect(vm.pileUndo.count == 15) // borne par étape respectée
+
+        vm.ajouterEtape(dessinData: &dessin, elementsData: &elems)
+        for i in 1...3 { vm.enregistrerEtat(description: "étape 1 — \(i)") }
+        #expect(vm.pileUndo.count == 3)
+
+        vm.changerEtape(index: 0, dessinData: &dessin, elementsData: &elems)
+        #expect(vm.pileUndo.count == 15) // le principal n'a pas été affecté
+    }
+
+    @Test("budget global : les snapshots des étapes non actives sont évincés au-delà de 60")
+    func budgetGlobalDesSnapshots() {
+        let vm = TerrainEditeurViewModel()
+        var dessin: Data? = nil
+        var elems: Data? = nil
+
+        // 4 étapes + principal remplis à ras bord (5 × 15 = 75 > 60)
+        for i in 1...15 { vm.enregistrerEtat(description: "principal \(i)") }
+        for _ in 1...4 {
+            vm.ajouterEtape(dessinData: &dessin, elementsData: &elems)
+            for i in 1...15 { vm.enregistrerEtat(description: "étape \(i)") }
+        }
+
+        #expect(vm.nombreSnapshotsUndoTotal <= 60) // budget global respecté
+        #expect(vm.pileUndo.count == 15) // l'étape ACTIVE garde tout son historique
     }
 
     @Test("charger un document remet tout l'historique à zéro")
