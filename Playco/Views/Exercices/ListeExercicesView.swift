@@ -11,6 +11,10 @@ struct ListeExercicesView: View {
     @Environment(\.editMode) private var editMode
     @Environment(AuthService.self) private var authService
     @Bindable var seance: Seance
+    @Environment(\.codeEquipeActif) private var codeEquipeActif
+    @Query(filter: #Predicate<JoueurEquipe> { $0.estActif == true },
+           sort: \JoueurEquipe.numero) private var tousJoueurs: [JoueurEquipe]
+    @State private var urlPlanPratique: URL?
     @State private var afficherNouvelExercice = false
     @State private var afficherBibliotheque = false
     @State private var exerciceARenommer: Exercice?
@@ -30,6 +34,20 @@ struct ListeExercicesView: View {
         authService.utilisateurConnecte?.role.peutModifierSeances ?? false
     }
 
+    /// Génère le PDF dans un fichier temporaire puis expose le ShareLink.
+    private func genererPlanPratique() {
+        let data = PDFExportService.genererPlanPratique(
+            seance: seance, joueurs: tousJoueurs.filtreEquipe(codeEquipeActif))
+        let nomFichier = "Plan-\(seance.nom.replacingOccurrences(of: " ", with: "-")).pdf"
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(nomFichier)
+        do {
+            try data.write(to: url, options: .atomic)
+            urlPlanPratique = url
+        } catch {
+            urlPlanPratique = nil
+        }
+    }
+
     var body: some View {
         Group {
             if (seance.exercices ?? []).isEmpty {
@@ -41,6 +59,17 @@ struct ListeExercicesView: View {
         .navigationTitle(seance.nom)
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
+            // 2.6.2 — le papier vit encore dans les gymnases : plan de pratique
+            // une page (heures, diagrammes, consignes, présences à cocher).
+            ToolbarItem(placement: .secondaryAction) {
+                if !(seance.exercices ?? []).isEmpty {
+                    if let url = urlPlanPratique {
+                        ShareLink("Plan de pratique", item: url)
+                    } else {
+                        Button("Plan de pratique") { genererPlanPratique() }
+                    }
+                }
+            }
             ToolbarItem(placement: .primaryAction) {
                 HStack(spacing: 8) {
                     if peutModifier {

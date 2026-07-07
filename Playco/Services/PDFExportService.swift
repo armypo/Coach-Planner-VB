@@ -128,6 +128,141 @@ enum PDFExportService {
 
     // MARK: - Fiche joueur
 
+    // MARK: - Plan de pratique (2.6.2)
+
+    /// PDF une page : le plan de pratique pour la planchette du gymnase —
+    /// heure calculée, exercice, durée, consignes, mini-diagramme, et la
+    /// liste des présences à cocher à la main.
+    static func genererPlanPratique(seance: Seance, joueurs: [JoueurEquipe]) -> Data {
+        let format = UIGraphicsPDFRendererFormat()
+        let pageRect = CGRect(x: 0, y: 0, width: 612, height: 792) // Letter
+        let renderer = UIGraphicsPDFRenderer(bounds: pageRect, format: format)
+
+        return renderer.pdfData { context in
+            context.beginPage()
+            var y: CGFloat = 40
+
+            // En-tête
+            y = dessinerTexte(seance.nom, x: 40, y: y,
+                              font: .boldSystemFont(ofSize: 22), context: context)
+            let sousTitre = "Plan de pratique — \(seance.date.formatFrancais())"
+                + (seance.lieu.isEmpty ? "" : " — \(seance.lieu)")
+            y = dessinerTexte(sousTitre, x: 40, y: y + 4,
+                              font: .systemFont(ofSize: 12), context: context) + 10
+
+            // Colonnes
+            let exercices = (seance.exercices ?? []).sorted { $0.ordre < $1.ordre }
+            var heure = seance.date
+            context.cgContext.setStrokeColor(UIColor.black.withAlphaComponent(0.25).cgColor)
+            context.cgContext.setLineWidth(0.5)
+            context.cgContext.move(to: CGPoint(x: 40, y: y))
+            context.cgContext.addLine(to: CGPoint(x: 572, y: y))
+            context.cgContext.strokePath()
+            y += 8
+
+            for exercice in exercices {
+                let hauteurRangee: CGFloat = 64
+                if y + hauteurRangee > 640 { break } // une page : le surplus est tronqué
+
+                // Heure calculée + durée
+                let heureTexte = heure.formatHeure()
+                _ = dessinerTexte(heureTexte, x: 40, y: y,
+                                  font: .boldSystemFont(ofSize: 12), context: context)
+                if exercice.duree > 0 {
+                    _ = dessinerTexte("\(exercice.duree) min", x: 40, y: y + 16,
+                                      font: .systemFont(ofSize: 10), context: context)
+                }
+
+                // Mini-diagramme (vectoriel, coordonnées 0-1)
+                let estDemi = TypeTerrain(rawValue: exercice.typeTerrain) == .demiTerrain
+                let diagramme = CGRect(x: 96, y: y, width: estDemi ? 56 : 96, height: 48)
+                dessinerMiniDiagramme(exercice: exercice, rect: diagramme,
+                                      estDemiTerrain: estDemi, context: context)
+
+                // Nom + consignes
+                let xTexte: CGFloat = 208
+                var yTexte = dessinerTexte(exercice.nom, x: xTexte, y: y,
+                                           font: .boldSystemFont(ofSize: 13),
+                                           context: context, maxWidth: 364)
+                if !exercice.notes.isEmpty {
+                    let consignes = exercice.notes.count > 160
+                        ? String(exercice.notes.prefix(160)) + "…" : exercice.notes
+                    yTexte = dessinerTexte(consignes, x: xTexte, y: yTexte + 2,
+                                           font: .systemFont(ofSize: 10),
+                                           context: context, maxWidth: 364)
+                }
+
+                heure = heure.addingTimeInterval(TimeInterval(max(exercice.duree, 0) * 60))
+                y += hauteurRangee
+            }
+
+            // Présences à cocher
+            y = max(y + 12, 648)
+            y = dessinerTexte("Présences", x: 40, y: y,
+                              font: .boldSystemFont(ofSize: 13), context: context) + 6
+            let actifs = joueurs.filter(\.estActif).sorted { $0.numero < $1.numero }
+            let parColonne = 8
+            for (index, joueur) in actifs.prefix(24).enumerated() {
+                let colonne = index / parColonne
+                let rangee = index % parColonne
+                let x = 40 + CGFloat(colonne) * 180
+                let yLigne = y + CGFloat(rangee) * 15
+                context.cgContext.setStrokeColor(UIColor.black.cgColor)
+                context.cgContext.setLineWidth(0.8)
+                context.cgContext.stroke(CGRect(x: x, y: yLigne + 1, width: 9, height: 9))
+                _ = dessinerTexte("#\(joueur.numero) \(joueur.prenom) \(joueur.nom)",
+                                  x: x + 14, y: yLigne,
+                                  font: .systemFont(ofSize: 9), context: context, maxWidth: 160)
+            }
+        }
+    }
+
+    /// Diagramme miniature du terrain : contour, filet, jetons et traits —
+    /// projection directe des coordonnées normalisées 0-1 de l'exercice.
+    private static func dessinerMiniDiagramme(exercice: Exercice, rect: CGRect,
+                                              estDemiTerrain: Bool,
+                                              context: UIGraphicsPDFRendererContext) {
+        let cg = context.cgContext
+        cg.setFillColor(UIColor(white: 0.94, alpha: 1).cgColor)
+        cg.fill(rect)
+        cg.setStrokeColor(UIColor.black.withAlphaComponent(0.6).cgColor)
+        cg.setLineWidth(0.8)
+        cg.stroke(rect)
+        // Filet : central (plein terrain) ou au bord gauche (demi-terrain)
+        let xFilet = estDemiTerrain ? rect.minX : rect.midX
+        cg.setLineWidth(1.2)
+        cg.move(to: CGPoint(x: xFilet, y: rect.minY - 2))
+        cg.addLine(to: CGPoint(x: xFilet, y: rect.maxY + 2))
+        cg.strokePath()
+
+        guard let data = exercice.elementsData,
+              let elements = try? JSONCoderCache.decoder.decode([ElementTerrain].self, from: data) else { return }
+        for element in elements {
+            let px = rect.minX + CGFloat(element.x) * rect.width
+            let py = rect.minY + CGFloat(element.y) * rect.height
+            switch element.type {
+            case .joueur:
+                cg.setFillColor(UIColor.black.withAlphaComponent(0.75).cgColor)
+                cg.fillEllipse(in: CGRect(x: px - 2.5, y: py - 2.5, width: 5, height: 5))
+            case .ballon:
+                cg.setStrokeColor(UIColor.black.cgColor)
+                cg.setLineWidth(0.7)
+                cg.strokeEllipse(in: CGRect(x: px - 2, y: py - 2, width: 4, height: 4))
+            case .fleche, .trajectoire:
+                guard let toX = element.toX, let toY = element.toY else { continue }
+                let fin = CGPoint(x: rect.minX + CGFloat(toX) * rect.width,
+                                  y: rect.minY + CGFloat(toY) * rect.height)
+                cg.setStrokeColor(UIColor.black.withAlphaComponent(0.55).cgColor)
+                cg.setLineWidth(0.6)
+                cg.move(to: CGPoint(x: px, y: py))
+                cg.addLine(to: fin)
+                cg.strokePath()
+            case .rotation:
+                continue
+            }
+        }
+    }
+
     static func genererPDFJoueur(joueur: JoueurEquipe, moyenneEquipe: [String: Double]) -> Data {
         let renderer = UIGraphicsPDFRenderer(bounds: CGRect(x: 0, y: 0, width: 612, height: 792))
         let data = renderer.pdfData { context in
