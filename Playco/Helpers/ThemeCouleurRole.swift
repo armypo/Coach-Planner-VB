@@ -70,10 +70,13 @@ nonisolated enum MatNuit {
 
 nonisolated enum PaletteMat {
     // Couleurs principales — mates et désaturées
-    static let orange = Color(hex: "#E8734A")    // Pratiques
-    static let bleu   = Color(hex: "#4A8AF4")    // Stratégies
-    static let vert   = Color(hex: "#34C785")    // Équipe
-    static let violet = Color(hex: "#9B7AE8")    // Entraînement
+    // 2.4-C (Mat Nuit) : les 4 noms SURVIVENT (signatures intactes — tous les
+    // sites héritent) mais pointent vers les tons neutres calibrés sur la nuit.
+    // Les hex vifs v2 (#E8734A/#4A8AF4/#34C785/#9B7AE8) sont morts (loi 2).
+    static let orange = MatNuit.terre      // Séances
+    static let bleu   = MatNuit.ardoise    // Stratégies
+    static let vert   = MatNuit.sauge      // Équipe
+    static let violet = MatNuit.lavande    // Entraînement
 
     // Neutres
     static let fondPrincipal   = Color(.systemBackground)
