@@ -106,10 +106,16 @@ final class AnalyticsService {
     /// Filtre les métadonnées pour retirer toute donnée personnelle potentielle
     /// Défense en profondeur : même si un appelant oublie, rien de sensible ne sort
     private func filtrerDonneesPersonnelles(_ metadonnees: [String: String]) -> [String: String] {
-        metadonnees.filter { cle, _ in
+        var resultat: [String: String] = [:]
+        for (cle, valeur) in metadonnees {
             let cleBasse = cle.lowercased()
-            return !AnalyticsService.clesInterdites.contains(where: { cleBasse.contains($0.lowercased()) })
+            guard !AnalyticsService.clesInterdites.contains(where: { cleBasse.contains($0.lowercased()) }) else { continue }
+            // Revue 2.2.b (suivi) : filtrage des VALEURS aussi — une interpolation
+            // d'erreur peut charrier un courriel ou un identifiant.
+            guard !valeur.contains("@") else { continue }
+            resultat[cle] = String(valeur.prefix(96))
         }
+        return resultat
     }
 }
 

@@ -16,6 +16,8 @@ struct PlaycoApp: App {
     @State private var syncService = CloudKitSyncService()
     @State private var sharingService = CloudKitSharingService()
     @State private var analyticsService = AnalyticsService()
+    /// Garde processus : app_launched émis une seule fois (revue 2.2.b).
+    @MainActor static var lancementSignale = false
     @State private var storeKitService = StoreKitService()
     @State private var abonnementService = AbonnementService()
     @State private var observerTransactionsTask: Task<Void, Never>? = nil
@@ -222,7 +224,12 @@ struct PlaycoApp: App {
                             .onAppear {
                                 analyticsService.initialiser()
                                 MetricKitService.partage.demarrer()
-                                analyticsService.suivre(evenement: EvenementAnalytics.appLancee)
+                                // Revue 2.2.b (suivi) : un seul app_launched par
+                                // lancement — pas à chaque retour sur .app.
+                                if !Self.lancementSignale {
+                                    Self.lancementSignale = true
+                                    analyticsService.suivre(evenement: EvenementAnalytics.appLancee)
+                                }
                                 syncService.demarrerSuivi()
                                 syncService.demarrerSurveillanceReseau()
                                 // Brancher le rejeu automatique de la file de publication

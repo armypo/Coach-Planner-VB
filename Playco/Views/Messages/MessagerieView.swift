@@ -114,6 +114,17 @@ struct MessagerieView: View {
         .onChange(of: tousUtilisateurs) { mettreAJourCaches() }
         .onChange(of: signatureLecture) { mettreAJourCaches() }
         .onChange(of: codeEquipe) { mettreAJourCaches() }
+        // Revue 2.2.b (suivi) : si le consentement est révoqué pendant que la
+        // conversation privée est ouverte, on referme sur le fil d'équipe.
+        .onChange(of: tousJoueurs) { validerConversationActive() }
+        .onAppear { validerConversationActive() }
+    }
+
+    private func validerConversationActive() {
+        guard case .prive(let autreID)? = conversationActive,
+              let autre = membresEquipe.first(where: { $0.id == autreID }),
+              !dmAutorise(avec: autre) else { return }
+        conversationActive = .equipe
     }
 
     // MARK: - Sidebar

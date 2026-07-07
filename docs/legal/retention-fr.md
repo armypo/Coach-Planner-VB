@@ -11,7 +11,7 @@ meta: "Durées de conservation des données Playco et fonctionnement du consente
 **Date d'entrée en vigueur :** 6 juillet 2026
 **Dernière mise à jour :** 6 juillet 2026
 
-Cette page complète la [Politique de confidentialité](/legal/privacy-policy-fr/). En cas de divergence, la politique de confidentialité prévaut.
+Cette page complète la [Politique de confidentialité]({{ site.baseurl }}/legal/privacy-policy-fr/). En cas de divergence, la politique de confidentialité prévaut.
 
 ## 1. Où vivent les données
 
@@ -34,7 +34,7 @@ La suppression d'une équipe par le coach efface les données correspondantes su
 - Lorsqu'un joueur de moins de 18 ans figure au roster, le coach doit **attester avoir obtenu le consentement d'un parent ou tuteur** avant d'activer certaines fonctions.
 - L'attestation est horodatée et visible sur la fiche du joueur ; elle peut être retirée en tout temps.
 - **Les messages privés entre un adulte (coach, assistant) et un athlète mineur sont désactivés par défaut** et ne s'activent qu'après attestation du consentement parental. Le fil d'équipe (visible par tous) reste disponible.
-- Un parent ou tuteur peut en tout temps demander la consultation, la rectification ou la suppression des données de son enfant : [{{ site.email | default: "support@origotech.ca" }}](mailto:support@origotech.ca).
+- Un parent ou tuteur peut en tout temps demander la consultation, la rectification ou la suppression des données de son enfant : [support@origotech.ca](mailto:support@origotech.ca).
 
 ## 4. Vos droits (Loi 25 — Québec)
 
