@@ -160,9 +160,17 @@ enum PDFExportService {
             context.cgContext.strokePath()
             y += 8
 
+            var exercicesAffiches = 0
             for exercice in exercices {
                 let hauteurRangee: CGFloat = 64
-                if y + hauteurRangee > 640 { break } // une page : le surplus est tronqué
+                if y + hauteurRangee > 640 {
+                    // Revue 2.6.2 : la troncature s'annonce, elle ne se tait pas.
+                    let restants = exercices.count - exercicesAffiches
+                    _ = dessinerTexte("… +\(restants) exercice(s) non affiché(s) — plan limité à une page",
+                                      x: 40, y: y, font: .italicSystemFont(ofSize: 10), context: context)
+                    break
+                }
+                exercicesAffiches += 1
 
                 // Heure calculée + durée
                 let heureTexte = heure.formatHeure()
@@ -202,6 +210,10 @@ enum PDFExportService {
                               font: .boldSystemFont(ofSize: 13), context: context) + 6
             let actifs = joueurs.filter(\.estActif).sorted { $0.numero < $1.numero }
             let parColonne = 8
+            if actifs.count > 24 {
+                _ = dessinerTexte("(+\(actifs.count - 24) joueurs non affichés)",
+                                  x: 400, y: y - 18, font: .italicSystemFont(ofSize: 9), context: context)
+            }
             for (index, joueur) in actifs.prefix(24).enumerated() {
                 let colonne = index / parColonne
                 let rangee = index % parColonne

@@ -4,6 +4,13 @@
 
 import SwiftUI
 import SwiftData
+import os
+
+private let loggerListeExercices = Logger(subsystem: "com.origotech.playco", category: "ListeExercicesView")
+
+extension URL: @retroactive Identifiable {
+    public var id: String { absoluteString }
+}
 import PencilKit
 
 struct ListeExercicesView: View {
@@ -15,6 +22,7 @@ struct ListeExercicesView: View {
     @Query(filter: #Predicate<JoueurEquipe> { $0.estActif == true },
            sort: \JoueurEquipe.numero) private var tousJoueurs: [JoueurEquipe]
     @State private var urlPlanPratique: URL?
+    @State private var erreurPlanPratique = false
     @State private var afficherNouvelExercice = false
     @State private var afficherBibliotheque = false
     @State private var exerciceARenommer: Exercice?
@@ -34,17 +42,20 @@ struct ListeExercicesView: View {
         authService.utilisateurConnecte?.role.peutModifierSeances ?? false
     }
 
-    /// Génère le PDF dans un fichier temporaire puis expose le ShareLink.
+    /// Génère le PDF dans un fichier temporaire (nom basé sur l'id — revue :
+    /// pas de collision d'homonymes ni de séparateurs de chemin) et ouvre la
+    /// feuille de partage. Régénéré à chaque tap : jamais de plan périmé.
     private func genererPlanPratique() {
         let data = PDFExportService.genererPlanPratique(
             seance: seance, joueurs: tousJoueurs.filtreEquipe(codeEquipeActif))
-        let nomFichier = "Plan-\(seance.nom.replacingOccurrences(of: " ", with: "-")).pdf"
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent(nomFichier)
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Plan-\(seance.id.uuidString).pdf")
         do {
             try data.write(to: url, options: .atomic)
             urlPlanPratique = url
         } catch {
-            urlPlanPratique = nil
+            loggerListeExercices.error("Écriture du plan de pratique échouée : \(error.localizedDescription)")
+            erreurPlanPratique = true
         }
     }
 
@@ -58,16 +69,40 @@ struct ListeExercicesView: View {
         }
         .navigationTitle(seance.nom)
         .navigationBarTitleDisplayMode(.large)
+        .sheet(item: $urlPlanPratique) { url in
+            NavigationStack {
+                VStack(spacing: 16) {
+                    Text("Le plan d'une page est prêt : heures, diagrammes, consignes et présences à cocher.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+                    ShareLink("Partager le plan de pratique", item: url)
+                        .buttonStyle(.borderedProminent)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .navigationTitle("Plan de pratique")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Fermer") { urlPlanPratique = nil }
+                    }
+                }
+            }
+            .presentationDetents([.medium])
+        }
+        .alert("Impossible de générer le plan", isPresented: $erreurPlanPratique) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("Réessaie — si le problème persiste, libère de l'espace sur l'iPad.")
+        }
         .toolbar {
             // 2.6.2 — le papier vit encore dans les gymnases : plan de pratique
-            // une page (heures, diagrammes, consignes, présences à cocher).
+            // une page. Revue : UN geste, régénération À CHAQUE tap (jamais de
+            // PDF périmé), erreurs affichées.
             ToolbarItem(placement: .secondaryAction) {
                 if !(seance.exercices ?? []).isEmpty {
-                    if let url = urlPlanPratique {
-                        ShareLink("Plan de pratique", item: url)
-                    } else {
-                        Button("Plan de pratique") { genererPlanPratique() }
-                    }
+                    Button("Plan de pratique") { genererPlanPratique() }
                 }
             }
             ToolbarItem(placement: .primaryAction) {
