@@ -24,6 +24,20 @@ struct TypeTerrainTests {
         #expect((TypeTerrain(rawValue: "terrain_mystere") ?? .indoor) == .indoor)
     }
 
+    @Test("formations remappées sur demi-terrain : la ligne arrière s'éloigne du filet")
+    @MainActor
+    func formationsRemappees() {
+        let vm = TerrainEditeurViewModel()
+        vm.ajouterFormation(.cinqUn, typeTerrain: .demiTerrain)
+        let xs = vm.elements.filter { $0.type == .joueur }.map(\.x)
+        #expect(xs.count == 6)
+        // Plein terrain : x ∈ [0.12 ; 0.38] (filet à 0.5). Remappé : la
+        // distance au filet se projette sur toute la largeur → x ∈ [0.24 ; 0.76]
+        // et la ligne ARRIÈRE (ex-0.12) est désormais LOIN du filet (x élevé).
+        #expect(xs.allSatisfy { $0 > 0.2 && $0 < 0.8 })
+        #expect(xs.max()! > 0.7) // les arrières au fond, plus au filet
+    }
+
     @Test("ratios d'affichage : 2:1 plein terrain, 1:1 demi-terrain")
     func ratios() {
         #expect(TypeTerrain.indoor.ratioHorizontal == 2.0)

@@ -143,7 +143,8 @@ struct TerrainEditeurView: View {
             peutAnnuler: vm.peutAnnuler, peutRetablir: vm.peutRetablir,
             onFormation: { formation, rotation, mode in
                 vm.ajouterFormation(formation, rotation: rotation, mode: mode,
-                                    formationsPerso: formationsPerso)
+                                    formationsPerso: formationsPerso,
+                                    typeTerrain: typeTerrain)
             },
             strategiesOffensives: strategiesOffensives,
             formationsPerso: formationsPerso,

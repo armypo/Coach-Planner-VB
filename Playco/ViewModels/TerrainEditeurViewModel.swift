@@ -167,10 +167,19 @@ final class TerrainEditeurViewModel {
 
     // MARK: - Formations
 
+    /// Revue 2.3.1 : sur le preset demi-terrain (filet au bord gauche), les
+    /// positions plein-terrain (filet à x=0.5, demi gauche) sont remappées —
+    /// la distance au filet se projette sur toute la largeur du carré.
+    private func remapPourDemiTerrain(x: Double) -> Double {
+        min(max((0.5 - x) * 2, 0.04), 0.96)
+    }
+
     func ajouterFormation(_ type: FormationType, rotation: Int = 0, mode: FormationMode = .base,
-                          formationsPerso: [FormationPersonnalisee] = []) {
+                          formationsPerso: [FormationPersonnalisee] = [],
+                          typeTerrain: TypeTerrain = .indoor) {
         enregistrerEtat(description: "Formation \(type.rawValue)")
         elements.removeAll { $0.type == .joueur }
+        let remap = typeTerrain == .demiTerrain
 
         // P0-04 v0.4.0 — Cache local pour éviter double décodage JSON de .positions
         if let perso = formationsPerso.first(where: {
@@ -180,26 +189,26 @@ final class TerrainEditeurViewModel {
         }) {
             let positionsCache = perso.positions
             guard !positionsCache.isEmpty else {
-                ajouterJoueursFormation(type.positions(rotation: rotation, mode: mode))
+                ajouterJoueursFormation(type.positions(rotation: rotation, mode: mode), remap: remap)
                 return
             }
             for pos in positionsCache {
                 elements.append(ElementTerrain(
-                    type: .joueur, x: pos.x, y: pos.y,
+                    type: .joueur, x: remap ? remapPourDemiTerrain(x: pos.x) : pos.x, y: pos.y,
                     label: pos.label,
                     couleur: FormationType.couleurPourLabel(pos.label)))
             }
         } else {
-            ajouterJoueursFormation(type.positions(rotation: rotation, mode: mode))
+            ajouterJoueursFormation(type.positions(rotation: rotation, mode: mode), remap: remap)
         }
     }
 
     /// Phase 5.2 — chaque jeton reçoit la couleur de son poste (source unique
     /// FormationType.couleurPourLabel) au lieu de la couleur d'outil courante.
-    private func ajouterJoueursFormation(_ positions: [FormationType.Position]) {
+    private func ajouterJoueursFormation(_ positions: [FormationType.Position], remap: Bool = false) {
         for pos in positions {
             elements.append(ElementTerrain(
-                type: .joueur, x: pos.x, y: pos.y,
+                type: .joueur, x: remap ? remapPourDemiTerrain(x: pos.x) : pos.x, y: pos.y,
                 label: pos.label,
                 couleur: FormationType.couleurPourLabel(pos.label)))
         }
