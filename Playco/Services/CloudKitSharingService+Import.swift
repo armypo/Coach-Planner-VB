@@ -32,6 +32,21 @@ extension CloudKitSharingService {
         }
     }
 
+    /// Nom PUBLIC de l'équipe (lecture seule, sanitisé) — affiché à l'athlète
+    /// AVANT le rattachement de son Apple ID (revue 2.3 : anti-phishing QR).
+    func nomEquipePublique(codeEquipe: String) async throws -> String? {
+        let predicate = NSPredicate(format: "codeEquipe == %@", codeEquipe)
+        let query = CKQuery(recordType: RecordType.equipe, predicate: predicate)
+        do {
+            let (results, _) = try await publicDB.records(matching: query, resultsLimit: 1)
+            guard let record = try results.first?.1.get() else { return nil }
+            return record.chaineSecurisee("nom")
+        } catch {
+            logger.error("Erreur lecture nom équipe: \(error.localizedDescription)")
+            throw SharingError.reseauIndisponible
+        }
+    }
+
     /// Récupère et importe toutes les données d'une équipe dans le SwiftData local
     func recupererEtImporterEquipe(codeEquipe: String, context: ModelContext) async throws {
         estEnCoursDeRecuperation = true

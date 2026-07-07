@@ -76,7 +76,9 @@ struct IdentifiantsEquipeView: View {
             NavigationStack {
                 ScrollView {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 24)], spacing: 24) {
-                        ForEach(credsFiltres) { cred in
+                        // Revue : ATHLÈTES seulement — les codes assistants (permissions
+                        // quasi-coach) ne se projettent jamais à toute une salle.
+                        ForEach(athletes) { cred in
                             let user = utilisateurs.first { $0.id == cred.utilisateurID }
                             if let code = user?.codeInvitation, !code.isEmpty,
                                let qr = LienInvitation.genererQR(codeEquipe: codeEquipeActif, codeInvitation: code) {

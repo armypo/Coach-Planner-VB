@@ -19,6 +19,7 @@ struct JoueurDetailView: View {
 
     @Environment(AuthService.self) private var authService
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.codeEquipeActif) private var codeEquipeActif
     @State private var afficherEdition = false
     @State private var ongletAnalyse: OngletAnalyseJoueur = .statistiques
     /// Code d'invitation de l'Utilisateur lié — cache @State (évite un fetch par render)
@@ -283,7 +284,9 @@ struct JoueurDetailView: View {
 
             // 2.3 — QR du lien universel : scanner = jonction pré-remplie.
             if let code = codeInvitationJoueur, !code.isEmpty,
-               let qr = LienInvitation.genererQR(codeEquipe: joueur.codeEquipe, codeInvitation: code) {
+               let qr = LienInvitation.genererQR(
+                   codeEquipe: joueur.codeEquipe.isEmpty ? codeEquipeActif : joueur.codeEquipe,
+                   codeInvitation: code) {
                 HStack {
                     Spacer()
                     VStack(spacing: 6) {

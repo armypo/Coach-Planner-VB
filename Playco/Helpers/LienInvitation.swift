@@ -17,15 +17,21 @@ enum LienInvitation {
     static let hote = "playco.app"
     static let cheminJonction = "join"
 
-    /// Jeu de caractères autorisé des codes (défense : jamais d'injection de
-    /// chemin ni d'unicode exotique dans un lien scanné).
-    private static let caracteresAutorises = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-"))
     private static let longueurMax = 32
 
+    /// ASCII strict (revue : CharacterSet.alphanumerics acceptait l'unicode) —
+    /// lettres/chiffres ASCII et tiret uniquement.
     private static func estCodeValide(_ code: String) -> Bool {
         !code.isEmpty && code.count <= longueurMax &&
-        code.unicodeScalars.allSatisfy { caracteresAutorises.contains($0) }
+        code.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-") }
     }
+
+    /// Contexte CoreImage partagé (revue : un CIContext par QR est coûteux).
+    private static let contexteCI = CIContext()
+
+    /// Rejeu (revue : le lien scanné AVANT d'atteindre LoginView était perdu) —
+    /// posé par onOpenURL, consommé par LoginView à son apparition.
+    @MainActor static var jonctionEnAttente: (codeEquipe: String, codeInvitation: String)?
 
     /// Construit le lien d'invitation, ou nil si un code est invalide.
     static func construire(codeEquipe: String, codeInvitation: String) -> URL? {
@@ -40,7 +46,7 @@ enum LienInvitation {
     /// Analyse un lien entrant. Validation stricte : hôte exact, chemin
     /// exactement /join/{code}/{code}, codes au jeu de caractères autorisé.
     static func analyser(_ url: URL) -> (codeEquipe: String, codeInvitation: String)? {
-        guard url.scheme == "https" || url.scheme == "http",
+        guard url.scheme == "https", // revue : http rejeté, aucun cas légitime
               url.host()?.lowercased() == hote else { return nil }
         let segments = url.pathComponents.filter { $0 != "/" }
         guard segments.count == 3, segments[0] == cheminJonction else { return nil }
@@ -57,7 +63,7 @@ enum LienInvitation {
         filtre.correctionLevel = "M"
         guard let sortie = filtre.outputImage else { return nil }
         let agrandie = sortie.transformed(by: CGAffineTransform(scaleX: echelle, y: echelle))
-        guard let cg = CIContext().createCGImage(agrandie, from: agrandie.extent) else { return nil }
+        guard let cg = contexteCI.createCGImage(agrandie, from: agrandie.extent) else { return nil }
         return UIImage(cgImage: cg)
     }
 }

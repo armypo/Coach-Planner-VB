@@ -218,18 +218,6 @@ struct PlaycoApp: App {
                             .environment(syncService)
                             .environment(sharingService)
                             .environment(analyticsService)
-                            // 2.3 — lien universel d'invitation : on ne fait
-                            // que PRÉ-REMPLIR la jonction SIWA (LoginView) ;
-                            // rejoindreEquipe reste seule autorité.
-                            .onOpenURL { url in
-                                #if !DEMO
-                                guard let codes = LienInvitation.analyser(url) else { return }
-                                NotificationCenter.default.post(
-                                    name: .lienInvitationRecu, object: nil,
-                                    userInfo: ["codeEquipe": codes.codeEquipe,
-                                               "codeInvitation": codes.codeInvitation])
-                                #endif
-                            }
                             .environment(storeKitService)
                             .environment(abonnementService)
                             .modelContainer(container)
@@ -311,6 +299,20 @@ struct PlaycoApp: App {
             }
             .animation(LiquidGlassKit.springDefaut, value: splashTermine)
             .animation(LiquidGlassKit.springDefaut, value: ecranActif)
+            // 2.3 — lien universel d'invitation, attaché à la RACINE (revue :
+            // il était perdu hors de l'écran .app). On ne fait que PRÉ-REMPLIR
+            // la jonction SIWA ; rejoindreEquipe reste seule autorité. Le rejeu
+            // (jonctionEnAttente) couvre le scan AVANT d'atteindre LoginView.
+            .onOpenURL { url in
+                #if !DEMO
+                guard let codes = LienInvitation.analyser(url) else { return }
+                LienInvitation.jonctionEnAttente = codes
+                NotificationCenter.default.post(
+                    name: .lienInvitationRecu, object: nil,
+                    userInfo: ["codeEquipe": codes.codeEquipe,
+                               "codeInvitation": codes.codeInvitation])
+                #endif
+            }
         }
     }
 
