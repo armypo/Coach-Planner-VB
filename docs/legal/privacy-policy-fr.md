@@ -145,7 +145,7 @@ Si vous êtes parent ou tuteur et découvrez qu'un enfant de moins de 14 ans a c
 
 ## 11. Cookies et traceurs
 
-Playco **n'utilise aucun cookie, traceur, pixel publicitaire ou SDK analytique tiers**. Aucune analyse comportementale n'est effectuée.
+Playco **n'utilise aucun cookie, traceur ni pixel publicitaire**. Un seul SDK analytique respectueux de la vie privée, TelemetryDeck (Allemagne), reçoit des signaux d'usage anonymisés et agrégés — jamais de nom, d'identifiant, de courriel ni de code d'équipe. Aucune analyse comportementale n'est effectuée.
 
 ---
 

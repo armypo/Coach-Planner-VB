@@ -52,7 +52,7 @@ struct PresentationTerrainView: View {
                     )
                 }
                 .clipShape(RoundedRectangle(cornerRadius: LiquidGlassKit.rayonMoyen))
-                .aspectRatio(estPortrait ? 0.5 : 2.0, contentMode: .fit)
+                .aspectRatio(estPortrait ? typeTerrain.ratioVertical : typeTerrain.ratioHorizontal, contentMode: .fit)
                 .padding(.horizontal, LiquidGlassKit.espaceLG)
 
                 // Indicateur d'étapes
@@ -186,6 +186,7 @@ private struct PKDrawingReadOnlyView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> PKCanvasView {
         let canvas = PKCanvasView()
+        canvas.overrideUserInterfaceStyle = .light // revue 2.4 — fidélité des encres
         canvas.drawing = drawing
         canvas.isUserInteractionEnabled = false
         canvas.backgroundColor = .clear

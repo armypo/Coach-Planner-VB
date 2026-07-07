@@ -4,18 +4,21 @@
 
 import Foundation
 import os
+#if canImport(TelemetryDeck)
+import TelemetryDeck
+#endif
 
 // MARK: - Mode analytics
 //
-// Choix d'architecture : Playco reste SANS dépendance externe (cf. CLAUDE.md).
-// Ce service fonctionne donc en mode **logger-only** : les événements sont écrits
-// dans le système de log unifié Apple (Console.app, filtre
-// `subsystem == "com.origotech.playco"`), aucune donnée n'est envoyée à un tiers.
-//
-// Activer un backend analytics (ex. TelemetryDeck) est une DÉCISION PRODUIT, pas
-// une dette de code : elle implique d'ajouter un package SPM + un App ID de compte
-// (action humaine). Le point d'injection est `initialiser()` / `suivre(...)`
-// ci-dessous (un seul appel à brancher).
+// 2.2.b — TelemetryDeck branché (décision fondateur 2026-07-06 : première
+// dépendance SPM du projet). Le SDK ne s'active que si la clé Info.plist
+// `TelemetryDeckAppID` est renseignée (action humaine : créer l'app sur
+// dashboard.telemetrydeck.com et reporter l'ID) ET hors build DEMO — sinon
+// le service reste en mode logger-only (Console.app, filtre
+// `subsystem == "com.origotech.playco"`), aucune donnée n'est envoyée.
+// TelemetryDeck : privacy-first (pas d'IDFA, données agrégées côté serveur),
+// compatible Loi 25 / RGPD / PIPEDA — le filtrage PII local reste actif en
+// défense en profondeur.
 
 private let logger = Logger(subsystem: "com.origotech.playco", category: "Analytics")
 
@@ -31,6 +34,11 @@ private let logger = Logger(subsystem: "com.origotech.playco", category: "Analyt
 final class AnalyticsService {
 
     private var estInitialise = false
+    /// Vrai quand le SDK TelemetryDeck est actif (appID présent, hors DEMO).
+    private(set) var sdkActif = false
+
+    /// Clé Info.plist portant l'App ID TelemetryDeck ("" = logger-only).
+    static let cleAppID = "TelemetryDeckAppID"
 
     // MARK: - Initialisation
 
@@ -40,7 +48,22 @@ final class AnalyticsService {
     func initialiser() {
         guard !estInitialise else { return }
         estInitialise = true
-        logger.info("AnalyticsService initialisé (mode logger-only)")
+        #if DEMO
+        logger.info("AnalyticsService initialisé (DEMO — logger-only, aucun envoi)")
+        #else
+        let appID = (Bundle.main.object(forInfoDictionaryKey: Self.cleAppID) as? String) ?? ""
+        if appID.isEmpty {
+            logger.info("AnalyticsService initialisé (logger-only — TelemetryDeckAppID absent)")
+        } else {
+            #if canImport(TelemetryDeck)
+            TelemetryDeck.initialize(config: .init(appID: appID))
+            sdkActif = true
+            logger.info("AnalyticsService initialisé (TelemetryDeck actif)")
+            #else
+            logger.warning("TelemetryDeckAppID présent mais SDK non lié — logger-only")
+            #endif
+        }
+        #endif
     }
 
     // MARK: - Suivi d'événements
@@ -55,18 +78,20 @@ final class AnalyticsService {
     /// - Jamais d'email, numéro de téléphone
     /// - Valeurs agrégées OK (compteurs, durées, catégories)
     func suivre(evenement: String, metadonnees: [String: String] = [:]) {
-        guard estInitialise else {
-            logger.warning("Événement ignoré avant init: \(evenement)")
-            return
-        }
+        // Revue 2.2.b : init paresseuse — les événements émis avant
+        // initialiser() (wizard d'onboarding) ne sont plus perdus.
+        if !estInitialise { initialiser() }
 
         let metadonneesFiltrees = filtrerDonneesPersonnelles(metadonnees)
 
-        // Mode logger-only — point d'injection d'un backend analytics éventuel
-        // (cf. en-tête du fichier). Les métadonnées sont déjà filtrées (PII).
-
         let metaStr = metadonneesFiltrees.isEmpty ? "" : " \(metadonneesFiltrees)"
         logger.info("Analytics: \(evenement)\(metaStr, privacy: .public)")
+
+        #if canImport(TelemetryDeck)
+        if sdkActif {
+            TelemetryDeck.signal(evenement, parameters: metadonneesFiltrees)
+        }
+        #endif
     }
 
     // MARK: - Filtrage PII
@@ -81,10 +106,16 @@ final class AnalyticsService {
     /// Filtre les métadonnées pour retirer toute donnée personnelle potentielle
     /// Défense en profondeur : même si un appelant oublie, rien de sensible ne sort
     private func filtrerDonneesPersonnelles(_ metadonnees: [String: String]) -> [String: String] {
-        metadonnees.filter { cle, _ in
+        var resultat: [String: String] = [:]
+        for (cle, valeur) in metadonnees {
             let cleBasse = cle.lowercased()
-            return !AnalyticsService.clesInterdites.contains(where: { cleBasse.contains($0.lowercased()) })
+            guard !AnalyticsService.clesInterdites.contains(where: { cleBasse.contains($0.lowercased()) }) else { continue }
+            // Revue 2.2.b (suivi) : filtrage des VALEURS aussi — une interpolation
+            // d'erreur peut charrier un courriel ou un identifiant.
+            guard !valeur.contains("@") else { continue }
+            resultat[cle] = String(valeur.prefix(96))
         }
+        return resultat
     }
 }
 

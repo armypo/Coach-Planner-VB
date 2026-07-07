@@ -21,6 +21,7 @@ struct MessagerieView: View {
 
     @Query(sort: \MessageEquipe.dateEnvoi) private var tousMessages: [MessageEquipe]
     @Query(sort: \Utilisateur.nom) private var tousUtilisateurs: [Utilisateur]
+    @Query private var tousJoueurs: [JoueurEquipe]
 
     @State private var conversationActive: ConversationID? = .equipe
 
@@ -44,6 +45,38 @@ struct MessagerieView: View {
         tousMessages.reduce(0) { $0 + ($1.lecteurIDsData?.count ?? 0) }
     }
 
+    // MARK: - Consentement mineurs (2.2.b)
+
+    /// Fiche roster liée à un compte — SCOPÉE à l'équipe courante (revue 2.2.b :
+    /// un même compte peut avoir une fiche par équipe), lien direct prioritaire.
+    private func ficheJoueur(_ compte: Utilisateur) -> JoueurEquipe? {
+        let fiches = tousJoueurs.filter { $0.codeEquipe == codeEquipe }
+        return fiches.first { $0.utilisateurID == compte.id }
+            ?? fiches.first { compte.joueurEquipeID == $0.id }
+    }
+
+    /// Minorité et consentement d'un compte : la fiche roster (gérée par le
+    /// coach) fait foi ; l'âge du compte sert de filet.
+    private func infosConsentement(_ compte: Utilisateur) -> (estMineur: Bool, consentement: Bool) {
+        let fiche = ficheJoueur(compte)
+        let mineurCompte = (compte.age ?? JoueurEquipe.ageMajorite) < JoueurEquipe.ageMajorite
+        return ((fiche?.estMineur ?? false) || mineurCompte, fiche?.consentementParentalAtteste ?? false)
+    }
+
+    /// Applique PolitiqueMessagerie à la paire (moi ↔ membre).
+    private func dmAutorise(avec membre: Utilisateur) -> Bool {
+        guard let moi = utilisateur else { return false }
+        let infosMoi = infosConsentement(moi)
+        let infosMembre = infosConsentement(membre)
+        // Le consentement pertinent est celui du mineur de la paire.
+        let consentementDuMineur = infosMembre.estMineur ? infosMembre.consentement : infosMoi.consentement
+        return PolitiqueMessagerie.dmPriveAutorise(
+            roleExpediteur: moi.role, expediteurEstMineur: infosMoi.estMineur,
+            roleDestinataire: membre.role, destinataireEstMineur: infosMembre.estMineur,
+            consentementAtteste: consentementDuMineur
+        )
+    }
+
     /// Nombre total de non-lus (dans mes conversations)
     var nbNonLus: Int {
         nonLusParConversation.values.reduce(0, +)
@@ -58,7 +91,16 @@ struct MessagerieView: View {
                     ChatView(
                         conversationID: conv,
                         tousMessages: messagesEquipe,
-                        membresEquipe: membresEquipe
+                        membresEquipe: membresEquipe,
+                        envoiAutorise: {
+                            // Revue 2.2.b : la politique s'applique au POINT
+                            // D'ENVOI, pas seulement à la navigation.
+                            if case .prive(let autreID) = conv,
+                               let autre = membresEquipe.first(where: { $0.id == autreID }) {
+                                return dmAutorise(avec: autre)
+                            }
+                            return true
+                        }()
                     )
                 } else {
                     etatVide
@@ -72,6 +114,17 @@ struct MessagerieView: View {
         .onChange(of: tousUtilisateurs) { mettreAJourCaches() }
         .onChange(of: signatureLecture) { mettreAJourCaches() }
         .onChange(of: codeEquipe) { mettreAJourCaches() }
+        // Revue 2.2.b (suivi) : si le consentement est révoqué pendant que la
+        // conversation privée est ouverte, on referme sur le fil d'équipe.
+        .onChange(of: tousJoueurs) { validerConversationActive() }
+        .onAppear { validerConversationActive() }
+    }
+
+    private func validerConversationActive() {
+        guard case .prive(let autreID)? = conversationActive,
+              let autre = membresEquipe.first(where: { $0.id == autreID }),
+              !dmAutorise(avec: autre) else { return }
+        conversationActive = .equipe
     }
 
     // MARK: - Sidebar
@@ -98,16 +151,28 @@ struct MessagerieView: View {
             if !membresEquipe.isEmpty {
                 Section {
                     ForEach(membresEquipe) { membre in
+                        // 2.2.b — DM privés adulte↔mineur désactivés tant que
+                        // le consentement parental n'est pas attesté (fiche joueur).
+                        let autorise = dmAutorise(avec: membre)
                         NavigationLink(value: ConversationID.prive(membre.id)) {
-                            ligneConversation(
-                                icone: membre.role == .coach || membre.role == .admin
-                                    ? "figure.volleyball" : "figure.run",
-                                nom: membre.nomComplet,
-                                couleur: membre.role.couleur,
-                                dernier: dernierMessage(pour: .prive(membre.id)),
-                                nonLus: nbNonLusPour(.prive(membre.id))
-                            )
+                            VStack(alignment: .leading, spacing: 2) {
+                                ligneConversation(
+                                    icone: membre.role == .coach || membre.role == .admin
+                                        ? "figure.volleyball" : "figure.run",
+                                    nom: membre.nomComplet,
+                                    couleur: membre.role.couleur,
+                                    dernier: dernierMessage(pour: .prive(membre.id)),
+                                    nonLus: nbNonLusPour(.prive(membre.id))
+                                )
+                                if !autorise {
+                                    Text("Consentement parental requis")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
                         }
+                        .disabled(!autorise)
+                        .opacity(autorise ? 1 : 0.5)
                     }
                 } header: {
                     Text("Individuel")
@@ -243,6 +308,9 @@ struct ChatView: View {
     let conversationID: ConversationID
     let tousMessages: [MessageEquipe]
     let membresEquipe: [Utilisateur]
+    /// Revue 2.2.b — défense en profondeur : faux si la politique de
+    /// consentement (adulte↔mineur) interdit cette conversation privée.
+    var envoiAutorise: Bool = true
 
     @Environment(AuthService.self) private var authService
     @Environment(\.modelContext) private var modelContext
@@ -402,6 +470,7 @@ struct ChatView: View {
     // MARK: - Actions
 
     private func envoyer() {
+        guard envoiAutorise else { return } // politique consentement (2.2.b)
         guard let user = utilisateur, texteValide else { return }
         let contenu = texteMessage.trimmingCharacters(in: .whitespacesAndNewlines)
 

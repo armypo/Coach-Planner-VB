@@ -97,6 +97,85 @@ struct MatchLiveViewModelTests {
         #expect(vm.nousServons == false)
     }
 
+    // MARK: - State Restoration (2.2.a)
+
+    @Test("init — reprend au set le plus avancé après un kill de l'app")
+    func initRestaureLeSetCourant() throws {
+        // Arrange : match interrompu au set 3 (sets 1-2 terminés, un point au set 3)
+        let (context, seance, joueurs) = try creerMatch()
+        seance.sets = [
+            SetScore(numero: 1, scoreEquipe: 25, scoreAdversaire: 19),
+            SetScore(numero: 2, scoreEquipe: 23, scoreAdversaire: 25),
+            SetScore(numero: 3, scoreEquipe: 5, scoreAdversaire: 3)
+        ]
+        let point = PointMatch(seanceID: seance.id, set: 3, joueurID: joueurs[0].id, typeAction: .kill)
+        point.rotationAuMoment = 4
+        point.codeEquipe = Self.codeEquipeTest
+        context.insert(point)
+        try context.save()
+
+        // Act : nouveau ViewModel (relancement de l'app)
+        let vm = creerVM(seance: seance, context: context, joueurs: joueurs)
+
+        // Assert : on reprend au set 3, avec son score et sa rotation
+        #expect(vm.setActuel == 3)
+        #expect(vm.scoreNous == 5)
+        #expect(vm.scoreAdv == 3)
+        #expect(vm.rotationActuelle == 4)
+    }
+
+    @Test("init — un set annoncé par SetScore mais sans point est quand même repris")
+    func initRestaureSetSansPoint() throws {
+        // Arrange : le set 2 vient d'être ouvert (score 0-0 sauvegardé), aucun point
+        let (context, seance, joueurs) = try creerMatch()
+        seance.sets = [
+            SetScore(numero: 1, scoreEquipe: 25, scoreAdversaire: 20),
+            SetScore(numero: 2, scoreEquipe: 0, scoreAdversaire: 0)
+        ]
+        try context.save()
+
+        // Act
+        let vm = creerVM(seance: seance, context: context, joueurs: joueurs)
+
+        // Assert : set 2 repris, état initial de set (rotation 1)
+        #expect(vm.setActuel == 2)
+        #expect(vm.scoreNous == 0)
+        #expect(vm.rotationActuelle == 1)
+    }
+
+    @Test("init — des PointMatch sans aucun SetScore suffisent à reprendre le bon set")
+    func initRestaureDepuisPointsSansSetScore() throws {
+        // Arrange : sets vides (SetScore jamais écrit — kill avant sauvegarderSet),
+        // mais un point persiste au set 2. Discrimine la source PointMatch (ME-002).
+        let (context, seance, joueurs) = try creerMatch()
+        seance.sets = []
+        let point = PointMatch(seanceID: seance.id, set: 2, joueurID: joueurs[0].id, typeAction: .kill)
+        context.insert(point)
+        try context.save()
+
+        // Act
+        let vm = creerVM(seance: seance, context: context, joueurs: joueurs)
+
+        // Assert
+        #expect(vm.setActuel == 2)
+    }
+
+    @Test("init — la restauration du set est plafonnée au nombre maximal de sets")
+    func initRestaureSetPlafonne() throws {
+        // Arrange : donnée corrompue / sync partielle — un point au set 8
+        let (context, seance, joueurs) = try creerMatch()
+        let point = PointMatch(seanceID: seance.id, set: 8, joueurID: joueurs[0].id, typeAction: .kill)
+        context.insert(point)
+        seance.sets = [SetScore(numero: 7, scoreEquipe: 1, scoreAdversaire: 0)]
+        try context.save()
+
+        // Act
+        let vm = creerVM(seance: seance, context: context, joueurs: joueurs)
+
+        // Assert : jamais au-delà du dernier set possible
+        #expect(vm.setActuel == MatchLiveViewModel.nombreMaxDeSets)
+    }
+
     @Test("chargerSet — alternance du service : sets pairs inversés, sets impairs identiques au set 1")
     func chargerSetAlternanceService() throws {
         // Arrange

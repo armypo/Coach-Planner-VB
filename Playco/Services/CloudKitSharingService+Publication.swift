@@ -273,7 +273,12 @@ extension CloudKitSharingService {
     /// CloudKit PUBLIQUE — auth déléguée à Sign in with Apple (cf. `champsPublicsUtilisateur`).
     private func publierUtilisateur(_ utilisateur: Utilisateur, codeEquipe: String) async throws {
         let recordID = CKRecord.ID(recordName: "user-\(utilisateur.id.uuidString)")
-        let record = CKRecord(recordType: RecordType.utilisateur, recordID: recordID)
+        // Revue 2.3 (révocation fail-open) : FETCH-puis-MODIFIER — un save de
+        // record neuf sur un record existant échoue en serverRecordChanged et
+        // la régénération du code d'invitation n'atteignait jamais la Public DB
+        // (l'ancien QR photographié restait valide, le nouveau échouait).
+        let record = (try? await publicDB.record(for: recordID))
+            ?? CKRecord(recordType: RecordType.utilisateur, recordID: recordID)
         for (cle, valeur) in Self.champsPublicsUtilisateur(utilisateur, codeEquipe: codeEquipe) {
             record[cle] = valeur
         }

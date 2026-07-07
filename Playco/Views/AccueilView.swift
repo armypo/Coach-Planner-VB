@@ -25,7 +25,6 @@ struct AccueilView: View {
     @State private var seances: [Seance] = []
     @State private var strategies: [StrategieCollective] = []
     @State private var joueurs: [JoueurEquipe] = []
-    @AppStorage("modeSombre") private var modeSombre: Bool = false
 
     private func recalculerDonnees() {
         seances = toutesSeances.filtreEquipe(codeEquipeActif)
@@ -43,14 +42,6 @@ struct AccueilView: View {
 
                 ScrollView {
                     VStack(spacing: estLarge ? 24 : 16) {
-                        // En-tête
-                        HStack {
-                            boutonDarkMode
-                                .padding(.leading, estLarge ? 30 : 16)
-                                .padding(.top, 12)
-                            Spacer()
-                        }
-
                         entete(estLarge: estLarge)
 
                         // Cartes : layout adaptatif
@@ -90,30 +81,10 @@ struct AccueilView: View {
 
     // MARK: - Fond Liquid Glass
 
+    // 2.4-B (loi 5 — la nuit) : fond UNI, zéro gradient d'ambiance.
     private var fondGradient: some View {
-        ZStack {
-            Color(.systemBackground)
-            // Double gradient pour profondeur — style Liquid Glass
-            RadialGradient(
-                colors: [
-                    couleurRole.opacity(colorScheme == .dark ? 0.06 : 0.04),
-                    .clear
-                ],
-                center: .top,
-                startRadius: 80,
-                endRadius: 500
-            )
-            RadialGradient(
-                colors: [
-                    PaletteMat.bleu.opacity(colorScheme == .dark ? 0.04 : 0.025),
-                    .clear
-                ],
-                center: .bottomTrailing,
-                startRadius: 60,
-                endRadius: 400
-            )
-        }
-        .ignoresSafeArea()
+        MatNuit.fond
+            .ignoresSafeArea()
     }
 
     // MARK: - Layout adaptatif des cartes
@@ -360,25 +331,6 @@ struct AccueilView: View {
         .accessibilityValue(badge)
     }
 
-    // MARK: - Bouton Dark Mode
-
-    private var boutonDarkMode: some View {
-        Button {
-            withAnimation(LiquidGlassKit.springDefaut) {
-                modeSombre.toggle()
-            }
-        } label: {
-            Image(systemName: modeSombre ? "sun.max.fill" : "moon.fill")
-                .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(modeSombre ? .yellow : .secondary)
-                .frame(width: 36, height: 36)
-                .background(.ultraThinMaterial, in: Circle())
-                .overlay {
-                    Circle().strokeBorder(.white.opacity(0.2), lineWidth: 0.5)
-                }
-        }
-        .buttonStyle(.plain)
-    }
 
     // MARK: - Menu utilisateur
 

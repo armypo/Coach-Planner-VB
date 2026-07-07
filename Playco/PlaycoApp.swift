@@ -16,6 +16,8 @@ struct PlaycoApp: App {
     @State private var syncService = CloudKitSyncService()
     @State private var sharingService = CloudKitSharingService()
     @State private var analyticsService = AnalyticsService()
+    /// Garde processus : app_launched émis une seule fois (revue 2.2.b).
+    @MainActor static var lancementSignale = false
     @State private var storeKitService = StoreKitService()
     @State private var abonnementService = AbonnementService()
     @State private var observerTransactionsTask: Task<Void, Never>? = nil
@@ -221,7 +223,13 @@ struct PlaycoApp: App {
                             .modelContainer(container)
                             .onAppear {
                                 analyticsService.initialiser()
-                                analyticsService.suivre(evenement: EvenementAnalytics.appLancee)
+                                MetricKitService.partage.demarrer()
+                                // Revue 2.2.b (suivi) : un seul app_launched par
+                                // lancement — pas à chaque retour sur .app.
+                                if !Self.lancementSignale {
+                                    Self.lancementSignale = true
+                                    analyticsService.suivre(evenement: EvenementAnalytics.appLancee)
+                                }
                                 syncService.demarrerSuivi()
                                 syncService.demarrerSurveillanceReseau()
                                 // Brancher le rejeu automatique de la file de publication
@@ -291,6 +299,22 @@ struct PlaycoApp: App {
             }
             .animation(LiquidGlassKit.springDefaut, value: splashTermine)
             .animation(LiquidGlassKit.springDefaut, value: ecranActif)
+            // 2.4-B — Mat Nuit : la nuit est LE fond de l'app (révision fondateur).
+            .preferredColorScheme(.dark)
+            // 2.3 — lien universel d'invitation, attaché à la RACINE (revue :
+            // il était perdu hors de l'écran .app). On ne fait que PRÉ-REMPLIR
+            // la jonction SIWA ; rejoindreEquipe reste seule autorité. Le rejeu
+            // (jonctionEnAttente) couvre le scan AVANT d'atteindre LoginView.
+            .onOpenURL { url in
+                #if !DEMO
+                guard let codes = LienInvitation.analyser(url) else { return }
+                LienInvitation.jonctionEnAttente = codes
+                NotificationCenter.default.post(
+                    name: .lienInvitationRecu, object: nil,
+                    userInfo: ["codeEquipe": codes.codeEquipe,
+                               "codeInvitation": codes.codeInvitation])
+                #endif
+            }
         }
     }
 

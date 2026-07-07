@@ -19,6 +19,7 @@ struct JoueurDetailView: View {
 
     @Environment(AuthService.self) private var authService
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.codeEquipeActif) private var codeEquipeActif
     @State private var afficherEdition = false
     @State private var ongletAnalyse: OngletAnalyseJoueur = .statistiques
     /// Code d'invitation de l'Utilisateur lié — cache @State (évite un fetch par render)
@@ -69,6 +70,7 @@ struct JoueurDetailView: View {
                 enteteJoueur
                 if authService.utilisateurConnecte?.role.peutGererEquipe ?? false {
                     sectionIdentifiants
+                    sectionDisponibiliteConsentement
                 }
                 sectionResume
                 sectionPresencesEvals
@@ -280,9 +282,118 @@ struct JoueurDetailView: View {
             .padding(12)
             .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: LiquidGlassKit.rayonPetit))
 
-            Text("Le joueur se connecte avec Sign in with Apple : communique-lui le code d'équipe et ce code d'invitation.")
+            // 2.3 — QR du lien universel : scanner = jonction pré-remplie.
+            if let code = codeInvitationJoueur, !code.isEmpty,
+               let qr = LienInvitation.genererQR(
+                   codeEquipe: joueur.codeEquipe.isEmpty ? codeEquipeActif : joueur.codeEquipe,
+                   codeInvitation: code) {
+                HStack {
+                    Spacer()
+                    VStack(spacing: 6) {
+                        Image(uiImage: qr)
+                            .interpolation(.none)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 132, height: 132)
+                            .accessibilityLabel("Code QR d'invitation de \(joueur.prenom)")
+                        Text("Scanner pour rejoindre l'équipe")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                }
+                .padding(.vertical, 4)
+            }
+
+            Text("Le joueur se connecte avec Sign in with Apple : communique-lui le code d'équipe et ce code d'invitation — ou fais-lui scanner le code QR.")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
+        }
+        .glassSection()
+    }
+
+    // MARK: - Disponibilité & consentement parental (2.2.b)
+
+    private var sectionDisponibiliteConsentement: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Disponibilité", systemImage: "figure.walk.motion")
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(PaletteMat.vert)
+
+            Picker("Statut", selection: Binding(
+                get: { joueur.statutDisponibilite },
+                set: {
+                    joueur.statutDisponibilite = $0
+                    joueur.dateModification = Date() // sync partagée (revue 2.2.b)
+                }
+            )) {
+                ForEach(StatutDisponibilite.allCases) { statut in
+                    Text(statut.libelle).tag(statut)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            if !joueur.estDisponible {
+                Text("Un joueur \(joueur.statutDisponibilite.libelle.lowercased()) est grisé dans la composition et les présences ; ses séances de musculation sont suspendues.")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+
+            // Revue 2.2.b : seul un coach (.admin/.coach au sens compte) atteste —
+            // pas l'adulte assistant que le blocage DM est censé contraindre.
+            if (joueur.estMineur || joueur.dateNaissance == nil),
+               let role = authService.utilisateurConnecte?.role, role == .admin || role == .coach {
+                Divider()
+
+                Label("Consentement parental", systemImage: "figure.and.child.holdinghands")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(PaletteMat.bleu)
+
+                HStack {
+                    if joueur.consentementParentalAtteste {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(joueur.attesteParNom.isEmpty ? "Attesté par le coach" : "Attesté par \(joueur.attesteParNom)")
+                                .font(.caption.weight(.semibold))
+                            if let date = joueur.dateAttestationConsentement {
+                                Text(date, format: .dateTime.day().month().year())
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        Spacer()
+                        Button("Retirer", role: .destructive) {
+                            joueur.consentementParentalAtteste = false
+                            joueur.dateAttestationConsentement = nil
+                            joueur.dateModification = Date()
+                        }
+                        .font(.caption)
+                    } else {
+                        Text("Requis pour les messages privés avec un mineur")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Attester") {
+                            joueur.consentementParentalAtteste = true
+                            joueur.dateAttestationConsentement = Date()
+                            joueur.attesteParNom = authService.utilisateurConnecte?.nomComplet ?? ""
+                            joueur.dateModification = Date()
+                        }
+                        .font(.caption.weight(.semibold))
+                        .buttonStyle(.borderedProminent)
+                    }
+                }
+                .padding(12)
+                .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: LiquidGlassKit.rayonPetit))
+
+                ShareLink(item: AppConstants.urlPolitiqueConfidentialite) {
+                    Label("Envoyer l'avis de confidentialité aux parents", systemImage: "square.and.arrow.up")
+                        .font(.caption)
+                }
+
+                Text("En attestant, tu confirmes avoir obtenu le consentement d'un parent ou tuteur pour ce joueur mineur (collecte de données et messagerie).")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
         }
         .glassSection()
     }

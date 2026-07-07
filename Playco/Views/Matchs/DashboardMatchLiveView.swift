@@ -218,6 +218,8 @@ struct DashboardMatchLiveView: View {
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                        .disabled(lectureSeule)
+                        .opacity(lectureSeule ? 0.4 : 1)
                         .accessibilityLabel("Modifier la rotation. Actuellement rotation \(viewModel.rotationActuelle)")
                         .accessibilityHint("Double-tapez pour ouvrir le sélecteur de rotation")
 
@@ -263,6 +265,8 @@ struct DashboardMatchLiveView: View {
                             .frame(minHeight: 44)
                             .contentShape(Rectangle())
                         }
+                        .disabled(lectureSeule)
+                        .opacity(lectureSeule ? 0.4 : 1)
                         .accessibilityLabel("Substitutions : \(viewModel.subsUtiliseesDansSet) sur \(viewModel.subsMaxParSet) utilisées dans ce set")
                         .accessibilityHint("Double-tapez pour gérer les substitutions")
                     }
@@ -434,8 +438,8 @@ struct DashboardMatchLiveView: View {
                             .foregroundStyle(.red)
                     }
                     .buttonStyle(.plain)
-                    .disabled(viewModel.tempsMortsNousRestants <= 0)
-                    .opacity(viewModel.tempsMortsNousRestants > 0 ? 1 : 0.4)
+                    .disabled(lectureSeule || viewModel.tempsMortsNousRestants <= 0)
+                    .opacity(!lectureSeule && viewModel.tempsMortsNousRestants > 0 ? 1 : 0.4)
                 }
 
                 // Adversaire
@@ -468,8 +472,8 @@ struct DashboardMatchLiveView: View {
                             .foregroundStyle(.orange)
                     }
                     .buttonStyle(.plain)
-                    .disabled(viewModel.tempsMortsAdvRestants <= 0)
-                    .opacity(viewModel.tempsMortsAdvRestants > 0 ? 1 : 0.4)
+                    .disabled(lectureSeule || viewModel.tempsMortsAdvRestants <= 0)
+                    .opacity(!lectureSeule && viewModel.tempsMortsAdvRestants > 0 ? 1 : 0.4)
                 }
             }
         }
