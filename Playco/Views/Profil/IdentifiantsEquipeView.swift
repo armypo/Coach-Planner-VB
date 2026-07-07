@@ -10,6 +10,7 @@ import SwiftUI
 import SwiftData
 
 struct IdentifiantsEquipeView: View {
+    @State private var afficherInvitationQR = false
     @Environment(\.modelContext) private var modelContext
     @Environment(\.codeEquipeActif) private var codeEquipeActif
     @Environment(AuthService.self) private var authService
@@ -61,6 +62,53 @@ struct IdentifiantsEquipeView: View {
         }
         .navigationTitle("Identifiants de l'équipe")
         .navigationBarTitleDisplayMode(.inline)
+        // 2.3 — « Inviter l'équipe » : grille de QR projetable (AirPlay/TV)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    afficherInvitationQR = true
+                } label: {
+                    Label("Inviter l'équipe", systemImage: "qrcode")
+                }
+            }
+        }
+        .fullScreenCover(isPresented: $afficherInvitationQR) {
+            NavigationStack {
+                ScrollView {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 24)], spacing: 24) {
+                        ForEach(credsFiltres) { cred in
+                            let user = utilisateurs.first { $0.id == cred.utilisateurID }
+                            if let code = user?.codeInvitation, !code.isEmpty,
+                               let qr = LienInvitation.genererQR(codeEquipe: codeEquipeActif, codeInvitation: code) {
+                                VStack(spacing: 8) {
+                                    Text(user?.nomComplet ?? cred.identifiant)
+                                        .font(.headline)
+                                        .lineLimit(1)
+                                    Image(uiImage: qr)
+                                        .interpolation(.none)
+                                        .resizable()
+                                        .scaledToFit()
+                                        .frame(width: 180, height: 180)
+                                    Text("Scanner, puis Sign in with Apple")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .padding(16)
+                                .glassSection()
+                            }
+                        }
+                    }
+                    .padding(24)
+                }
+                .navigationTitle("Inviter l'équipe")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Fermer") { afficherInvitationQR = false }
+                    }
+                }
+            }
+        }
         .sheet(item: $afficherNouveauMdp) { wrapper in
             nouveauMdpSheet(wrapper: wrapper)
         }

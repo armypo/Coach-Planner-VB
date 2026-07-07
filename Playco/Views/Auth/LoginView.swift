@@ -169,6 +169,14 @@ struct LoginView: View {
             codeInvitationSaisi = ""
             rejoindreEnCours = false
         }) { sheetRejoindre }
+        // 2.3 — lien universel scanné : pré-remplit et ouvre la jonction.
+        .onReceive(NotificationCenter.default.publisher(for: .lienInvitationRecu)) { notification in
+            guard let codeEquipe = notification.userInfo?["codeEquipe"] as? String,
+                  let codeInvitation = notification.userInfo?["codeInvitation"] as? String else { return }
+            codeEquipeSaisi = codeEquipe
+            codeInvitationSaisi = codeInvitation
+            afficherRejoindre = true
+        }
     }
 
     private var sheetRejoindre: some View {

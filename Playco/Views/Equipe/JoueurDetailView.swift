@@ -281,7 +281,28 @@ struct JoueurDetailView: View {
             .padding(12)
             .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: LiquidGlassKit.rayonPetit))
 
-            Text("Le joueur se connecte avec Sign in with Apple : communique-lui le code d'équipe et ce code d'invitation.")
+            // 2.3 — QR du lien universel : scanner = jonction pré-remplie.
+            if let code = codeInvitationJoueur, !code.isEmpty,
+               let qr = LienInvitation.genererQR(codeEquipe: joueur.codeEquipe, codeInvitation: code) {
+                HStack {
+                    Spacer()
+                    VStack(spacing: 6) {
+                        Image(uiImage: qr)
+                            .interpolation(.none)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 132, height: 132)
+                            .accessibilityLabel("Code QR d'invitation de \(joueur.prenom)")
+                        Text("Scanner pour rejoindre l'équipe")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                }
+                .padding(.vertical, 4)
+            }
+
+            Text("Le joueur se connecte avec Sign in with Apple : communique-lui le code d'équipe et ce code d'invitation — ou fais-lui scanner le code QR.")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
         }
