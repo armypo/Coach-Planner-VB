@@ -35,7 +35,6 @@ struct ContentView: View {
 
     @Query private var equipes: [Equipe]
     @Query(sort: \MessageEquipe.dateEnvoi) private var tousMessages: [MessageEquipe]
-    @AppStorage("modeSombre") private var modeSombre: Bool = false
 
     /// Messages non lus pour l'utilisateur courant
     private var nbMessagesNonLus: Int {
@@ -101,7 +100,6 @@ struct ContentView: View {
         }
         .animation(.spring(response: 0.45, dampingFraction: 0.85), value: authService.estConnecte)
         .animation(.spring(response: 0.45, dampingFraction: 0.85), value: selectionEquipeFaite)
-        .preferredColorScheme(modeSombre ? .dark : .light)
         .onChange(of: authService.estConnecte) {
             if !authService.estConnecte {
                 selectionEquipeFaite = false

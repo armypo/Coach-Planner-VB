@@ -66,6 +66,13 @@ nonisolated enum MatNuit {
 
     /// Teinte de verre maximale d'un espace (loi 4 : verre sombre, ≤ 12 %).
     static let teinteVerreMax = 0.12
+    /// Bordure blanche du verre (détache le panneau de la nuit).
+    static let bordureVerre = 0.09
+    /// Reflet spéculaire 1 pt en haut du verre.
+    static let refletVerre = 0.08
+    /// Ombre des cartes sur la nuit (exception assumée à la loi 7 : sans elle,
+    /// le verre sombre ne se détache pas du fond nuit).
+    static let ombreCarteNuit = 0.35
 }
 
 nonisolated enum PaletteMat {
@@ -90,9 +97,10 @@ nonisolated enum PaletteMat {
     static let texteTertiaire  = Color(.tertiaryLabel)
 
     // Sémantique stats — un seul endroit pour « bon / mauvais / neutre »
-    static let positif = vert
-    static let negatif = Color(hex: "#E85C5C")   // rouge mat aligné sur la palette
-    static let attention = Color(hex: "#E8A54A") // orange d'alerte mat
+    // 2.4 (revue) : sémantiques alignées MatNuit — plus aucun hex vif survivant.
+    static let positif = MatNuit.deltaPositif
+    static let negatif = MatNuit.deltaNegatif
+    static let attention = MatNuit.terre
 }
 
 // MARK: - Glass Modifiers (Liquid Glass natif — iOS 26+)
@@ -108,6 +116,9 @@ struct GlassCard: ViewModifier {
     var cornerRadius: CGFloat = 20
     var ombre: Bool = true
     var teinte: Color? = nil
+    /// Loi 10 — le courtside est INTOUCHABLE en vague 1 : pas de nouveaux
+    /// ornements de verre au bord du terrain.
+    @Environment(\.modeBordDeTerrain) private var modeBordDeTerrain
 
     func body(content: Content) -> some View {
         // 2.4-B — verre sombre 3.0 (Mat Nuit) : UNE couche, teinte d'espace
@@ -120,29 +131,31 @@ struct GlassCard: ViewModifier {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.09), lineWidth: 1)
+                    .strokeBorder(Color.white.opacity(modeBordDeTerrain ? 0 : MatNuit.bordureVerre), lineWidth: 1)
             )
             .overlay(alignment: .top) {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(Color.white.opacity(0.08))
+                    .fill(Color.white.opacity(modeBordDeTerrain ? 0 : MatNuit.refletVerre))
                     .frame(height: 1)
                     .padding(.horizontal, cornerRadius)
             }
             .if(ombre) { view in
-                view.shadow(color: .black.opacity(0.35), radius: 12, y: 4)
+                view.shadow(color: .black.opacity(modeBordDeTerrain ? 0.06 : MatNuit.ombreCarteNuit), radius: 12, y: 4)
             }
     }
 }
 
 /// Section glass — conteneur de contenu (matériau natif, sans teinte).
 struct GlassSection: ViewModifier {
+    @Environment(\.modeBordDeTerrain) private var modeBordDeTerrain
+
     func body(content: Content) -> some View {
         content
             .padding(16)
             .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.09), lineWidth: 1)
+                    .strokeBorder(Color.white.opacity(modeBordDeTerrain ? 0 : MatNuit.bordureVerre), lineWidth: 1)
             )
     }
 }
@@ -157,7 +170,7 @@ struct GlassChip: ViewModifier {
             .foregroundStyle(couleur)
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
-            .glassEffect(.regular.tint(couleur.opacity(0.18)), in: Capsule(style: .continuous))
+            .glassEffect(.regular.tint(couleur.opacity(MatNuit.teinteVerreMax)), in: Capsule(style: .continuous))
     }
 }
 

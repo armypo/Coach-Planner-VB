@@ -186,6 +186,7 @@ private struct PKDrawingReadOnlyView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> PKCanvasView {
         let canvas = PKCanvasView()
+        canvas.overrideUserInterfaceStyle = .light // revue 2.4 — fidélité des encres
         canvas.drawing = drawing
         canvas.isUserInteractionEnabled = false
         canvas.backgroundColor = .clear

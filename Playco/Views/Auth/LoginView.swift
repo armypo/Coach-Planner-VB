@@ -119,7 +119,7 @@ struct LoginView: View {
         } onCompletion: { resultat in
             traiterApple(resultat)
         }
-        .signInWithAppleButtonStyle(.black)
+        .signInWithAppleButtonStyle(.whiteOutline)
         .frame(height: LiquidGlassKit.hauteurBoutonApple)
         .clipShape(RoundedRectangle(cornerRadius: LiquidGlassKit.rayonMoyen))
     }

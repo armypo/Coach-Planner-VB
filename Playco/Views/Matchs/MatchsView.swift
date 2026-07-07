@@ -119,7 +119,7 @@ struct MatchsView: View {
             }
         }
         .navigationSplitViewStyle(.balanced)
-        .tint(.red)
+        .tint(MatNuit.brique) // 2.4 — le 5e espace (Matchs) en ton brique
         .sheet(isPresented: $afficherNouveauMatch) {
             NouvelMatchSheet { nom, date, adversaire, lieu in
                 let match = Seance(nom: nom, date: date, typeSeance: .match)
