@@ -299,6 +299,8 @@ struct PlaycoApp: App {
             }
             .animation(LiquidGlassKit.springDefaut, value: splashTermine)
             .animation(LiquidGlassKit.springDefaut, value: ecranActif)
+            // 2.4-B — Mat Nuit : la nuit est LE fond de l'app (révision fondateur).
+            .preferredColorScheme(.dark)
             // 2.3 — lien universel d'invitation, attaché à la RACINE (revue :
             // il était perdu hors de l'écran .app). On ne fait que PRÉ-REMPLIR
             // la jonction SIWA ; rejoindreEquipe reste seule autorité. Le rejeu

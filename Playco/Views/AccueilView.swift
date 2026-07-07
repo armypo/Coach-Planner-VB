@@ -90,30 +90,10 @@ struct AccueilView: View {
 
     // MARK: - Fond Liquid Glass
 
+    // 2.4-B (loi 5 — la nuit) : fond UNI, zéro gradient d'ambiance.
     private var fondGradient: some View {
-        ZStack {
-            Color(.systemBackground)
-            // Double gradient pour profondeur — style Liquid Glass
-            RadialGradient(
-                colors: [
-                    couleurRole.opacity(colorScheme == .dark ? 0.06 : 0.04),
-                    .clear
-                ],
-                center: .top,
-                startRadius: 80,
-                endRadius: 500
-            )
-            RadialGradient(
-                colors: [
-                    PaletteMat.bleu.opacity(colorScheme == .dark ? 0.04 : 0.025),
-                    .clear
-                ],
-                center: .bottomTrailing,
-                startRadius: 60,
-                endRadius: 400
-            )
-        }
-        .ignoresSafeArea()
+        MatNuit.fond
+            .ignoresSafeArea()
     }
 
     // MARK: - Layout adaptatif des cartes

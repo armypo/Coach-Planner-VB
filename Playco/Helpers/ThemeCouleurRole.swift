@@ -107,15 +107,26 @@ struct GlassCard: ViewModifier {
     var teinte: Color? = nil
 
     func body(content: Content) -> some View {
+        // 2.4-B — verre sombre 3.0 (Mat Nuit) : UNE couche, teinte d'espace
+        // plafonnée (MatNuit.teinteVerreMax), bordure blanche 9 % + reflet
+        // 1 pt en haut, ombre douce pour détacher de la nuit.
         content
             .glassEffect(
-                .regular.tint(teinte.map { $0.opacity(0.18) }),
+                .regular.tint(teinte.map { $0.opacity(MatNuit.teinteVerreMax) }),
                 in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
             )
-            // Élévation : une ombre douce conservée (le natif ne porte pas d'ombre
-            // d'élévation sur fond clair). Désactivable via `ombre: false`.
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.09), lineWidth: 1)
+            )
+            .overlay(alignment: .top) {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(Color.white.opacity(0.08))
+                    .frame(height: 1)
+                    .padding(.horizontal, cornerRadius)
+            }
             .if(ombre) { view in
-                view.shadow(color: .black.opacity(0.06), radius: 12, y: 4)
+                view.shadow(color: .black.opacity(0.35), radius: 12, y: 4)
             }
     }
 }
@@ -126,6 +137,10 @@ struct GlassSection: ViewModifier {
         content
             .padding(16)
             .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.09), lineWidth: 1)
+            )
     }
 }
 
