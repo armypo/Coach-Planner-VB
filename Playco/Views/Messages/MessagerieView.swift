@@ -47,9 +47,12 @@ struct MessagerieView: View {
 
     // MARK: - Consentement mineurs (2.2.b)
 
-    /// Fiche roster liée à un compte (par lien direct ou inverse).
+    /// Fiche roster liée à un compte — SCOPÉE à l'équipe courante (revue 2.2.b :
+    /// un même compte peut avoir une fiche par équipe), lien direct prioritaire.
     private func ficheJoueur(_ compte: Utilisateur) -> JoueurEquipe? {
-        tousJoueurs.first { $0.utilisateurID == compte.id || compte.joueurEquipeID == $0.id }
+        let fiches = tousJoueurs.filter { $0.codeEquipe == codeEquipe }
+        return fiches.first { $0.utilisateurID == compte.id }
+            ?? fiches.first { compte.joueurEquipeID == $0.id }
     }
 
     /// Minorité et consentement d'un compte : la fiche roster (gérée par le
@@ -88,7 +91,16 @@ struct MessagerieView: View {
                     ChatView(
                         conversationID: conv,
                         tousMessages: messagesEquipe,
-                        membresEquipe: membresEquipe
+                        membresEquipe: membresEquipe,
+                        envoiAutorise: {
+                            // Revue 2.2.b : la politique s'applique au POINT
+                            // D'ENVOI, pas seulement à la navigation.
+                            if case .prive(let autreID) = conv,
+                               let autre = membresEquipe.first(where: { $0.id == autreID }) {
+                                return dmAutorise(avec: autre)
+                            }
+                            return true
+                        }()
                     )
                 } else {
                     etatVide
@@ -285,6 +297,9 @@ struct ChatView: View {
     let conversationID: ConversationID
     let tousMessages: [MessageEquipe]
     let membresEquipe: [Utilisateur]
+    /// Revue 2.2.b — défense en profondeur : faux si la politique de
+    /// consentement (adulte↔mineur) interdit cette conversation privée.
+    var envoiAutorise: Bool = true
 
     @Environment(AuthService.self) private var authService
     @Environment(\.modelContext) private var modelContext
@@ -444,6 +459,7 @@ struct ChatView: View {
     // MARK: - Actions
 
     private func envoyer() {
+        guard envoiAutorise else { return } // politique consentement (2.2.b)
         guard let user = utilisateur, texteValide else { return }
         let contenu = texteMessage.trimmingCharacters(in: .whitespacesAndNewlines)
 

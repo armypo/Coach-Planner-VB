@@ -41,6 +41,11 @@
 **Total H1 ≈ 12 sem.** Premiers éjectables : snapshots (~10 écrans post-Mat, 2-3 j) puis 2.3.1.
 **Impact démo H1** : rebases lourds après 2.4 et 2.5a (budget ~1-2 sem/an) ; empty states + entrée Aujourd'hui + messagerie vide ; CI compile DEMO à chaque PR ; 25 exercices visibles en démo.
 
+## Suivis revue 2.2.b (21 trouvailles confirmées — corrigées sauf ci-dessous)
+
+Corrigés : politique DM appliquée au POINT D'ENVOI + fiche scopée équipe + attestation réservée au coach (.admin/.coach) et tracée (`attesteParNom`) + `dateModification` au changement de statut + init analytics paresseuse + libéro gaté + MetricKit idempotent/logs publics + `Package.resolved` versionné + retention-fr alignée sur le comportement réel.
+**Différés (session dédiée)** : (1) **sync miroir Public DB** — consentement/`statutDisponibilite`/`dateNaissance` absents de `JoueurPartage` (publication+import) : le gate est inopérant sur l'appareil de l'athlète et l'alerte statut invisible côté athlète — chantier CloudKitSharingService (High structurel) ; (2) purge du miroir Public DB à la suppression d'équipe ; (3) filtre PII sur les VALEURS (pas seulement les clés) des métadonnées analytics ; (4) `app_launched` ré-émis à chaque retour sur `.app` ; (5) call stack MetricKit non journalisée ; (6) privacy-policy EN à aligner (TelemetryDeck) + courriels unifiés + lien baseurl retention ; (7) fermer `conversationActive` par `.onChange` quand la paire devient interdite (le guard d'envoi couvre déjà le risque) ; (8) domaine origotech.ca/playco.app NXDOMAIN → action humaine domaine (les URLs légales de l'app pointent dans le vide — PRÉEXISTANT, bloque aussi 2.3).
+
 # H2 — décembre 2026 → avril 2027 (~10-11 sem) : LE PARI VIDÉO, rien d'autre
 
 | Patch | Statut | Contenu | Effort brut |

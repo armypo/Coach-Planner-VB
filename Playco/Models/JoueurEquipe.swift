@@ -67,6 +67,8 @@ final class JoueurEquipe {
     var consentementParentalAtteste: Bool = false
     /// Horodatage de l'attestation (traçabilité Loi 25).
     var dateAttestationConsentement: Date? = nil
+    /// Nom de l'attestant (traçabilité — revue 2.2.b).
+    var attesteParNom: String = ""
     /// Statut de disponibilité — StatutDisponibilite.rawValue ("" = disponible).
     var statutDisponibiliteRaw: String = ""
 

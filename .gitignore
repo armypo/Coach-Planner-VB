@@ -32,7 +32,7 @@ xcuserdata/
 .swiftpm/
 Packages/
 Package.pins
-Package.resolved
+# Package.resolved VERSIONNÉ depuis 2.2.b (épinglage de la 1re dépendance SPM)
 
 # CocoaPods
 Pods/

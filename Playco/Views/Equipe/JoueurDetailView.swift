@@ -298,7 +298,10 @@ struct JoueurDetailView: View {
 
             Picker("Statut", selection: Binding(
                 get: { joueur.statutDisponibilite },
-                set: { joueur.statutDisponibilite = $0 }
+                set: {
+                    joueur.statutDisponibilite = $0
+                    joueur.dateModification = Date() // sync partagée (revue 2.2.b)
+                }
             )) {
                 ForEach(StatutDisponibilite.allCases) { statut in
                     Text(statut.libelle).tag(statut)
@@ -312,7 +315,10 @@ struct JoueurDetailView: View {
                     .foregroundStyle(.tertiary)
             }
 
-            if joueur.estMineur || joueur.dateNaissance == nil {
+            // Revue 2.2.b : seul un coach (.admin/.coach au sens compte) atteste —
+            // pas l'adulte assistant que le blocage DM est censé contraindre.
+            if (joueur.estMineur || joueur.dateNaissance == nil),
+               let role = authService.utilisateurConnecte?.role, role == .admin || role == .coach {
                 Divider()
 
                 Label("Consentement parental", systemImage: "figure.and.child.holdinghands")
@@ -322,7 +328,7 @@ struct JoueurDetailView: View {
                 HStack {
                     if joueur.consentementParentalAtteste {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Attesté par le coach")
+                            Text(joueur.attesteParNom.isEmpty ? "Attesté par le coach" : "Attesté par \(joueur.attesteParNom)")
                                 .font(.caption.weight(.semibold))
                             if let date = joueur.dateAttestationConsentement {
                                 Text(date, format: .dateTime.day().month().year())
@@ -345,6 +351,7 @@ struct JoueurDetailView: View {
                         Button("Attester") {
                             joueur.consentementParentalAtteste = true
                             joueur.dateAttestationConsentement = Date()
+                            joueur.attesteParNom = authService.utilisateurConnecte?.nomComplet ?? ""
                             joueur.dateModification = Date()
                         }
                         .font(.caption.weight(.semibold))

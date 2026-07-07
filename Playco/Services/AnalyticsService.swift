@@ -78,10 +78,9 @@ final class AnalyticsService {
     /// - Jamais d'email, numéro de téléphone
     /// - Valeurs agrégées OK (compteurs, durées, catégories)
     func suivre(evenement: String, metadonnees: [String: String] = [:]) {
-        guard estInitialise else {
-            logger.warning("Événement ignoré avant init: \(evenement)")
-            return
-        }
+        // Revue 2.2.b : init paresseuse — les événements émis avant
+        // initialiser() (wizard d'onboarding) ne sont plus perdus.
+        if !estInitialise { initialiser() }
 
         let metadonneesFiltrees = filtrerDonneesPersonnelles(metadonnees)
 

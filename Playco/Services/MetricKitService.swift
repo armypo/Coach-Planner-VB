@@ -18,8 +18,12 @@ final class MetricKitService: NSObject, MXMetricManagerSubscriber {
 
     private override init() { super.init() }
 
-    /// Abonne le service au flux MetricKit. Appeler une fois au démarrage.
+    private var estDemarre = false
+
+    /// Abonne le service au flux MetricKit. Idempotent (revue 2.2.b).
     func demarrer() {
+        guard !estDemarre else { return }
+        estDemarre = true
         MXMetricManager.shared.add(self)
         logger.info("MetricKitService abonné aux diagnostics")
     }
@@ -32,7 +36,7 @@ final class MetricKitService: NSObject, MXMetricManagerSubscriber {
             let cpu = payload.cpuExceptionDiagnostics?.count ?? 0
             let disque = payload.diskWriteExceptionDiagnostics?.count ?? 0
             if crashs > 0 || hangs > 0 {
-                logger.error("Diagnostics — crashs: \(crashs), hangs: \(hangs), cpu: \(cpu), disque: \(disque) (période jusqu'au \(payload.timeStampEnd))")
+                logger.error("Diagnostics — crashs: \(crashs, privacy: .public), hangs: \(hangs, privacy: .public), cpu: \(cpu, privacy: .public), disque: \(disque, privacy: .public) (période jusqu'au \(payload.timeStampEnd, privacy: .public))")
             } else if cpu > 0 || disque > 0 {
                 logger.warning("Diagnostics — cpu: \(cpu), disque: \(disque)")
             }

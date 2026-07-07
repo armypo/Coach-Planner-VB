@@ -27,7 +27,7 @@ Les données de votre équipe (séances, matchs, statistiques, roster, messages)
 | Données d'analyse produit (TelemetryDeck) | Signaux **anonymisés et agrégés** — aucun nom, identifiant, courriel ni code d'équipe n'est transmis | Politique de rétention TelemetryDeck (agrégats non ré-identifiables) |
 | Diagnostics techniques (MetricKit d'Apple) | Journal local sur l'appareil uniquement | Ne quitte jamais l'appareil |
 
-La suppression d'une équipe par le coach efface les données correspondantes sur l'appareil et déclenche la suppression des enregistrements synchronisés.
+La suppression d'une équipe par le coach efface les données correspondantes sur l'appareil et dans la base iCloud privée du coach. Les enregistrements du miroir de partage (lecture seule, sans donnée sensible) peuvent persister jusqu'à leur purge ; pour une suppression complète immédiate, écrivez-nous à support@origotech.ca.
 
 ## 3. Consentement parental (athlètes mineurs)
 

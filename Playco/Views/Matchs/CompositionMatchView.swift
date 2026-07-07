@@ -231,6 +231,7 @@ struct CompositionMatchView: View {
                         } label: {
                             Label("#\(joueur.numero) — \(joueur.prenom) \(joueur.nom)", systemImage: "shield.checkered")
                         }
+                        .disabled(!joueur.estDisponible) // 2.2.b — indisponible non alignable
                     }
                 } label: {
                     HStack {
