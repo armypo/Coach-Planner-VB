@@ -21,6 +21,7 @@ struct MessagerieView: View {
 
     @Query(sort: \MessageEquipe.dateEnvoi) private var tousMessages: [MessageEquipe]
     @Query(sort: \Utilisateur.nom) private var tousUtilisateurs: [Utilisateur]
+    @Query private var tousJoueurs: [JoueurEquipe]
 
     @State private var conversationActive: ConversationID? = .equipe
 
@@ -42,6 +43,35 @@ struct MessagerieView: View {
     /// permet d'invalider le cache des non-lus.
     private var signatureLecture: Int {
         tousMessages.reduce(0) { $0 + ($1.lecteurIDsData?.count ?? 0) }
+    }
+
+    // MARK: - Consentement mineurs (2.2.b)
+
+    /// Fiche roster liée à un compte (par lien direct ou inverse).
+    private func ficheJoueur(_ compte: Utilisateur) -> JoueurEquipe? {
+        tousJoueurs.first { $0.utilisateurID == compte.id || compte.joueurEquipeID == $0.id }
+    }
+
+    /// Minorité et consentement d'un compte : la fiche roster (gérée par le
+    /// coach) fait foi ; l'âge du compte sert de filet.
+    private func infosConsentement(_ compte: Utilisateur) -> (estMineur: Bool, consentement: Bool) {
+        let fiche = ficheJoueur(compte)
+        let mineurCompte = (compte.age ?? JoueurEquipe.ageMajorite) < JoueurEquipe.ageMajorite
+        return ((fiche?.estMineur ?? false) || mineurCompte, fiche?.consentementParentalAtteste ?? false)
+    }
+
+    /// Applique PolitiqueMessagerie à la paire (moi ↔ membre).
+    private func dmAutorise(avec membre: Utilisateur) -> Bool {
+        guard let moi = utilisateur else { return false }
+        let infosMoi = infosConsentement(moi)
+        let infosMembre = infosConsentement(membre)
+        // Le consentement pertinent est celui du mineur de la paire.
+        let consentementDuMineur = infosMembre.estMineur ? infosMembre.consentement : infosMoi.consentement
+        return PolitiqueMessagerie.dmPriveAutorise(
+            roleExpediteur: moi.role, expediteurEstMineur: infosMoi.estMineur,
+            roleDestinataire: membre.role, destinataireEstMineur: infosMembre.estMineur,
+            consentementAtteste: consentementDuMineur
+        )
     }
 
     /// Nombre total de non-lus (dans mes conversations)
@@ -98,16 +128,28 @@ struct MessagerieView: View {
             if !membresEquipe.isEmpty {
                 Section {
                     ForEach(membresEquipe) { membre in
+                        // 2.2.b — DM privés adulte↔mineur désactivés tant que
+                        // le consentement parental n'est pas attesté (fiche joueur).
+                        let autorise = dmAutorise(avec: membre)
                         NavigationLink(value: ConversationID.prive(membre.id)) {
-                            ligneConversation(
-                                icone: membre.role == .coach || membre.role == .admin
-                                    ? "figure.volleyball" : "figure.run",
-                                nom: membre.nomComplet,
-                                couleur: membre.role.couleur,
-                                dernier: dernierMessage(pour: .prive(membre.id)),
-                                nonLus: nbNonLusPour(.prive(membre.id))
-                            )
+                            VStack(alignment: .leading, spacing: 2) {
+                                ligneConversation(
+                                    icone: membre.role == .coach || membre.role == .admin
+                                        ? "figure.volleyball" : "figure.run",
+                                    nom: membre.nomComplet,
+                                    couleur: membre.role.couleur,
+                                    dernier: dernierMessage(pour: .prive(membre.id)),
+                                    nonLus: nbNonLusPour(.prive(membre.id))
+                                )
+                                if !autorise {
+                                    Text("Consentement parental requis")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
                         }
+                        .disabled(!autorise)
+                        .opacity(autorise ? 1 : 0.5)
                     }
                 } header: {
                     Text("Individuel")

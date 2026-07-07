@@ -147,11 +147,19 @@ struct CompositionMatchView: View {
                 }
 
                 ForEach(joueursDisponibles) { joueur in
+                    // 2.2.b — un joueur indisponible (blessé/malade/suspendu)
+                    // reste visible mais ne peut pas être aligné.
                     Button {
                         postesAssignes[poste] = joueur.id
                     } label: {
-                        Label("#\(joueur.numero) — \(joueur.prenom) \(joueur.nom)", systemImage: joueur.poste.icone)
+                        Label(
+                            joueur.estDisponible
+                                ? "#\(joueur.numero) — \(joueur.prenom) \(joueur.nom)"
+                                : "#\(joueur.numero) — \(joueur.prenom) \(joueur.nom) (\(joueur.statutDisponibilite.libelle))",
+                            systemImage: joueur.poste.icone
+                        )
                     }
+                    .disabled(!joueur.estDisponible)
                 }
             } label: {
                 VStack(spacing: 2) {

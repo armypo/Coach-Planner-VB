@@ -101,6 +101,16 @@ struct PresencesView: View {
 
                                 Spacer()
 
+                                // 2.2.b — statut de disponibilité visible à la prise des présences
+                                if !joueur.estDisponible {
+                                    Text(joueur.statutDisponibilite.libelle)
+                                        .font(.caption2.weight(.semibold))
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 3)
+                                        .background(joueur.statutDisponibilite.couleur.opacity(0.15), in: Capsule())
+                                        .foregroundStyle(joueur.statutDisponibilite.couleur)
+                                }
+
                                 // Toggle présence
                                 Button {
                                     togglePresence(joueur: joueur)

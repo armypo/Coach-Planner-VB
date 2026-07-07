@@ -221,6 +221,7 @@ struct PlaycoApp: App {
                             .modelContainer(container)
                             .onAppear {
                                 analyticsService.initialiser()
+                                MetricKitService.partage.demarrer()
                                 analyticsService.suivre(evenement: EvenementAnalytics.appLancee)
                                 syncService.demarrerSuivi()
                                 syncService.demarrerSurveillanceReseau()

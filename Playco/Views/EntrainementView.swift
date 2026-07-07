@@ -22,6 +22,15 @@ struct EntrainementView: View {
     @Query(filter: #Predicate<ProgrammeMuscu> { $0.estArchive == false },
            sort: \ProgrammeMuscu.dateCreation, order: .reverse) private var programmes: [ProgrammeMuscu]
     @Query(sort: \SeanceMuscu.date, order: .reverse) private var seances: [SeanceMuscu]
+    @Query private var tousJoueurs: [JoueurEquipe]
+
+    /// 2.2.b — statut de disponibilité de l'athlète connecté (nil = pas de
+    /// fiche joueur liée : coach/assistant, jamais bloqué).
+    private var statutJoueurConnecte: StatutDisponibilite? {
+        guard let ficheID = authService.utilisateurConnecte?.joueurEquipeID,
+              let fiche = tousJoueurs.first(where: { $0.id == ficheID }) else { return nil }
+        return fiche.statutDisponibilite
+    }
 
     enum SelectionEntrainement: Hashable {
         case programme(ProgrammeMuscu)
@@ -197,8 +206,19 @@ struct EntrainementView: View {
                     selectionSidebar = .seanceLive(prog)
                 }
             case .seanceLive(let prog):
-                SeanceLiveView(programme: prog, joueurID: authService.utilisateurConnecte?.joueurEquipeID) {
-                    selectionSidebar = .programme(prog)
+                // 2.2.b — musculation suspendue pour un joueur indisponible :
+                // pas de séance live tant que le coach n'a pas remis le statut
+                // à Disponible.
+                if let statut = statutJoueurConnecte, statut != .disponible {
+                    ContentUnavailableView {
+                        Label("Musculation suspendue", systemImage: "pause.circle")
+                    } description: {
+                        Text("Votre statut est « \(statut.libelle) ». Les séances reprendront quand votre coach vous remettra disponible.")
+                    }
+                } else {
+                    SeanceLiveView(programme: prog, joueurID: authService.utilisateurConnecte?.joueurEquipeID) {
+                        selectionSidebar = .programme(prog)
+                    }
                 }
             }
         } else {

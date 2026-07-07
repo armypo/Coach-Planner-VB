@@ -14,6 +14,7 @@ struct MatchLiveSplitView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.codeEquipeActif) private var codeEquipeActif
     @Environment(CloudKitSyncService.self) private var syncService
+    @Environment(AnalyticsService.self) private var analyticsService
     @Query(filter: #Predicate<JoueurEquipe> { $0.estActif == true },
            sort: \JoueurEquipe.numero) private var tousJoueurs: [JoueurEquipe]
 
@@ -110,6 +111,8 @@ struct MatchLiveSplitView: View {
                 viewModel = vm
                 // Activer mode match automatiquement
                 syncService.activerModeMatch(true)
+                // 2.2.b — signal de base pour le GO/NO-GO vidéo (rétention live)
+                analyticsService.suivre(evenement: EvenementAnalytics.matchLiveDemarre)
             }
             // 2.2.a — marqueur de reprise : survit à un kill de l'app,
             // effacé à la sortie propre (onDisappear).

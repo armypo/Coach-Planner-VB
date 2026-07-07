@@ -69,6 +69,7 @@ struct JoueurDetailView: View {
                 enteteJoueur
                 if authService.utilisateurConnecte?.role.peutGererEquipe ?? false {
                     sectionIdentifiants
+                    sectionDisponibiliteConsentement
                 }
                 sectionResume
                 sectionPresencesEvals
@@ -283,6 +284,85 @@ struct JoueurDetailView: View {
             Text("Le joueur se connecte avec Sign in with Apple : communique-lui le code d'équipe et ce code d'invitation.")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
+        }
+        .glassSection()
+    }
+
+    // MARK: - Disponibilité & consentement parental (2.2.b)
+
+    private var sectionDisponibiliteConsentement: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Disponibilité", systemImage: "figure.walk.motion")
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(PaletteMat.vert)
+
+            Picker("Statut", selection: Binding(
+                get: { joueur.statutDisponibilite },
+                set: { joueur.statutDisponibilite = $0 }
+            )) {
+                ForEach(StatutDisponibilite.allCases) { statut in
+                    Text(statut.libelle).tag(statut)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            if !joueur.estDisponible {
+                Text("Un joueur \(joueur.statutDisponibilite.libelle.lowercased()) est grisé dans la composition et les présences ; ses séances de musculation sont suspendues.")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+
+            if joueur.estMineur || joueur.dateNaissance == nil {
+                Divider()
+
+                Label("Consentement parental", systemImage: "figure.and.child.holdinghands")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(PaletteMat.bleu)
+
+                HStack {
+                    if joueur.consentementParentalAtteste {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Attesté par le coach")
+                                .font(.caption.weight(.semibold))
+                            if let date = joueur.dateAttestationConsentement {
+                                Text(date, format: .dateTime.day().month().year())
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        Spacer()
+                        Button("Retirer", role: .destructive) {
+                            joueur.consentementParentalAtteste = false
+                            joueur.dateAttestationConsentement = nil
+                            joueur.dateModification = Date()
+                        }
+                        .font(.caption)
+                    } else {
+                        Text("Requis pour les messages privés avec un mineur")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Attester") {
+                            joueur.consentementParentalAtteste = true
+                            joueur.dateAttestationConsentement = Date()
+                            joueur.dateModification = Date()
+                        }
+                        .font(.caption.weight(.semibold))
+                        .buttonStyle(.borderedProminent)
+                    }
+                }
+                .padding(12)
+                .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: LiquidGlassKit.rayonPetit))
+
+                ShareLink(item: AppConstants.urlPolitiqueConfidentialite) {
+                    Label("Envoyer l'avis de confidentialité aux parents", systemImage: "square.and.arrow.up")
+                        .font(.caption)
+                }
+
+                Text("En attestant, tu confirmes avoir obtenu le consentement d'un parent ou tuteur pour ce joueur mineur (collecte de données et messagerie).")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
         }
         .glassSection()
     }
