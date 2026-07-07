@@ -262,7 +262,9 @@ final class Seance {
 
     /// ID du libéro (vide = pas de libéro)
     var liberoID: String = ""
-    /// 2.3.2 — trace de promotion depuis un MatchCalendrier ("" = créé à la main).
+    /// 2.3.2 — RÉSERVÉ (schéma CloudKit additif : jamais retiré). La promotion
+    /// MatchCalendrier→Seance a été retirée en revue (modèle dormant depuis
+    /// 9679ef2 — le wizard crée directement des Seance). Champ inutilisé.
     var matchCalendrierID: String = ""
 
 

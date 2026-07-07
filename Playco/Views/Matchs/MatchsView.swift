@@ -33,24 +33,9 @@ struct MatchsView: View {
     @State private var afficherStatsRotation = false
 
     /// Données filtrées cachées
-    @Query private var tousMatchsCalendrier: [MatchCalendrier]
     @State private var matchs: [Seance] = []
     @State private var matchsAVenir: [Seance] = []
     @State private var matchsPasses: [Seance] = []
-
-    /// 2.3.2 — MatchCalendrier de l'équipe pas encore promus.
-    private var matchsCalendrierAPromouvoir: [MatchCalendrier] {
-        tousMatchsCalendrier
-            .filter { $0.codeEquipe == codeEquipeActif || $0.codeEquipe.isEmpty }
-            .filter { !FabriqueMatch.dejaPromu($0, parmi: matchs) }
-            .sorted { $0.date < $1.date }
-    }
-
-    private func promouvoir(_ mc: MatchCalendrier) {
-        let match = FabriqueMatch.promouvoir(mc, codeEquipe: codeEquipeActif)
-        modelContext.insert(match)
-        matchSelectionne = match
-    }
 
     private func recalculerMatchs() {
         matchs = toutesSeances.filtreEquipe(codeEquipeActif).filter { $0.estMatch }
@@ -157,6 +142,17 @@ struct MatchsView: View {
                 let match = FabriqueMatch.matchEclair(adversaire: adversaire,
                                                       nousServons: nousServons,
                                                       codeEquipe: codeEquipeActif)
+                // Revue 2.3.2 : la composition est héritée À LA CRÉATION —
+                // « Mode en direct » direct trouve son 6 de départ, validé
+                // contre l'effectif actif ET disponible.
+                let valides = Set(joueurs.filtreEquipe(codeEquipeActif)
+                    .filter(\.estDisponible).map(\.id))
+                if let compo = FabriqueMatch.derniereComposition(
+                    parmi: toutesSeances, codeEquipe: codeEquipeActif,
+                    avant: match.id, joueursValides: valides) {
+                    match.partants = compo.partants
+                    match.liberoID = compo.liberoID
+                }
                 modelContext.insert(match)
                 matchSelectionne = match
             }
@@ -194,29 +190,6 @@ struct MatchsView: View {
 
     private var sidebarContent: some View {
         List(selection: $matchSelectionne) {
-            // 2.3.2 — matchs du calendrier (wizard) pas encore promus en match
-            if peutModifier, !matchsCalendrierAPromouvoir.isEmpty {
-                Section {
-                    ForEach(matchsCalendrierAPromouvoir) { mc in
-                        Button {
-                            promouvoir(mc)
-                        } label: {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(mc.adversaire.isEmpty ? "Match" : "vs \(mc.adversaire)")
-                                    .font(.subheadline.weight(.medium))
-                                Text("\(mc.date, format: .dateTime.day().month().hour().minute()) — toucher pour créer le match")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                } header: {
-                    Label("Calendrier", systemImage: "calendar")
-                        .font(.subheadline.weight(.bold))
-                        .foregroundStyle(.secondary)
-                }
-            }
-
             // Matchs à venir
             if !matchsAVenir.isEmpty {
                 Section {

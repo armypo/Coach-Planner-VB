@@ -33,25 +33,6 @@ struct FabriqueMatchTests {
         #expect(m.adversaire.isEmpty)
     }
 
-    @Test("promotion : copie adversaire/lieu/date et pose la trace anti-doublon")
-    func promotion() {
-        let mc = MatchCalendrier(date: Date(timeIntervalSince1970: 1_000_000), adversaire: "Lévis")
-        mc.lieu = "Gymnase A"
-        mc.codeEquipe = Self.code
-
-        let m = FabriqueMatch.promouvoir(mc, codeEquipe: Self.code)
-
-        #expect(m.estMatch)
-        #expect(m.adversaire == "Lévis")
-        #expect(m.lieu == "Gymnase A")
-        #expect(m.date == mc.date)
-        #expect(m.matchCalendrierID == mc.id.uuidString)
-        #expect(FabriqueMatch.dejaPromu(mc, parmi: [m]))
-
-        let autre = MatchCalendrier(date: Date(), adversaire: "Québec")
-        #expect(!FabriqueMatch.dejaPromu(autre, parmi: [m]))
-    }
-
     @Test("composition persistante : le match le plus récent AVEC partants gagne")
     func derniereComposition() {
         let joueurs = (1...6).map { _ in UUID() }
@@ -73,7 +54,8 @@ struct FabriqueMatchTests {
 
         let compo = FabriqueMatch.derniereComposition(
             parmi: [vieux, recentSansCompo, recent, nouveau],
-            codeEquipe: Self.code, avant: nouveau.id)
+            codeEquipe: Self.code, avant: nouveau.id,
+            joueursValides: Set(joueurs))
 
         #expect(compo != nil)
         #expect(compo?.partants.count == 6)
@@ -92,8 +74,36 @@ struct FabriqueMatchTests {
         courant.partants = [PartantMatch(poste: 1, joueurID: UUID())]
 
         let compo = FabriqueMatch.derniereComposition(
-            parmi: [autreEquipe, courant], codeEquipe: Self.code, avant: courant.id)
+            parmi: [autreEquipe, courant], codeEquipe: Self.code, avant: courant.id,
+            joueursValides: [])
 
         #expect(compo == nil)
+    }
+
+    @Test("composition : les joueurs partis/indisponibles sont filtrés, un match futur est ignoré")
+    func compositionValideeEtJamaisFuture() {
+        let valide = UUID()
+        let parti = UUID()
+
+        let joue = Seance(nom: "vs J", date: Date(timeIntervalSinceNow: -86_400), typeSeance: .match)
+        joue.codeEquipe = Self.code
+        joue.partants = [PartantMatch(poste: 1, joueurID: valide),
+                         PartantMatch(poste: 2, joueurID: parti)]
+        joue.liberoID = parti.uuidString
+
+        let futur = Seance(nom: "vs F", date: Date(timeIntervalSinceNow: 86_400), typeSeance: .match)
+        futur.codeEquipe = Self.code
+        futur.partants = [PartantMatch(poste: 1, joueurID: parti)]
+
+        let nouveau = Seance(nom: "vs N", typeSeance: .match)
+        nouveau.codeEquipe = Self.code
+
+        let compo = FabriqueMatch.derniereComposition(
+            parmi: [joue, futur, nouveau], codeEquipe: Self.code, avant: nouveau.id,
+            joueursValides: [valide])
+
+        #expect(compo?.partants.count == 1) // le joueur parti est filtré
+        #expect(compo?.partants.first?.joueurID == valide)
+        #expect(compo?.liberoID == "") // libéro parti → pas de libéro hérité
     }
 }

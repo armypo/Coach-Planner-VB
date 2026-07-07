@@ -397,9 +397,9 @@ struct CompositionMatchView: View {
         // 2.3.2 — composition persistante : un match sans composition hérite
         // du 6 de départ (et du libéro) du dernier match de l'équipe.
         if partants.isEmpty,
-           let compo = FabriqueMatch.derniereComposition(parmi: toutesSeances,
-                                                         codeEquipe: codeEquipeActif,
-                                                         avant: seance.id) {
+           let compo = FabriqueMatch.derniereComposition(
+               parmi: toutesSeances, codeEquipe: codeEquipeActif, avant: seance.id,
+               joueursValides: Set(joueursEquipe.filter(\.estDisponible).map(\.id))) {
             partants = compo.partants
             liberoInitial = UUID(uuidString: compo.liberoID)
         }
