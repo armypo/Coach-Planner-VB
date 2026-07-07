@@ -11,6 +11,14 @@ import Foundation
 @Suite("TypeTerrain — demi-terrain (2.3.1)")
 struct TypeTerrainTests {
 
+    @Test("phase 0 SportPack : une équipe naît volleyball (clé stable)")
+    @MainActor
+    func equipeNaitVolleyball() {
+        let equipe = Equipe(nom: "Élans")
+        #expect(equipe.sportID == "volleyball")
+    }
+
+
     @Test("rawValues stables (contrat de persistance)")
     func rawValuesStables() {
         #expect(TypeTerrain.indoor.rawValue == "Indoor")

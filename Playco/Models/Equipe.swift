@@ -38,6 +38,12 @@ final class Equipe {
 
     /// Code partageable pour rejoindre l'équipe (= codeEcole dans Utilisateur)
     var codeEquipe: String = ""
+
+    /// Phase 0 SportPack (2.3) — IRRÉVERSIBLE : 1 équipe = 1 sport, clé String
+    /// stable jamais renommée ("volleyball"). Le multi-sport = équipes multiples.
+    /// Défaut CloudKit-safe ; consommé par le futur SportRegistry (extraction
+    /// au 2e sport payant — v3/MULTI_SPORT_PLAN.md fait spec de référence).
+    var sportID: String = "volleyball"
     var dateModification: Date = Date()
 
     /// Tier d'abonnement propagé depuis le coach propriétaire. Public via CloudKit

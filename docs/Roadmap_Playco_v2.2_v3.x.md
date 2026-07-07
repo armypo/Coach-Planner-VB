@@ -7,7 +7,7 @@
 
 - **Efforts affichés = BRUTS** ; le budget se pilote en post-×2. Gouvernance : 25-30 sem effectives/an, **UN pari >6 sem/an** (2026-27 = la vidéo), stop à ×1,5 de dépassement → découper.
 - **Mineure `2.x`** = un chantier, une soumission App Store. **`2.x.y`** = sous-livraison ≤ 1,5 sem.
-- Chaque patch : livrable seul · baseline tests (253 sur main v2.2) + build 0/0 · compilation DEMO en CI · **schéma CloudKit prod déployé AVANT le binaire** pour tout patch touchant un @Model · i18n zéro chaîne en dur (politique transversale dès 2.3) · gel du couplage volley (phase 0 SportPack) · rebase `suivis/pr6` post-merge.
+- Chaque patch : livrable seul · baseline tests (253 sur main v2.2) + build 0/0 · compilation DEMO en CI · **schéma CloudKit prod déployé AVANT le binaire** pour tout patch touchant un @Model · i18n zéro chaîne en dur (politique transversale dès 2.3) · gel du couplage volley (phase 0 SportPack ✅ 2026-07-06 : `Equipe.sportID=\"volleyball\"` posé ; AUCUNE nouvelle référence volley en dur hors des 6 enums recensés : `PosteJoueur`, `TypeActionPoint`, `TypeActionRallye`, `TypeTerrain`, `FormationType`, `CategorieBibliotheque` — toute nouvelle capacité passe par un test de capacité, jamais `if sport == volleyball`) · rebase `suivis/pr6` post-merge.
 - Dépendances déclarées : 2.7 → 2.8.1 · 2.8 → 2.8.2 · 2.5a → 2.9 (carte Aujourd'hui) · 2.4 et 2.9 → 2.10 · 2.9.1 = post-GO.
 - Skills d'exécution : `/playco-patch` (moteur), `/playco-mat-review` (dès 2.4), `/playco-demo-check` (post-merge), `/playco-video-securite` (2.7→2.11), `/playco-roadmap-status` (réancrage).
 
