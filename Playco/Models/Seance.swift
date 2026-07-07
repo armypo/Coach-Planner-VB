@@ -262,6 +262,9 @@ final class Seance {
 
     /// ID du libéro (vide = pas de libéro)
     var liberoID: String = ""
+    /// 2.3.2 — trace de promotion depuis un MatchCalendrier ("" = créé à la main).
+    var matchCalendrierID: String = ""
+
 
     /// Historique des substitutions (JSON [SubstitutionRecord])
     var substitutionsData: Data? = nil

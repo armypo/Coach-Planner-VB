@@ -11,6 +11,7 @@ struct CompositionMatchView: View {
 
     @Query(filter: #Predicate<JoueurEquipe> { $0.estActif == true },
            sort: \JoueurEquipe.numero) private var joueurs: [JoueurEquipe]
+    @Query private var toutesSeances: [Seance]
     @Environment(\.codeEquipeActif) private var codeEquipeActif
 
     /// Mapping poste (1-6) → joueur ID
@@ -390,11 +391,23 @@ struct CompositionMatchView: View {
     // MARK: - Persistence
 
     private func chargerDepuisSeance() {
-        let partants = seance.partants
+        var partants = seance.partants
+        var liberoInitial = seance.liberoUUID
+
+        // 2.3.2 — composition persistante : un match sans composition hérite
+        // du 6 de départ (et du libéro) du dernier match de l'équipe.
+        if partants.isEmpty,
+           let compo = FabriqueMatch.derniereComposition(parmi: toutesSeances,
+                                                         codeEquipe: codeEquipeActif,
+                                                         avant: seance.id) {
+            partants = compo.partants
+            liberoInitial = UUID(uuidString: compo.liberoID)
+        }
+
         for p in partants {
             postesAssignes[p.poste] = p.joueurID
         }
-        liberoSelectionne = seance.liberoUUID
+        liberoSelectionne = liberoInitial
         utiliserLibero = liberoSelectionne != nil
         nousServons = seance.nousServonsEnPremier
         configMatch = seance.configMatch

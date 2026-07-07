@@ -27,14 +27,30 @@ struct MatchsView: View {
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var matchSelectionne: Seance?
     @State private var afficherNouveauMatch = false
+    @State private var afficherMatchEclair = false
     @State private var afficherCalendrier = false
     @State private var afficherHeatmap = false
     @State private var afficherStatsRotation = false
 
     /// Données filtrées cachées
+    @Query private var tousMatchsCalendrier: [MatchCalendrier]
     @State private var matchs: [Seance] = []
     @State private var matchsAVenir: [Seance] = []
     @State private var matchsPasses: [Seance] = []
+
+    /// 2.3.2 — MatchCalendrier de l'équipe pas encore promus.
+    private var matchsCalendrierAPromouvoir: [MatchCalendrier] {
+        tousMatchsCalendrier
+            .filter { $0.codeEquipe == codeEquipeActif || $0.codeEquipe.isEmpty }
+            .filter { !FabriqueMatch.dejaPromu($0, parmi: matchs) }
+            .sorted { $0.date < $1.date }
+    }
+
+    private func promouvoir(_ mc: MatchCalendrier) {
+        let match = FabriqueMatch.promouvoir(mc, codeEquipe: codeEquipeActif)
+        modelContext.insert(match)
+        matchSelectionne = match
+    }
 
     private func recalculerMatchs() {
         matchs = toutesSeances.filtreEquipe(codeEquipeActif).filter { $0.estMatch }
@@ -74,6 +90,16 @@ struct MatchsView: View {
                         }
                         .siAutorise(peutModifier)
                         .bloqueSiNonPayant(source: "creation_match")
+                    }
+                    // 2.3.2 — match éclair : un match hors calendrier en 2 champs
+                    ToolbarItem(placement: .primaryAction) {
+                        Button { afficherMatchEclair = true } label: {
+                            Image(systemName: "bolt")
+                        }
+                        .siAutorise(peutModifier)
+                        .bloqueSiNonPayant(source: "match_eclair")
+                        .accessibilityLabel("Match éclair")
+                        .accessibilityHint("Crée un match immédiat : adversaire et service, rien d'autre")
                     }
                     ToolbarItem(placement: .bottomBar) {
                         HStack(spacing: 20) {
@@ -126,6 +152,15 @@ struct MatchsView: View {
         .onChange(of: toutesSeances) { recalculerMatchs() }
         .onChange(of: codeEquipeActif) { recalculerMatchs() }
         .sensoryFeedback(.success, trigger: matchs.count)
+        .sheet(isPresented: $afficherMatchEclair) {
+            MatchEclairSheet { adversaire, nousServons in
+                let match = FabriqueMatch.matchEclair(adversaire: adversaire,
+                                                      nousServons: nousServons,
+                                                      codeEquipe: codeEquipeActif)
+                modelContext.insert(match)
+                matchSelectionne = match
+            }
+        }
         .sheet(isPresented: $afficherCalendrier) {
             NavigationStack {
                 CalendrierView()
@@ -159,6 +194,29 @@ struct MatchsView: View {
 
     private var sidebarContent: some View {
         List(selection: $matchSelectionne) {
+            // 2.3.2 — matchs du calendrier (wizard) pas encore promus en match
+            if peutModifier, !matchsCalendrierAPromouvoir.isEmpty {
+                Section {
+                    ForEach(matchsCalendrierAPromouvoir) { mc in
+                        Button {
+                            promouvoir(mc)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(mc.adversaire.isEmpty ? "Match" : "vs \(mc.adversaire)")
+                                    .font(.subheadline.weight(.medium))
+                                Text("\(mc.date, format: .dateTime.day().month().hour().minute()) — toucher pour créer le match")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                } header: {
+                    Label("Calendrier", systemImage: "calendar")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             // Matchs à venir
             if !matchsAVenir.isEmpty {
                 Section {
@@ -449,5 +507,49 @@ struct NouvelMatchSheet: View {
         }
         .presentationDetents([.medium, .large])
         .onAppear { focused = true }
+    }
+}
+
+
+// MARK: - Sheet match éclair (2.3.2)
+
+/// Un match en 2 champs : l'adversaire et qui sert. Tout le reste attendra.
+struct MatchEclairSheet: View {
+    var onCreer: (String, Bool) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var adversaire = ""
+    @State private var nousServons = true
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("Adversaire", text: $adversaire)
+                        .focused($focused)
+                        .submitLabel(.done)
+                    Toggle("Nous servons en premier", isOn: $nousServons)
+                } footer: {
+                    Text("Le match est créé maintenant, daté de maintenant. Le 6 de départ du dernier match est pré-rempli — il ne reste qu'à lancer le mode en direct.")
+                }
+            }
+            .navigationTitle("Match éclair")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Annuler") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Coacher") {
+                        onCreer(adversaire, nousServons)
+                        dismiss()
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+            .onAppear { focused = true }
+        }
+        .presentationDetents([.medium])
     }
 }
