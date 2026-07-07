@@ -24,6 +24,50 @@ extension EnvironmentValues {
 /// Couleurs mates uniformes — palette Apple Liquid Glass
 /// `nonisolated` : constantes Sendable lues depuis des contextes non-MainActor
 /// (FormationType.couleurPourLabel — Phase 5.2).
+// MARK: - Mat Nuit (2.4, révision fondateur 2026-07-06)
+// Le fond est LA NUIT ; les 5 couleurs d'espace survivent en tons neutres
+// calibrés (contraste ≥ 4,5:1 sur la nuit — garanti par MatNuitTests) ; le
+// verre sombre est la matière (corps des modificateurs, étape B).
+// Hex figés = contrat de design vérifié en revue par /playco-mat-review.
+nonisolated enum MatNuit {
+    // Fond & encres
+    static let fondHex = "#0D0D0F"
+    static let encreHex = "#F2F1ED"
+    static let encre2Hex = "#ABA9A3"
+    static let encre3Hex = "#6F6D68"   // décoratif SEULEMENT (contraste insuffisant)
+
+    static let fond = Color(hex: fondHex)
+    static let encre = Color(hex: encreHex)
+    static let encre2 = Color(hex: encre2Hex)
+    static let encre3 = Color(hex: encre3Hex)
+    /// Filet hairline : blanc 10 % sur la nuit.
+    static let filet = Color.white.opacity(0.10)
+
+    // Les 5 tons d'espace (neutres, calibrés sur la nuit)
+    static let terreHex = "#C08A64"      // Séances
+    static let briqueHex = "#BE6B63"     // Matchs
+    static let ardoiseHex = "#7292B4"    // Stratégies
+    static let saugeHex = "#74A98D"      // Équipe
+    static let lavandeHex = "#9789BD"    // Entraînement
+
+    static let terre = Color(hex: terreHex)
+    static let brique = Color(hex: briqueHex)
+    static let ardoise = Color(hex: ardoiseHex)
+    static let sauge = Color(hex: saugeHex)
+    static let lavande = Color(hex: lavandeHex)
+
+    // Sémantiques
+    static let liveHex = "#E0473D"
+    static let deltaPositifHex = "#4FA37E"
+    static let deltaNegatifHex = "#D4726A"
+    static let live = Color(hex: liveHex)
+    static let deltaPositif = Color(hex: deltaPositifHex)
+    static let deltaNegatif = Color(hex: deltaNegatifHex)
+
+    /// Teinte de verre maximale d'un espace (loi 4 : verre sombre, ≤ 12 %).
+    static let teinteVerreMax = 0.12
+}
+
 nonisolated enum PaletteMat {
     // Couleurs principales — mates et désaturées
     static let orange = Color(hex: "#E8734A")    // Pratiques
