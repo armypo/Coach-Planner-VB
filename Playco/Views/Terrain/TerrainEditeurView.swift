@@ -215,6 +215,26 @@ struct TerrainEditeurView: View {
                 .help("Dupliquer l'étape courante")
                 .accessibilityLabel("Dupliquer l'étape courante")
                 .accessibilityHint("Crée une nouvelle étape avec une copie du dessin et des éléments actuels")
+
+                // Bouton « Continuer » (2.3.1) : arrivées → départs de la suite
+                Button {
+                    vm.dupliquerEtapeContinuer(dessinData: &dessinData, elementsData: &elementsData)
+                    etapesData = vm.sauvegarderEtapes()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.forward.square")
+                            .font(.system(size: 12, weight: .bold))
+                        Text("Continuer")
+                            .font(.caption.weight(.medium))
+                    }
+                    .foregroundStyle(.orange)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+                }
+                .help("Nouvelle étape : les arrivées deviennent les départs")
+                .accessibilityLabel("Continuer vers une nouvelle étape")
+                .accessibilityHint("Déplace les joueurs au bout de leurs trajectoires et efface les traits")
             }
             .padding(.horizontal, 6)
             .padding(.vertical, 4)

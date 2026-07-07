@@ -317,6 +317,52 @@ final class TerrainEditeurViewModel {
         chargerEtapeActive(dessinData: dessinData, elementsData: elementsData)
     }
 
+    /// 2.3.1 — Duplication « Continuer » : les ARRIVÉES de l'étape active
+    /// deviennent les DÉPARTS de la nouvelle étape. Chaque flèche/trajectoire
+    /// déplace le jeton (joueur/ballon) le plus proche de son point de départ
+    /// vers son point d'arrivée ; traits, rotations et encre ne sont pas copiés.
+    /// C'est la mécanique de la pensée du coach : « et ensuite, ils vont là ».
+    func dupliquerEtapeContinuer(dessinData: inout Data?, elementsData: inout Data?) {
+        guard sauvegarderEtapeActive(dessinData: &dessinData, elementsData: &elementsData) else { return }
+
+        /// Rayon d'association départ-de-trait ↔ jeton (coordonnées normalisées 0-1).
+        let seuilAssociation = 0.08
+        func distanceCarree(_ jeton: ElementTerrain, _ trait: ElementTerrain) -> Double {
+            let dx = jeton.x - trait.x, dy = jeton.y - trait.y
+            return dx * dx + dy * dy
+        }
+
+        let jetons = elements.filter { $0.type == .joueur || $0.type == .ballon }
+        let traits = elements.filter {
+            ($0.type == .fleche || $0.type == .trajectoire) && $0.toX != nil && $0.toY != nil
+        }
+
+        // Associations calculées sur les positions d'ORIGINE (un trait = un jeton).
+        var destinations: [UUID: (x: Double, y: Double)] = [:]
+        for trait in traits {
+            guard let toX = trait.toX, let toY = trait.toY else { continue }
+            guard let proche = jetons.min(by: { distanceCarree($0, trait) < distanceCarree($1, trait) }),
+                  distanceCarree(proche, trait) < seuilAssociation * seuilAssociation else { continue }
+            destinations[proche.id] = (toX, toY)
+        }
+
+        var suivants = jetons
+        for i in suivants.indices {
+            if let destination = destinations[suivants[i].id] {
+                suivants[i].x = destination.x
+                suivants[i].y = destination.y
+            }
+        }
+
+        guard let elems = try? JSONCoderCache.encoder.encode(suivants) else {
+            logger.warning("Encodage des éléments échoué — étape « Continuer » non créée")
+            return
+        }
+        etapes.append(EtapeExercice(nom: "", dessinData: nil, elementsData: elems))
+        etapeActive = etapes.count
+        chargerEtapeActive(dessinData: dessinData, elementsData: elementsData)
+    }
+
     func changerEtape(index: Int, dessinData: inout Data?, elementsData: inout Data?) {
         guard etapeActive != index else { return }
         guard sauvegarderEtapeActive(dessinData: &dessinData, elementsData: &elementsData) else { return }

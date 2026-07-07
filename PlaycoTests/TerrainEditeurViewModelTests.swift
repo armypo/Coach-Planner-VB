@@ -256,6 +256,47 @@ struct TerrainEditeurViewModelTests {
         #expect(vm.pileUndo.count == 15) // l'étape ACTIVE garde tout son historique
     }
 
+    // MARK: - Duplication « Continuer » (2.3.1)
+
+    @Test("« Continuer » : les arrivées deviennent les départs, traits effacés")
+    func dupliquerContinuerDeplaceLesJetons() {
+        let vm = TerrainEditeurViewModel()
+        var dessin: Data? = nil
+        var elems: Data? = nil
+
+        let joueur = elementJoueur(label: "7") // départ (0.25, 0.5)
+        var fleche = ElementTerrain(type: .fleche, x: 0.26, y: 0.51, label: "", r: 1, g: 1, b: 1)
+        fleche.toX = 0.6
+        fleche.toY = 0.3
+        var flecheOrpheline = ElementTerrain(type: .fleche, x: 0.9, y: 0.9, label: "", r: 1, g: 1, b: 1)
+        flecheOrpheline.toX = 0.95
+        flecheOrpheline.toY = 0.95 // aucun jeton à proximité → ignorée
+        vm.elements = [joueur, fleche, flecheOrpheline]
+
+        vm.dupliquerEtapeContinuer(dessinData: &dessin, elementsData: &elems)
+
+        #expect(vm.etapes.count == 1)
+        #expect(vm.etapeActive == 1)
+        #expect(vm.elements.count == 1) // seuls les jetons survivent
+        #expect(vm.elements.first?.type == .joueur)
+        #expect(abs((vm.elements.first?.x ?? 0) - 0.6) < 0.0001)
+        #expect(abs((vm.elements.first?.y ?? 0) - 0.3) < 0.0001)
+    }
+
+    @Test("« Continuer » sans trajectoires : les jetons restent en place")
+    func dupliquerContinuerSansTraits() {
+        let vm = TerrainEditeurViewModel()
+        var dessin: Data? = nil
+        var elems: Data? = nil
+        vm.elements = [elementJoueur(label: "3")]
+
+        vm.dupliquerEtapeContinuer(dessinData: &dessin, elementsData: &elems)
+
+        #expect(vm.etapeActive == 1)
+        #expect(vm.elements.count == 1)
+        #expect(abs((vm.elements.first?.x ?? 0) - 0.25) < 0.0001)
+    }
+
     @Test("charger un document remet tout l'historique à zéro")
     func chargerRemetLHistoriqueAZero() {
         let vm = TerrainEditeurViewModel()
