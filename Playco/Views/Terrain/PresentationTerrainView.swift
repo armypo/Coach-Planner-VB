@@ -52,7 +52,7 @@ struct PresentationTerrainView: View {
                     )
                 }
                 .clipShape(RoundedRectangle(cornerRadius: LiquidGlassKit.rayonMoyen))
-                .aspectRatio(estPortrait ? 0.5 : 2.0, contentMode: .fit)
+                .aspectRatio(estPortrait ? typeTerrain.ratioVertical : typeTerrain.ratioHorizontal, contentMode: .fit)
                 .padding(.horizontal, LiquidGlassKit.espaceLG)
 
                 // Indicateur d'étapes

@@ -50,6 +50,11 @@ struct TerrainVolleyView: View {
                         W: W, H: H, mx: mx, my: my,
                         cl: cl, cr: cr, ct: ct, cb: cb,
                         cw: cw, ch: ch, ny: ny)
+                case .demiTerrain:
+                    dessinerDemiTerrainVertical(context: &context,
+                        W: W, H: H,
+                        cl: cl, cr: cr, ct: ct, cb: cb,
+                        cw: cw, ch: ch)
                 }
             } else {
                 // Mode horizontal : net vertical, zones gauche/droite
@@ -69,6 +74,11 @@ struct TerrainVolleyView: View {
                         W: W, H: H, mx: mx, my: my,
                         cl: cl, cr: cr, ct: ct, cb: cb,
                         cw: cw, ch: ch, nx: nx)
+                case .demiTerrain:
+                    dessinerDemiTerrainHorizontal(context: &context,
+                        W: W, H: H,
+                        cl: cl, cr: cr, ct: ct, cb: cb,
+                        cw: cw, ch: ch)
                 }
             }
         }
@@ -511,6 +521,87 @@ struct TerrainVolleyView: View {
     }
 
     // MARK: - Helper
+    // =========================================================================
+    // MARK: - Demi-terrain (2.3.1) — 9×9 m, filet au bord, ligne 3 m au tiers
+    // =========================================================================
+
+    /// Horizontal : filet au bord GAUCHE du terrain, ligne d'attaque à cw/3.
+    private func dessinerDemiTerrainHorizontal(
+        context: inout GraphicsContext,
+        W: CGFloat, H: CGFloat,
+        cl: CGFloat, cr: CGFloat, ct: CGFloat, cb: CGFloat,
+        cw: CGFloat, ch: CGFloat
+    ) {
+        let al = cl + cw / 3 // ligne d'attaque (3 m sur 9 m)
+
+        var bg = Path(); bg.addRect(CGRect(x: 0, y: 0, width: W, height: H))
+        context.fill(bg, with: .color(Color(hex: "#1E5599")))
+
+        var surface = Path(); surface.addRect(CGRect(x: cl, y: ct, width: cw, height: ch))
+        context.fill(surface, with: .color(Color(hex: "#D4B87A")))
+
+        var z3 = Path(); z3.addRect(CGRect(x: cl, y: ct, width: al - cl, height: ch))
+        context.fill(z3, with: .color(Color(hex: "#6B3A1F")))
+
+        let parquetLine = Color(hex: "#C4A868").opacity(0.5)
+        let espacement: CGFloat = max(cw * 0.03, 8)
+        for x in stride(from: cl, through: cr, by: espacement) {
+            context.stroke(lignePath(x, ct, x, cb),
+                           with: .color(x < al ? Color(hex: "#5A2E15").opacity(0.4) : parquetLine),
+                           style: StrokeStyle(lineWidth: 0.5))
+        }
+
+        let blanc = Color.white
+        var contour = Path(); contour.addRect(CGRect(x: cl, y: ct, width: cw, height: ch))
+        context.stroke(contour, with: .color(blanc), style: StrokeStyle(lineWidth: 3))
+        context.stroke(lignePath(al, ct, al, cb), with: .color(blanc), style: StrokeStyle(lineWidth: 2))
+
+        // Filet : double trait épais sur le bord gauche, poteaux dépassants
+        let filet = Color(hex: "#222222")
+        context.stroke(lignePath(cl, ct - ch * 0.03, cl, cb + ch * 0.03),
+                       with: .color(filet), style: StrokeStyle(lineWidth: 5))
+        context.stroke(lignePath(cl + 3, ct - ch * 0.03, cl + 3, cb + ch * 0.03),
+                       with: .color(blanc.opacity(0.7)), style: StrokeStyle(lineWidth: 1))
+    }
+
+    /// Vertical : filet au bord HAUT du terrain, ligne d'attaque à ch/3.
+    private func dessinerDemiTerrainVertical(
+        context: inout GraphicsContext,
+        W: CGFloat, H: CGFloat,
+        cl: CGFloat, cr: CGFloat, ct: CGFloat, cb: CGFloat,
+        cw: CGFloat, ch: CGFloat
+    ) {
+        let al = ct + ch / 3
+
+        var bg = Path(); bg.addRect(CGRect(x: 0, y: 0, width: W, height: H))
+        context.fill(bg, with: .color(Color(hex: "#1E5599")))
+
+        var surface = Path(); surface.addRect(CGRect(x: cl, y: ct, width: cw, height: ch))
+        context.fill(surface, with: .color(Color(hex: "#D4B87A")))
+
+        var z3 = Path(); z3.addRect(CGRect(x: cl, y: ct, width: cw, height: al - ct))
+        context.fill(z3, with: .color(Color(hex: "#6B3A1F")))
+
+        let parquetLine = Color(hex: "#C4A868").opacity(0.5)
+        let espacement: CGFloat = max(ch * 0.03, 8)
+        for y in stride(from: ct, through: cb, by: espacement) {
+            context.stroke(lignePath(cl, y, cr, y),
+                           with: .color(y < al ? Color(hex: "#5A2E15").opacity(0.4) : parquetLine),
+                           style: StrokeStyle(lineWidth: 0.5))
+        }
+
+        let blanc = Color.white
+        var contour = Path(); contour.addRect(CGRect(x: cl, y: ct, width: cw, height: ch))
+        context.stroke(contour, with: .color(blanc), style: StrokeStyle(lineWidth: 3))
+        context.stroke(lignePath(cl, al, cr, al), with: .color(blanc), style: StrokeStyle(lineWidth: 2))
+
+        let filet = Color(hex: "#222222")
+        context.stroke(lignePath(cl - cw * 0.03, ct, cr + cw * 0.03, ct),
+                       with: .color(filet), style: StrokeStyle(lineWidth: 5))
+        context.stroke(lignePath(cl - cw * 0.03, ct + 3, cr + cw * 0.03, ct + 3),
+                       with: .color(blanc.opacity(0.7)), style: StrokeStyle(lineWidth: 1))
+    }
+
     private func lignePath(_ x1: CGFloat, _ y1: CGFloat, _ x2: CGFloat, _ y2: CGFloat) -> Path {
         var p = Path()
         p.move(to: CGPoint(x: x1, y: y1))

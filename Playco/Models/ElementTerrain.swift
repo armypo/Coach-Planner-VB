@@ -122,15 +122,31 @@ struct ElementTerrain: Identifiable, Codable, Equatable {
 enum TypeTerrain: String, Codable, CaseIterable {
     case indoor = "Indoor"
     case beach  = "Beach"
+    /// 2.3.1 — cadrage demi-terrain (9×9 m, filet au bord) : la majorité des
+    /// exercices se dessinent sur un demi-terrain, grand et lisible.
+    /// RawValue inédit : le legacy décode toujours via `?? .indoor` (piège #6).
+    case demiTerrain = "DemiTerrain"
 
-    var label: String { rawValue }
+    var label: String {
+        switch self {
+        case .indoor:      return "Indoor"
+        case .beach:       return "Beach"
+        case .demiTerrain: return "Demi-terrain"
+        }
+    }
 
     var icone: String {
         switch self {
-        case .indoor: return "building.2"
-        case .beach:  return "sun.max"
+        case .indoor:      return "building.2"
+        case .beach:       return "sun.max"
+        case .demiTerrain: return "rectangle.lefthalf.inset.filled"
         }
     }
+
+    /// Ratios d'affichage (les coordonnées 0-1 restent intactes — piège #3 :
+    /// elles se projettent simplement sur un canvas carré).
+    var ratioHorizontal: CGFloat { self == .demiTerrain ? 1.0 : 2.0 }
+    var ratioVertical: CGFloat { self == .demiTerrain ? 1.0 : 0.5 }
 }
 
 // MARK: - Étape d'exercice (terrain par étape) — P1-03 versionnement

@@ -77,7 +77,7 @@ struct TerrainEditeurView: View {
                     .stroke(Color.primary.opacity(0.08), lineWidth: 1))
                 .shadow(color: .black.opacity(0.05), radius: 6, y: 2)
                 .padding(.horizontal, 10)
-                .aspectRatio(orientationPortrait ? 0.5 : 2.0, contentMode: .fit)
+                .aspectRatio(orientationPortrait ? typeTerrain.ratioVertical : typeTerrain.ratioHorizontal, contentMode: .fit)
                 .animation(.spring(response: 0.4, dampingFraction: 0.85), value: orientationPortrait)
 
                 // Barre d'étapes — toujours visible sous le terrain
