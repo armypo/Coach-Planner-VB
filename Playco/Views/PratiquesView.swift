@@ -18,12 +18,6 @@ struct PratiquesView: View {
     @State private var afficherCalendrier = false
     @State private var afficherPlanification = false
 
-    /// Contenu masqué pour les athlètes si le coach l'a activé
-    private var contenuMasque: Bool {
-        guard authService.utilisateurConnecte?.role == .etudiant else { return false }
-        return profils.first?.masquerPratiquesAthletes ?? false
-    }
-
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             ListeSeancesView(seanceSelectionnee: $seanceSelectionnee)
@@ -59,9 +53,7 @@ struct PratiquesView: View {
                 }
         } detail: {
             NavigationStack {
-                if contenuMasque {
-                    ContenuMasqueView()
-                } else if let seance = seanceSelectionnee {
+                if let seance = seanceSelectionnee {
                     ListeExercicesView(seance: seance)
                 } else {
                     EtatVidePratiquesView()
@@ -116,25 +108,6 @@ struct PratiquesView: View {
     }
 }
 
-/// Contenu masqué par le coach — affiché aux athlètes
-struct ContenuMasqueView: View {
-    var body: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "eye.slash.fill")
-                .font(.system(size: 60, weight: .thin))
-                .foregroundStyle(.quaternary)
-            Text("Contenu masqué")
-                .font(.title3.weight(.medium))
-                .foregroundStyle(.secondary)
-            Text("Votre coach a choisi de masquer le détail des séances.\nVous pouvez consulter les dates et horaires dans la liste.")
-                .font(.subheadline)
-                .foregroundStyle(.tertiary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 40)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-}
 
 private struct EtatVidePratiquesView: View {
     var body: some View {

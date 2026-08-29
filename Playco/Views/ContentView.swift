@@ -238,11 +238,7 @@ struct ContentView: View {
         case .strategies:
             StrategiesView { withAnimation { sectionActive = nil } }
         case .equipe:
-            if authService.utilisateurConnecte?.role == .etudiant {
-                MonProfilAthleteView { withAnimation { sectionActive = nil } }
-            } else {
-                EquipeView { withAnimation { sectionActive = nil } }
-            }
+            EquipeView { withAnimation { sectionActive = nil } }
         case .entrainement:
             EntrainementView { withAnimation { sectionActive = nil } }
         }

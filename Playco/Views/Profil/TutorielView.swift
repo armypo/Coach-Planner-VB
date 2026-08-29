@@ -33,7 +33,7 @@ struct TutorielView: View {
             astuces: [
                 "Conçu pour iPad avec support Apple Pencil",
                 "Synchronisation iCloud entre tous vos appareils",
-                "Interface adaptée pour les coachs et les athlètes",
+                "Interface pensée pour les coachs et leur staff",
                 "Aucune connexion internet requise pour fonctionner"
             ]
         ),

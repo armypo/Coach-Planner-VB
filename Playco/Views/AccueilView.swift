@@ -182,19 +182,15 @@ struct AccueilView: View {
         )
     }
 
-    private var estAthlete: Bool {
-        authService.utilisateurConnecte?.role == .etudiant
-    }
-
     private var carteEquipe: some View {
         carteSection(
-            icone: estAthlete ? "person.circle.fill" : "person.3.fill",
-            titre: estAthlete ? "Mon profil" : "Équipe",
-            sousTitre: estAthlete ? "Mes stats & suivi" : "Joueurs & statistiques",
-            badge: estAthlete ? "Voir" : { let n = joueursActifsCount; return "\(n) joueur\(n > 1 ? "s" : "")" }(),
+            icone: "person.3.fill",
+            titre: "Équipe",
+            sousTitre: "Joueurs & statistiques",
+            badge: { let n = joueursActifsCount; return "\(n) joueur\(n > 1 ? "s" : "")" }(),
             couleur: PaletteMat.vert,
             section: .equipe,
-            detail: estAthlete ? nil : resumeEquipe
+            detail: resumeEquipe
         )
     }
 

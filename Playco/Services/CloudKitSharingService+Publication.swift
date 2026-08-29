@@ -164,15 +164,11 @@ extension CloudKitSharingService {
     /// dernière sync (équipe, établissement, utilisateurs, joueurs+stats, séances,
     /// matchs) pour un `codeEquipe`. DRY : un seul point d'appel (foreground coach)
     /// couvre toutes les créations/éditions sans triggers éparpillés.
-    /// Respecte `masquerPratiquesAthletes` : les pratiques ne sont pas publiées si activé.
     func publierMisesAJourCoach(codeEquipe: String, context: ModelContext) async {
         guard !codeEquipe.isEmpty else { return }
         estEnCoursDePublication = true
         defer { estEnCoursDePublication = false }
         let seuil = derniereSyncDate
-
-        let masquer = ((try? context.fetch(FetchDescriptor<ProfilCoach>()))?
-            .first?.masquerPratiquesAthletes) ?? false
 
         do {
             let descEq = FetchDescriptor<Equipe>(predicate: #Predicate { $0.codeEquipe == codeEquipe })
@@ -190,10 +186,8 @@ extension CloudKitSharingService {
             for j in (try? context.fetch(descJ)) ?? [] where j.dateModification > seuil {
                 try await publierJoueur(j)
             }
-            let pratiqueRaw = TypeSeance.pratique.rawValue
             let descS = FetchDescriptor<Seance>(predicate: #Predicate { $0.codeEquipe == codeEquipe })
             for s in (try? context.fetch(descS)) ?? [] where s.dateModification > seuil && !s.estArchivee {
-                if masquer && s.typeSeanceRaw == pratiqueRaw { continue }  // pratiques masquées
                 try await publierSeance(s)
             }
             // Les matchs sont publiés en tant que Seance (type=.match) ci-dessus.

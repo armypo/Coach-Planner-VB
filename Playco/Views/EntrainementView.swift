@@ -24,13 +24,17 @@ struct EntrainementView: View {
     @Query(sort: \SeanceMuscu.date, order: .reverse) private var seances: [SeanceMuscu]
     @Query private var tousJoueurs: [JoueurEquipe]
 
-    /// 2.2.b — statut de disponibilité de l'athlète connecté (nil = pas de
-    /// fiche joueur liée : coach/assistant, jamais bloqué).
-    private var statutJoueurConnecte: StatutDisponibilite? {
-        guard let ficheID = authService.utilisateurConnecte?.joueurEquipeID,
-              let fiche = tousJoueurs.first(where: { $0.id == ficheID }) else { return nil }
-        return fiche.statutDisponibilite
+    /// D2 (pivot coach-first) : le coach saisit la séance live AU NOM d'un
+    /// joueur — choisi juste avant de lancer (alimente SuiviMusculationView).
+    private enum ChoixJoueurLive: Hashable {
+        case joueur(UUID)
+        case sansJoueur
+        var joueurID: UUID? {
+            if case .joueur(let id) = self { return id }
+            return nil
+        }
     }
+    @State private var choixJoueurLive: ChoixJoueurLive?
 
     enum SelectionEntrainement: Hashable {
         case programme(ProgrammeMuscu)
@@ -46,14 +50,7 @@ struct EntrainementView: View {
     @State private var seancesEquipe: [SeanceMuscu] = []
 
     private func recalculerDonnees() {
-        let programmesEquipe = programmes.filtreEquipe(codeEquipeActif)
-        if role.peutGererProgrammes {
-            programmesFiltres = programmesEquipe
-        } else {
-            let joueurID = authService.utilisateurConnecte?.joueurEquipeID
-            guard let joueurID else { programmesFiltres = []; return }
-            programmesFiltres = programmesEquipe.filter { $0.decoderJoueursAssignes().contains(joueurID) }
-        }
+        programmesFiltres = programmes.filtreEquipe(codeEquipeActif)
         seancesEquipe = seances.filtreEquipe(codeEquipeActif)
     }
 
@@ -101,6 +98,7 @@ struct EntrainementView: View {
         .onChange(of: programmes) { recalculerDonnees() }
         .onChange(of: seances) { recalculerDonnees() }
         .onChange(of: codeEquipeActif) { recalculerDonnees() }
+        .onChange(of: selectionSidebar) { choixJoueurLive = nil }
         .sensoryFeedback(.success, trigger: programmesFiltres.count)
         .alert("Nouveau programme", isPresented: $afficherNouveauProgramme) {
             TextField("Nom du programme", text: $nomNouveauProgramme)
@@ -205,19 +203,13 @@ struct EntrainementView: View {
                     selectionSidebar = .seanceLive(prog)
                 }
             case .seanceLive(let prog):
-                // 2.2.b — musculation suspendue pour un joueur indisponible :
-                // pas de séance live tant que le coach n'a pas remis le statut
-                // à Disponible.
-                if let statut = statutJoueurConnecte, statut != .disponible {
-                    ContentUnavailableView {
-                        Label("Musculation suspendue", systemImage: "pause.circle")
-                    } description: {
-                        Text("Votre statut est « \(statut.libelle) ». Les séances reprendront quand votre coach vous remettra disponible.")
-                    }
-                } else {
-                    SeanceLiveView(programme: prog, joueurID: authService.utilisateurConnecte?.joueurEquipeID) {
+                if let choix = choixJoueurLive {
+                    SeanceLiveView(programme: prog, joueurID: choix.joueurID) {
+                        choixJoueurLive = nil
                         selectionSidebar = .programme(prog)
                     }
+                } else {
+                    selecteurJoueurLive(prog)
                 }
             }
         } else {
@@ -231,6 +223,74 @@ struct EntrainementView: View {
         } description: {
             Text("ou créez-en un nouveau avec +")
         }
+    }
+
+    // MARK: - Sélecteur de joueur (D2 — le coach saisit au nom d'un athlète)
+
+    /// Joueurs assignés au programme, puis le reste du roster actif.
+    /// Un joueur indisponible (2.2.b) est proposé mais désactivé.
+    private func selecteurJoueurLive(_ programme: ProgrammeMuscu) -> some View {
+        let actifs = tousJoueurs.filtreEquipe(codeEquipeActif)
+            .filter { $0.estActif }
+            .sorted { $0.numero < $1.numero }
+        let assignesIDs = Set(programme.decoderJoueursAssignes())
+        let assignes = actifs.filter { assignesIDs.contains($0.id) }
+        let autres = actifs.filter { !assignesIDs.contains($0.id) }
+
+        return List {
+            Section {
+                Text("La séance sera enregistrée au nom du joueur choisi et alimentera son suivi des charges.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .listRowBackground(Color.clear)
+            }
+            if !assignes.isEmpty {
+                Section("Assignés au programme") {
+                    ForEach(assignes) { joueur in
+                        ligneJoueurLive(joueur)
+                    }
+                }
+            }
+            if !autres.isEmpty {
+                Section(assignes.isEmpty ? "Joueurs" : "Autres joueurs") {
+                    ForEach(autres) { joueur in
+                        ligneJoueurLive(joueur)
+                    }
+                }
+            }
+            Section {
+                Button {
+                    choixJoueurLive = .sansJoueur
+                } label: {
+                    Label("Séance d'équipe (sans joueur)", systemImage: "person.3")
+                }
+            }
+        }
+        .navigationTitle("Pour quel joueur ?")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func ligneJoueurLive(_ joueur: JoueurEquipe) -> some View {
+        let indisponible = !joueur.estDisponible
+        return Button {
+            choixJoueurLive = .joueur(joueur.id)
+        } label: {
+            HStack {
+                Text("#\(joueur.numero)")
+                    .font(.subheadline.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .frame(width: 40, alignment: .leading)
+                Text("\(joueur.prenom) \(joueur.nom)")
+                Spacer()
+                if indisponible {
+                    Text(joueur.statutDisponibilite.libelle)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .disabled(indisponible)
+        .opacity(indisponible ? 0.5 : 1)
     }
 
     // MARK: - Actions

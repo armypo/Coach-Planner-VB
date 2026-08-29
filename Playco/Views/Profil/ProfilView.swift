@@ -32,9 +32,6 @@ struct ProfilView: View {
                             // Code d'équipe
                             sectionCodeEquipe
 
-                            // Visibilité athlètes
-                            sectionVisibilite
-
                             // Organisation (gestion membres)
                             sectionOrganisation
 
@@ -135,37 +132,6 @@ struct ProfilView: View {
                 Text("Aucune équipe configurée")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-            }
-        }
-        .padding(20)
-        .glassCard()
-    }
-
-    // MARK: - Visibilité athlètes
-
-    private var sectionVisibilite: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label("Visibilité", systemImage: "eye.slash")
-                .font(.headline)
-                .foregroundStyle(PaletteMat.violet)
-
-            if let profil = profils.first {
-                Toggle(isOn: Binding(
-                    get: { profil.masquerPratiquesAthletes },
-                    set: {
-                        profil.masquerPratiquesAthletes = $0
-                        try? modelContext.save()
-                    }
-                )) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Masquer les pratiques aux athlètes")
-                            .font(.subheadline.weight(.medium))
-                        Text("Les athlètes ne verront pas le contenu des séances (exercices, terrain, notes).")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .tint(PaletteMat.violet)
             }
         }
         .padding(20)
