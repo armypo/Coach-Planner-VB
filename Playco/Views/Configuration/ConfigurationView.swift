@@ -346,20 +346,13 @@ struct ConfigurationView: View {
             recaps.append(membre.recap)
         }
 
-        // 5. Joueurs → JoueurEquipe + Utilisateur + CredentialAthlete (SIWA)
+        // 5. Joueurs → JoueurEquipe (données pures du roster — aucun compte,
+        // pivot coach-first : les athlètes ne sont plus des utilisateurs)
         for j in joueursTemp {
             let joueur = JoueurEquipe(nom: j.nom, prenom: j.prenom, numero: j.numero, poste: j.poste)
             joueur.codeEquipe = codeEquipe
             joueur.equipe = equipe
             modelContext.insert(joueur)
-
-            let membre = MembreFactory.creerMembre(
-                prenom: j.prenom, nom: j.nom,
-                role: .etudiant, codeEquipe: codeEquipe,
-                joueur: joueur,
-                context: modelContext, exclusions: &idsCreesEnMemoire
-            )
-            recaps.append(membre.recap)
         }
 
         // 6. Créneaux récurrents → Séances pour 4 semaines
@@ -537,7 +530,6 @@ struct JoueurTemp: Identifiable {
     var nom = ""
     var numero: Int = 1
     var poste: PosteJoueur = .recepteur
-    var identifiant = ""
 }
 
 struct CreneauTemp: Identifiable {

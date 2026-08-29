@@ -1,16 +1,16 @@
 //  Playco
 //  Copyright © 2025 Christopher Dionne. Tous droits réservés.
 //
-//  IdentifiantsEquipeView — liste des credentials athlètes/assistants de l'équipe
+//  IdentifiantsEquipeView — codes d'invitation des ASSISTANTS de l'équipe
 //  active, accessible via Paramètres → Organisation. Permet de copier, partager
-//  et régénérer le mdp d'un membre.
+//  et régénérer le code d'un assistant. (Pivot coach-first : plus de comptes
+//  athlètes — la grille QR projetable « Inviter l'équipe » a disparu avec eux.)
 //
 
 import SwiftUI
 import SwiftData
 
 struct IdentifiantsEquipeView: View {
-    @State private var afficherInvitationQR = false
     @Environment(\.modelContext) private var modelContext
     @Environment(\.codeEquipeActif) private var codeEquipeActif
     @Environment(AuthService.self) private var authService
@@ -25,36 +25,25 @@ struct IdentifiantsEquipeView: View {
         credentials.filtreEquipe(codeEquipeActif)
     }
 
-    private var athletes: [CredentialAthlete] {
-        credsFiltres.filter { $0.joueurEquipeID != nil }
-    }
-
+    /// Marqueurs d'assistants (joueurEquipeID == nil). Les anciens marqueurs
+    /// athlètes (joueurEquipeID != nil) peuvent subsister en base — ignorés.
     private var assistantsList: [CredentialAthlete] {
         credsFiltres.filter { $0.joueurEquipeID == nil }
     }
 
     var body: some View {
         Group {
-            if credsFiltres.isEmpty {
+            if assistantsList.isEmpty {
                 ContentUnavailableView(
                     "Aucun identifiant",
                     systemImage: "key.slash",
-                    description: Text("Les identifiants des athlètes et assistants créés via le wizard ou Paramètres apparaîtront ici.")
+                    description: Text("Les codes d'invitation des assistants créés via le wizard ou Paramètres apparaîtront ici.")
                 )
             } else {
                 List {
-                    if !athletes.isEmpty {
-                        Section("Athlètes (\(athletes.count))") {
-                            ForEach(athletes) { cred in
-                                ligneCredential(cred)
-                            }
-                        }
-                    }
-                    if !assistantsList.isEmpty {
-                        Section("Assistants (\(assistantsList.count))") {
-                            ForEach(assistantsList) { cred in
-                                ligneCredential(cred)
-                            }
+                    Section("Assistants (\(assistantsList.count))") {
+                        ForEach(assistantsList) { cred in
+                            ligneCredential(cred)
                         }
                     }
                 }
@@ -62,55 +51,6 @@ struct IdentifiantsEquipeView: View {
         }
         .navigationTitle("Identifiants de l'équipe")
         .navigationBarTitleDisplayMode(.inline)
-        // 2.3 — « Inviter l'équipe » : grille de QR projetable (AirPlay/TV)
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    afficherInvitationQR = true
-                } label: {
-                    Label("Inviter l'équipe", systemImage: "qrcode")
-                }
-            }
-        }
-        .fullScreenCover(isPresented: $afficherInvitationQR) {
-            NavigationStack {
-                ScrollView {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 24)], spacing: 24) {
-                        // Revue : ATHLÈTES seulement — les codes assistants (permissions
-                        // quasi-coach) ne se projettent jamais à toute une salle.
-                        ForEach(athletes) { cred in
-                            let user = utilisateurs.first { $0.id == cred.utilisateurID }
-                            if let code = user?.codeInvitation, !code.isEmpty,
-                               let qr = LienInvitation.genererQR(codeEquipe: codeEquipeActif, codeInvitation: code) {
-                                VStack(spacing: 8) {
-                                    Text(user?.nomComplet ?? cred.identifiant)
-                                        .font(.headline)
-                                        .lineLimit(1)
-                                    Image(uiImage: qr)
-                                        .interpolation(.none)
-                                        .resizable()
-                                        .scaledToFit()
-                                        .frame(width: 180, height: 180)
-                                    Text("Scanner, puis Sign in with Apple")
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
-                                }
-                                .padding(16)
-                                .glassSection()
-                            }
-                        }
-                    }
-                    .padding(24)
-                }
-                .navigationTitle("Inviter l'équipe")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Fermer") { afficherInvitationQR = false }
-                    }
-                }
-            }
-        }
         .sheet(item: $afficherNouveauMdp) { wrapper in
             nouveauMdpSheet(wrapper: wrapper)
         }
@@ -120,21 +60,17 @@ struct IdentifiantsEquipeView: View {
 
     private func ligneCredential(_ cred: CredentialAthlete) -> some View {
         let user = utilisateurs.first { $0.id == cred.utilisateurID }
-        let role = cred.joueurEquipeID == nil ? "Assistant" : "Athlète"
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(user?.nomComplet ?? "—")
                     .font(.headline)
                 Spacer()
-                Text(role)
+                Text("Assistant")
                     .font(.caption2.weight(.semibold))
-                    .foregroundStyle(role == "Athlète" ? PaletteMat.orange : PaletteMat.bleu)
+                    .foregroundStyle(PaletteMat.bleu)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
-                    .background(
-                        (role == "Athlète" ? PaletteMat.orange : PaletteMat.bleu).opacity(0.12),
-                        in: Capsule()
-                    )
+                    .background(PaletteMat.bleu.opacity(0.12), in: Capsule())
             }
             HStack(spacing: 8) {
                 Text("ID :").font(.caption).foregroundStyle(.secondary)
@@ -181,7 +117,7 @@ struct IdentifiantsEquipeView: View {
                 }
                 .buttonStyle(.bordered)
                 Spacer()
-                ShareLink(item: templatePartage(cred: cred, user: user, role: role)) {
+                ShareLink(item: templatePartage(cred: cred, user: user)) {
                     Label("Partager", systemImage: "square.and.arrow.up")
                         .font(.caption)
                 }
@@ -245,7 +181,7 @@ struct IdentifiantsEquipeView: View {
 
     // MARK: - Template de partage
 
-    private func templatePartage(cred: CredentialAthlete, user: Utilisateur?, role: String) -> String {
+    private func templatePartage(cred: CredentialAthlete, user: Utilisateur?) -> String {
         let prenom = user?.prenom ?? ""
         let invitation = user?.codeInvitation ?? ""
         return """

@@ -15,13 +15,14 @@ private let logger = Logger(subsystem: "com.origotech.playco", category: "CloudK
 extension CloudKitSharingService {
 
     /// Rôles autorisés à rejoindre via le flux public (anti-escalade).
-    /// Seuls `.etudiant` / `.assistantCoach` ; `.coach` / `.admin` rejetés
-    /// (le coach est le créateur de l'équipe, jamais un joignant).
+    /// Pivot coach-first : seuls les ASSISTANTS rejoignent (`.assistantCoach`).
+    /// `.etudiant` est rejeté (plus de comptes athlètes), `.coach` / `.admin`
+    /// aussi (le coach est le créateur de l'équipe, jamais un joignant).
     static func roleJonctionAutorise(_ roleRaw: String) -> RoleUtilisateur? {
         guard let role = RoleUtilisateur(rawValue: roleRaw) else { return nil }
         switch role {
-        case .etudiant, .assistantCoach: return role
-        case .coach, .admin: return nil
+        case .assistantCoach: return role
+        case .etudiant, .coach, .admin: return nil
         }
     }
 

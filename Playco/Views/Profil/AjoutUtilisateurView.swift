@@ -8,12 +8,13 @@ import os
 
 private let logger = Logger(subsystem: "com.origotech.playco", category: "AjoutUtilisateur")
 
-/// Vue pour ajouter un nouvel athlète ou assistant (accessible par le coach/admin).
-/// Le rôle Coach n'est PAS proposé : la jointure SIWA (`roleJonctionAutorise`)
-/// n'accepte que athlète/assistant — un membre « Coach » ne pourrait jamais se connecter.
+/// Ajout d'un ASSISTANT coach (accessible par le coach/admin).
+/// Pivot coach-first : les athlètes ne sont plus des utilisateurs — cette vue
+/// ne crée plus que des membres du staff (`.assistantCoach`, mêmes droits que
+/// le head coach). Le rôle Coach n'est pas proposé : la jointure SIWA
+/// (`roleJonctionAutorise`) le rejetterait.
 struct AjoutUtilisateurView: View {
     let codeEquipe: String
-    var roleParDefaut: RoleUtilisateur = .etudiant
 
     @Environment(AuthService.self) private var authService
     @Environment(CloudKitSharingService.self) private var sharingService
@@ -23,28 +24,18 @@ struct AjoutUtilisateurView: View {
     @State private var prenom = ""
     @State private var nom = ""
     @State private var identifiant = ""
-    @State private var roleChoisi: RoleUtilisateur = .etudiant
     @State private var erreur: String?
     @State private var succes = false
 
-    // Sheet récap (athlètes/assistants uniquement)
+    // Sheet récap (code d'invitation)
     @State private var afficherRecap = false
     @State private var credACopier: [CredentialRecap] = []
 
-    // Données physiques (pour élèves)
-    @State private var numero = ""
-    @State private var posteChoisi: PosteJoueur = .recepteur
-    @State private var taillePieds = 5
-    @State private var taillePouces = 10
-    @State private var poids = ""
-    @State private var jourNaissance = ""
-    @State private var moisNaissance = ""
-    @State private var anneeNaissance = ""
+    private let couleur = PaletteMat.bleu
 
-    /// Les assistants/coachs ne sont jamais bloqués par ce gate.
     private var formulaireValide: Bool {
-        // SIWA strict : aucun mot de passe — tous les rôles se connectent par
-        // Sign in with Apple + code d'invitation.
+        // SIWA strict : aucun mot de passe — connexion par Sign in with Apple
+        // + code d'invitation.
         !prenom.trimmingCharacters(in: .whitespaces).isEmpty &&
             !nom.trimmingCharacters(in: .whitespaces).isEmpty &&
             !identifiant.trimmingCharacters(in: .whitespaces).isEmpty
@@ -57,7 +48,7 @@ struct AjoutUtilisateurView: View {
                     // Icône
                     ZStack {
                         Circle()
-                            .fill(roleChoisi.couleur.opacity(0.08))
+                            .fill(couleur.opacity(0.08))
                             .frame(width: 70, height: 70)
                             .overlay(
                                 Circle()
@@ -66,22 +57,7 @@ struct AjoutUtilisateurView: View {
 
                         Image(systemName: "person.badge.plus")
                             .font(.system(size: 30))
-                            .foregroundStyle(roleChoisi.couleur)
-                    }
-
-                    // Sélection du rôle
-                    VStack(alignment: .leading, spacing: 8) {
-                            Text("Type de compte")
-                                .font(.caption)
-                                .fontWeight(.semibold)
-                                .foregroundStyle(.secondary)
-                                .textCase(.uppercase)
-
-                            Picker("Rôle", selection: $roleChoisi) {
-                                Text("Athlète").tag(RoleUtilisateur.etudiant)
-                                Text("Assistant").tag(RoleUtilisateur.assistantCoach)
-                            }
-                            .pickerStyle(.segmented)
+                            .foregroundStyle(couleur)
                     }
 
                     // Formulaire
@@ -98,7 +74,7 @@ struct AjoutUtilisateurView: View {
 
                                 HStack(spacing: 12) {
                                     Image(systemName: "person.text.rectangle.fill")
-                                        .foregroundStyle(roleChoisi.couleur)
+                                        .foregroundStyle(couleur)
                                         .frame(width: 20)
 
                                     TextField("Ex: A3F9K2", text: $identifiant)
@@ -109,26 +85,25 @@ struct AjoutUtilisateurView: View {
                                         identifiant = genererCode()
                                     } label: {
                                         Image(systemName: "dice.fill")
-                                            .foregroundStyle(roleChoisi.couleur)
+                                            .foregroundStyle(couleur)
                                     }
                                 }
                                 .padding(14)
                                 .background(RoundedRectangle(cornerRadius: 12).fill(Color(.systemGray6)))
                             }
 
-                            // Tous les rôles : connexion via Sign in with Apple + code
-                            // d'invitation. Aucun mot de passe — le code d'invitation
-                            // s'affiche après la création.
+                            // Connexion via Sign in with Apple + code d'invitation.
+                            // Aucun mot de passe — le code s'affiche après la création.
                             HStack(spacing: 8) {
                                 Image(systemName: "ticket.fill")
-                                    .foregroundStyle(roleChoisi.couleur)
+                                    .foregroundStyle(couleur)
                                 Text("Un code d'invitation sera généré pour rejoindre l'équipe avec Sign in with Apple.")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
                             .padding(12)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(roleChoisi.couleur.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+                            .background(couleur.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
                             // Info code équipe
                             HStack(spacing: 8) {
                                 Image(systemName: "building.2.fill")
@@ -140,115 +115,6 @@ struct AjoutUtilisateurView: View {
                             .padding(12)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .background(Color(.systemGray6), in: RoundedRectangle(cornerRadius: 10))
-                    }
-
-                    // Données physiques pour athlètes
-                    if roleChoisi == .etudiant {
-                        VStack(alignment: .leading, spacing: 14) {
-                            Text("Données athlète")
-                                .font(.caption)
-                                .fontWeight(.semibold)
-                                .foregroundStyle(PaletteMat.orange)
-                                .textCase(.uppercase)
-
-                            // Poste et numéro
-                            HStack(spacing: 12) {
-                                VStack(alignment: .leading, spacing: 6) {
-                                    Text("POSTE")
-                                        .font(.caption2).fontWeight(.semibold).foregroundStyle(.secondary)
-                                    Picker("Poste", selection: $posteChoisi) {
-                                        ForEach(PosteJoueur.allCases, id: \.self) { poste in
-                                            Text(poste.rawValue).tag(poste)
-                                        }
-                                    }
-                                    .pickerStyle(.menu)
-                                    .padding(10)
-                                    .background(RoundedRectangle(cornerRadius: 10).fill(Color(.systemGray6)))
-                                }
-
-                                VStack(alignment: .leading, spacing: 6) {
-                                    Text("NUMÉRO")
-                                        .font(.caption2).fontWeight(.semibold).foregroundStyle(.secondary)
-                                    TextField("#", text: $numero)
-                                        .keyboardType(.numberPad)
-                                        .padding(10)
-                                        .background(RoundedRectangle(cornerRadius: 10).fill(Color(.systemGray6)))
-                                }
-                            }
-
-                            // Taille
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text("TAILLE")
-                                    .font(.caption2).fontWeight(.semibold).foregroundStyle(.secondary)
-                                HStack(spacing: 8) {
-                                    Picker("Pieds", selection: $taillePieds) {
-                                        ForEach(4...7, id: \.self) { p in
-                                            Text("\(p)'").tag(p)
-                                        }
-                                    }
-                                    .pickerStyle(.wheel)
-                                    .frame(width: 60, height: 80)
-                                    .clipped()
-
-                                    Picker("Pouces", selection: $taillePouces) {
-                                        ForEach(0...11, id: \.self) { p in
-                                            Text("\(p)\"").tag(p)
-                                        }
-                                    }
-                                    .pickerStyle(.wheel)
-                                    .frame(width: 60, height: 80)
-                                    .clipped()
-
-                                    Text("\(taillePieds)'\(taillePouces)\"")
-                                        .font(.headline)
-                                        .foregroundStyle(roleChoisi.couleur)
-
-                                    Spacer()
-
-                                    VStack(alignment: .leading, spacing: 6) {
-                                        Text("POIDS (LBS)")
-                                            .font(.caption2).fontWeight(.semibold).foregroundStyle(.secondary)
-                                        TextField("165", text: $poids)
-                                            .keyboardType(.numberPad)
-                                            .padding(10)
-                                            .background(RoundedRectangle(cornerRadius: 10).fill(Color(.systemGray6)))
-                                    }
-                                    .frame(width: 100)
-                                }
-                            }
-
-                            // Date de naissance
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text("DATE DE NAISSANCE")
-                                    .font(.caption2).fontWeight(.semibold).foregroundStyle(.secondary)
-                                HStack(spacing: 8) {
-                                    TextField("JJ", text: $jourNaissance)
-                                        .keyboardType(.numberPad)
-                                        .multilineTextAlignment(.center)
-                                        .frame(width: 50)
-                                        .padding(10)
-                                        .background(RoundedRectangle(cornerRadius: 10).fill(Color(.systemGray6)))
-                                    Text("/")
-                                        .foregroundStyle(.secondary)
-                                    TextField("MM", text: $moisNaissance)
-                                        .keyboardType(.numberPad)
-                                        .multilineTextAlignment(.center)
-                                        .frame(width: 50)
-                                        .padding(10)
-                                        .background(RoundedRectangle(cornerRadius: 10).fill(Color(.systemGray6)))
-                                    Text("/")
-                                        .foregroundStyle(.secondary)
-                                    TextField("AAAA", text: $anneeNaissance)
-                                        .keyboardType(.numberPad)
-                                        .multilineTextAlignment(.center)
-                                        .frame(width: 70)
-                                        .padding(10)
-                                        .background(RoundedRectangle(cornerRadius: 10).fill(Color(.systemGray6)))
-                                }
-                            }
-                        }
-                        .padding(16)
-                        .glassSection()
                     }
 
                     // Erreur
@@ -287,7 +153,7 @@ struct AjoutUtilisateurView: View {
                             .padding(.vertical, 14)
                             .background(
                                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .fill(formulaireValide ? roleChoisi.couleur : Color.gray.opacity(0.4))
+                                    .fill(formulaireValide ? couleur : Color.gray.opacity(0.4))
                             )
                             .foregroundStyle(.white)
                     }
@@ -296,17 +162,12 @@ struct AjoutUtilisateurView: View {
                 .padding(.horizontal, 24)
                 .padding(.vertical, 20)
             }
-            .navigationTitle("Nouveau compte")
+            .navigationTitle("Nouvel assistant")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Fermer") { dismiss() }
                 }
-            }
-            .onAppear {
-                // Clamp : la jointure SIWA est réservée athlète/assistant — un rôle
-                // coach/admin passé en défaut créerait un membre incapable de se connecter.
-                roleChoisi = roleParDefaut == .etudiant ? .etudiant : .assistantCoach
             }
             .onChange(of: prenom) { autoRefreshIdentifiant() }
             .onChange(of: nom) { autoRefreshIdentifiant() }
@@ -330,7 +191,7 @@ struct AjoutUtilisateurView: View {
 
             HStack(spacing: 12) {
                 Image(systemName: icone)
-                    .foregroundStyle(roleChoisi.couleur)
+                    .foregroundStyle(couleur)
                     .frame(width: 20)
 
                 TextField(label, text: texte)
@@ -357,38 +218,29 @@ struct AjoutUtilisateurView: View {
 
         guard let idFinal = validerEtNormaliserIdentifiant() else { return }
 
-        // Athlète : le JoueurEquipe est créé AVANT la factory et passé via `joueur:`
-        // pour qu'elle pose les liens croisés (identifiant, utilisateurID et
-        // CredentialAthlete.joueurEquipeID).
-        let joueurLie: JoueurEquipe? = roleChoisi == .etudiant ? creerJoueurLie() : nil
-
         // SIWA strict : création sans mot de passe (Utilisateur + CredentialAthlete)
         let membre = MembreFactory.creerMembre(
             prenom: prenom, nom: nom,
-            role: roleChoisi, codeEquipe: codeEquipe,
-            joueur: joueurLie,
+            role: .assistantCoach, codeEquipe: codeEquipe,
             identifiantSouhaite: idFinal,
             context: modelContext
         )
-        if let joueurLie {
-            enrichirDonneesAthlete(membre.utilisateur, joueur: joueurLie)
-        }
 
         do {
             try modelContext.save()
         } catch {
-            annulerInsertion(membre: membre, joueur: joueurLie)
+            annulerInsertion(membre: membre)
             logger.error("Échec de sauvegarde à la création du membre: \(error.localizedDescription)")
             self.erreur = "Erreur lors de la création du compte. Veuillez réessayer."
             return
         }
 
-        publierMembre(membre.utilisateur, joueur: joueurLie)
+        publierMembre(membre.utilisateur)
 
         succes = true
 
-        // Afficher le sheet récap (code d'invitation) pour tous les rôles —
-        // SIWA strict : c'est l'unique moyen de connexion du nouveau membre.
+        // Afficher le sheet récap (code d'invitation) — SIWA strict : c'est
+        // l'unique moyen de connexion du nouveau membre.
         credACopier = [membre.recap]
         afficherRecap = true
     }
@@ -415,58 +267,18 @@ struct AjoutUtilisateurView: View {
         return idFinal
     }
 
-    /// Crée et insère le JoueurEquipe d'un athlète (données physiques du formulaire).
-    private func creerJoueurLie() -> JoueurEquipe {
-        let joueur = JoueurEquipe(nom: nom, prenom: prenom,
-                                  numero: Int(numero) ?? 0, poste: posteChoisi)
-        joueur.codeEquipe = codeEquipe
-        joueur.taille = Int(round(Double(taillePieds * 12 + taillePouces) * 2.54))
-        if let dateN = construireDate() {
-            joueur.dateNaissance = dateN
-        }
-        modelContext.insert(joueur)
-        return joueur
-    }
-
-    /// Recopie les données physiques du formulaire athlète sur l'Utilisateur lié.
-    private func enrichirDonneesAthlete(_ utilisateur: Utilisateur, joueur: JoueurEquipe) {
-        utilisateur.tailleCm = joueur.taille
-        utilisateur.numero = joueur.numero
-        utilisateur.posteRaw = posteChoisi.rawValue
-        if let p = Double(poids), p > 0 {
-            utilisateur.poidKg = p
-        }
-        if let dateN = joueur.dateNaissance {
-            utilisateur.dateNaissance = dateN
-        }
-    }
-
     /// Rollback : retire du contexte les entités insérées par cette création.
-    private func annulerInsertion(membre: MembreFactory.Membre, joueur: JoueurEquipe?) {
+    private func annulerInsertion(membre: MembreFactory.Membre) {
         modelContext.delete(membre.credential)
         modelContext.delete(membre.utilisateur)
-        if let joueur {
-            modelContext.delete(joueur)
-        }
     }
 
     /// Publie le nouveau membre vers la Public DB CloudKit (asynchrone, ne bloque pas).
-    private func publierMembre(_ utilisateur: Utilisateur, joueur: JoueurEquipe?) {
+    private func publierMembre(_ utilisateur: Utilisateur) {
         let codeEquipePub = codeEquipe
         Task {
-            await sharingService.publierNouvelUtilisateur(utilisateur, joueur: joueur, codeEquipe: codeEquipePub)
+            await sharingService.publierNouvelUtilisateur(utilisateur, joueur: nil, codeEquipe: codeEquipePub)
         }
-    }
-
-    /// Construit une Date à partir des champs jour/mois/année
-    private func construireDate() -> Date? {
-        guard let jour = Int(jourNaissance), let mois = Int(moisNaissance), let annee = Int(anneeNaissance),
-              jour >= 1, jour <= 31, mois >= 1, mois <= 12, annee >= 1900 else { return nil }
-        var composants = DateComponents()
-        composants.day = jour
-        composants.month = mois
-        composants.year = annee
-        return Calendar.current.date(from: composants)
     }
 
     /// Génère un code aléatoire de 6 caractères (lettres + chiffres)

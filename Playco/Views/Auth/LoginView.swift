@@ -29,7 +29,7 @@ struct LoginView: View {
     /// conservé pour la jointure d'équipe par code d'invitation.
     @State private var appleUserIDEnAttente: String?
 
-    // Rejoindre une équipe (athlète/assistant/coach invité, cross-Apple-ID)
+    // Rejoindre une équipe (assistant, cross-Apple-ID)
     @State private var afficherRejoindre = false
     @State private var codeEquipeSaisi = ""
     @State private var codeInvitationSaisi = ""
@@ -143,7 +143,7 @@ struct LoginView: View {
             onConnecte?()
         case .compteInconnu(let appleUserID, _, _):
             appleUserIDEnAttente = appleUserID
-            authService.erreur = "Aucun compte lié à cet Apple ID. Rejoins ton équipe avec ton code d'invitation, ou crée une équipe."
+            authService.erreur = "Aucun compte lié à cet Apple ID. Rejoignez votre équipe avec votre code d'invitation d'assistant, ou créez une équipe."
         case .echec(let message):
             authService.erreur = message
         }
@@ -205,9 +205,9 @@ struct LoginView: View {
                         .textInputAutocapitalization(.characters)
                         .autocorrectionDisabled()
                 } header: {
-                    Text("Codes fournis par ton coach")
+                    Text("Codes fournis par le head coach")
                 } footer: {
-                    Text("Ton coach te communique le code d'équipe et ton code d'invitation personnel.")
+                    Text("Le head coach vous communique le code d'équipe et votre code d'invitation personnel d'assistant.")
                 }
                 if let erreur = authService.erreur {
                     Text(erreur).font(.caption).foregroundStyle(.red)

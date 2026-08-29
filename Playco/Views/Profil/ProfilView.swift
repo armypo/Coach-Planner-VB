@@ -175,7 +175,6 @@ struct ProfilView: View {
     // MARK: - Organisation (gérer membres)
 
     @State private var afficherTutoriel = false
-    @State private var afficherAjoutEleve = false
     @State private var afficherAjoutAssistant = false
     @State private var afficherGestionStaff = false
     @State private var afficherJournalSync = false
@@ -191,13 +190,8 @@ struct ProfilView: View {
                 .foregroundStyle(PaletteMat.orange)
 
             VStack(spacing: 10) {
-                boutonAction(icone: "person.badge.plus", titre: "Créer un profil d'athlète",
-                             couleur: PaletteMat.orange) {
-                    afficherAjoutEleve = true
-                }
-                // Jointure SIWA réservée athlète/assistant : on propose un assistant
-                // (mêmes permissions qu'un coach) — un membre « Coach » ne pourrait
-                // jamais se connecter (roleJonctionAutorise rejette .coach).
+                // Jointure SIWA réservée aux assistants (mêmes droits qu'un coach) —
+                // les joueurs du roster sont des données pures (pivot coach-first).
                 boutonAction(icone: "figure.volleyball", titre: "Ajouter un assistant",
                              couleur: PaletteMat.bleu) {
                     afficherAjoutAssistant = true
@@ -225,11 +219,8 @@ struct ProfilView: View {
             }
             .environment(authService)
         }
-        .sheet(isPresented: $afficherAjoutEleve) {
-            AjoutUtilisateurView(codeEquipe: codeEquipe, roleParDefaut: .etudiant)
-        }
         .sheet(isPresented: $afficherAjoutAssistant) {
-            AjoutUtilisateurView(codeEquipe: codeEquipe, roleParDefaut: .assistantCoach)
+            AjoutUtilisateurView(codeEquipe: codeEquipe)
         }
         .sheet(isPresented: $afficherGestionStaff) {
             NavigationStack {

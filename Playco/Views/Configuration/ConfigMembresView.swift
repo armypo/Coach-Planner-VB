@@ -6,8 +6,9 @@ import SwiftUI
 import SwiftData
 
 /// Étape 5 — Ajouter assistants et joueurs.
-/// Mdp athlètes/assistants auto-générés à la création (format `LLLLL_DD`).
-/// Identifiants auto-générés au format `prenom.nom.XXXX`.
+/// Joueurs = données pures du roster (aucun compte — pivot coach-first).
+/// Assistants = membres du staff avec identifiant auto-généré (`prenom.nom.XXXX`)
+/// et code d'invitation Sign in with Apple remis à la fin du wizard.
 struct ConfigMembresView: View {
     @Binding var assistants: [AssistantTemp]
     @Binding var joueurs: [JoueurTemp]
@@ -20,7 +21,7 @@ struct ConfigMembresView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 titreEtape(numero: 5, titre: "Membres de l'équipe",
-                           description: "Chaque membre reçoit un code d'invitation pour rejoindre l'équipe avec Sign in with Apple. Les codes sont générés et partageables à la fin du wizard.")
+                           description: "Ajoutez votre roster et votre staff. Chaque assistant reçoit un code d'invitation pour rejoindre l'équipe avec Sign in with Apple — les codes sont générés et partageables à la fin du wizard.")
 
                 // Onglets
                 Picker("Section", selection: $onglet) {
@@ -84,11 +85,9 @@ struct ConfigMembresView: View {
                 TextField("Prénom", text: joueur.prenom)
                     .padding(10)
                     .background(Color(.tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8))
-                    .onChange(of: joueur.wrappedValue.prenom) { autoIdJoueur(joueur: joueur) }
                 TextField("Nom", text: joueur.nom)
                     .padding(10)
                     .background(Color(.tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8))
-                    .onChange(of: joueur.wrappedValue.nom) { autoIdJoueur(joueur: joueur) }
             }
 
             HStack(spacing: 12) {
@@ -102,23 +101,9 @@ struct ConfigMembresView: View {
                 }
                 .pickerStyle(.segmented)
             }
-
-            credentialAffichage(identifiant: joueur.wrappedValue.identifiant)
         }
         .padding(14)
         .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14))
-    }
-
-    /// Met à jour l'identifiant via `Utilisateur.genererIdentifiantUnique`
-    /// dès que prénom+nom sont renseignés.
-    private func autoIdJoueur(joueur: Binding<JoueurTemp>) {
-        let p = joueur.wrappedValue.prenom
-        let n = joueur.wrappedValue.nom
-        guard !p.isEmpty, !n.isEmpty else { return }
-        let exclusions = Set(joueurs.map { $0.identifiant } + assistants.map { $0.identifiant })
-        joueur.wrappedValue.identifiant = Utilisateur.genererIdentifiantUnique(
-            prenom: p, nom: n, context: modelContext, exclusions: exclusions
-        )
     }
 
     // MARK: - Assistants
@@ -195,7 +180,7 @@ struct ConfigMembresView: View {
         let p = assistant.wrappedValue.prenom
         let n = assistant.wrappedValue.nom
         guard !p.isEmpty, !n.isEmpty else { return }
-        let exclusions = Set(joueurs.map { $0.identifiant } + assistants.map { $0.identifiant })
+        let exclusions = Set(assistants.map { $0.identifiant })
         assistant.wrappedValue.identifiant = Utilisateur.genererIdentifiantUnique(
             prenom: p, nom: n, context: modelContext, exclusions: exclusions
         )

@@ -23,7 +23,6 @@ struct JoueurDetailView: View {
     @State private var afficherEdition = false
     @State private var ongletAnalyse: OngletAnalyseJoueur = .statistiques
     /// Code d'invitation de l'Utilisateur lié — cache @State (évite un fetch par render)
-    @State private var codeInvitationJoueur: String?
     @Query private var toutesPresences: [Presence]
     @Query private var tousStatsMatch: [StatsMatch]
     @Query private var toutesActionsRallye: [ActionRallye]
@@ -69,7 +68,6 @@ struct JoueurDetailView: View {
             VStack(spacing: LiquidGlassKit.espaceLG) {
                 enteteJoueur
                 if authService.utilisateurConnecte?.role.peutGererEquipe ?? false {
-                    sectionIdentifiants
                     sectionDisponibiliteConsentement
                 }
                 sectionResume
@@ -143,8 +141,6 @@ struct JoueurDetailView: View {
         .sheet(isPresented: $afficherEdition) {
             EditionJoueurView(joueur: joueur)
         }
-        .onAppear { chargerCodeInvitation() }
-        .onChange(of: joueur.utilisateurID) { chargerCodeInvitation() }
     }
 
     // MARK: - En-tête
@@ -219,94 +215,6 @@ struct JoueurDetailView: View {
             }
 
             Spacer()
-        }
-        .glassSection()
-    }
-
-    // MARK: - Identifiants (visible coach uniquement)
-    private var sectionIdentifiants: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label("Identifiants", systemImage: "person.badge.key.fill")
-                .font(.subheadline.weight(.bold))
-                .foregroundStyle(PaletteMat.bleu)
-
-            // Identifiant
-            HStack {
-                Text("Identifiant")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text(joueur.identifiant.isEmpty ? "Non défini" : joueur.identifiant)
-                    .font(.subheadline.weight(.semibold).monospaced())
-                    .foregroundStyle(.primary)
-                    .textSelection(.enabled)
-                if !joueur.identifiant.isEmpty {
-                    Button {
-                        UIPasteboard.general.string = joueur.identifiant
-                    } label: {
-                        Image(systemName: "doc.on.doc")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
-            .padding(12)
-            .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: LiquidGlassKit.rayonPetit))
-
-            // Code d'invitation (SIWA : remplace le mot de passe — le joueur
-            // rejoint l'équipe avec Sign in with Apple + ce code)
-            HStack {
-                Text("Code d'invitation")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
-                Spacer()
-                if let code = codeInvitationJoueur, !code.isEmpty {
-                    Text(code)
-                        .font(.subheadline.weight(.semibold).monospaced())
-                        .foregroundStyle(.primary)
-                        .textSelection(.enabled)
-                    Button {
-                        UIPasteboard.general.string = code
-                    } label: {
-                        Image(systemName: "doc.on.doc")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                } else {
-                    Text("Non défini")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .padding(12)
-            .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: LiquidGlassKit.rayonPetit))
-
-            // 2.3 — QR du lien universel : scanner = jonction pré-remplie.
-            if let code = codeInvitationJoueur, !code.isEmpty,
-               let qr = LienInvitation.genererQR(
-                   codeEquipe: joueur.codeEquipe.isEmpty ? codeEquipeActif : joueur.codeEquipe,
-                   codeInvitation: code) {
-                HStack {
-                    Spacer()
-                    VStack(spacing: 6) {
-                        Image(uiImage: qr)
-                            .interpolation(.none)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 132, height: 132)
-                            .accessibilityLabel("Code QR d'invitation de \(joueur.prenom)")
-                        Text("Scanner pour rejoindre l'équipe")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                }
-                .padding(.vertical, 4)
-            }
-
-            Text("Le joueur se connecte avec Sign in with Apple : communique-lui le code d'équipe et ce code d'invitation — ou fais-lui scanner le code QR.")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
         }
         .glassSection()
     }
@@ -395,18 +303,6 @@ struct JoueurDetailView: View {
             }
         }
         .glassSection()
-    }
-
-    /// Charge le code d'invitation de l'Utilisateur lié à ce joueur (nil si non lié).
-    private func chargerCodeInvitation() {
-        guard let utilisateurID = joueur.utilisateurID else {
-            codeInvitationJoueur = nil
-            return
-        }
-        let descriptor = FetchDescriptor<Utilisateur>(
-            predicate: #Predicate { $0.id == utilisateurID }
-        )
-        codeInvitationJoueur = try? modelContext.fetch(descriptor).first?.codeInvitation
     }
 
     // MARK: - Résumé général
