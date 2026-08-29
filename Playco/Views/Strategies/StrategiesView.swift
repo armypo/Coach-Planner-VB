@@ -140,6 +140,7 @@ struct StrategiesView: View {
                 }
             }
         }
+        .listStyle(.sidebar)
         .searchable(text: $recherche, prompt: "Rechercher une stratégie")
         .navigationTitle("Stratégies")
         .toolbar {
@@ -256,19 +257,7 @@ struct StrategiesView: View {
 
     // MARK: - Bouton retour
     private var boutonRetour: some View {
-        Button {
-            retour()
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 14, weight: .semibold))
-                Image(systemName: "volleyball.fill")
-                    .font(.system(size: 14))
-                Text("Accueil")
-                    .font(.subheadline.weight(.medium))
-            }
-            .foregroundStyle(PaletteMat.bleu)
-        }
+        BoutonRetourAccueil(couleur: PaletteMat.bleu) { retour() }
     }
 }
 

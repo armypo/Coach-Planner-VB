@@ -29,6 +29,12 @@ struct MatchsView: View {
     @State private var afficherNouveauMatch = false
     @State private var afficherMatchEclair = false
     @State private var afficherScouting = false
+    @State private var recherche = ""
+
+    /// D (uniformisation) : la suppression d'un match est une cascade
+    /// destructive (stats joueurs inversées + StatsMatch/PointMatch effacés)
+    /// — toujours confirmée, jamais au simple swipe.
+    @State private var matchASupprimer: Seance?
 
     /// Données filtrées cachées
     @State private var matchs: [Seance] = []
@@ -37,8 +43,13 @@ struct MatchsView: View {
 
     private func recalculerMatchs() {
         matchs = toutesSeances.filtreEquipe(codeEquipeActif).filter { $0.estMatch }
-        matchsAVenir = matchs.filter { $0.date > Date() }.sorted { $0.date < $1.date }
-        matchsPasses = matchs.filter { $0.date <= Date() }.sorted { $0.date > $1.date }
+        let visibles = recherche.isEmpty ? matchs : matchs.filter {
+            $0.adversaire.localizedCaseInsensitiveContains(recherche) ||
+            $0.nom.localizedCaseInsensitiveContains(recherche) ||
+            $0.lieu.localizedCaseInsensitiveContains(recherche)
+        }
+        matchsAVenir = visibles.filter { $0.date > Date() }.sorted { $0.date < $1.date }
+        matchsPasses = visibles.filter { $0.date <= Date() }.sorted { $0.date > $1.date }
     }
 
     /// 2.2.a — State Restoration : si l'app a été tuée pendant un match live,
@@ -111,6 +122,7 @@ struct MatchsView: View {
         }
         .onChange(of: toutesSeances) { recalculerMatchs() }
         .onChange(of: codeEquipeActif) { recalculerMatchs() }
+        .onChange(of: recherche) { recalculerMatchs() }
         .sensoryFeedback(.success, trigger: matchs.count)
         .sheet(isPresented: $afficherMatchEclair) {
             MatchEclairSheet { adversaire, nousServons in
@@ -136,6 +148,24 @@ struct MatchsView: View {
             NavigationStack {
                 ScoutingReportListView()
             }
+        }
+        .confirmationDialog(
+            "Supprimer ce match ?",
+            isPresented: Binding(
+                get: { matchASupprimer != nil },
+                set: { if !$0 { matchASupprimer = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Supprimer le match", role: .destructive) {
+                if let match = matchASupprimer {
+                    supprimerMatch(match)
+                }
+                matchASupprimer = nil
+            }
+            Button("Annuler", role: .cancel) { matchASupprimer = nil }
+        } message: {
+            Text("Les stats du box score seront retirées des cumuls des joueurs et le fil du match sera effacé. Cette action est irréversible.")
         }
     }
 
@@ -184,7 +214,7 @@ struct MatchsView: View {
                         .swipeActions(edge: .trailing) {
                             if peutModifier {
                                 Button(role: .destructive) {
-                                    supprimerMatch(match)
+                                    matchASupprimer = match
                                 } label: {
                                     Label("Supprimer", systemImage: "trash")
                                 }
@@ -208,7 +238,7 @@ struct MatchsView: View {
                         .swipeActions(edge: .trailing) {
                             if peutModifier {
                                 Button(role: .destructive) {
-                                    supprimerMatch(match)
+                                    matchASupprimer = match
                                 } label: {
                                     Label("Supprimer", systemImage: "trash")
                                 }
@@ -237,7 +267,8 @@ struct MatchsView: View {
                 }
             }
         }
-        .listStyle(.insetGrouped)
+        .listStyle(.sidebar)
+        .searchable(text: $recherche, prompt: "Rechercher un match")
     }
 
     // MARK: - Ligne match
@@ -362,19 +393,7 @@ struct MatchsView: View {
     }
 
     private var boutonRetour: some View {
-        Button {
-            onRetour()
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 14, weight: .semibold))
-                Image(systemName: "volleyball.fill")
-                    .font(.system(size: 14))
-                Text("Accueil")
-                    .font(.subheadline.weight(.medium))
-            }
-            .foregroundStyle(.red)
-        }
+        BoutonRetourAccueil(couleur: MatNuit.brique) { onRetour() }
     }
 }
 

@@ -95,7 +95,7 @@ struct ListeSeancesView: View {
             if authService.utilisateurConnecte != nil {
                 ToolbarItem(placement: .primaryAction) {
                     Button { afficherNouvelleSeance = true } label: {
-                        Image(systemName: "plus.circle.fill")
+                        Image(systemName: "plus")
                             .font(.title3)
                             .symbolRenderingMode(.hierarchical)
                     }

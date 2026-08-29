@@ -73,7 +73,7 @@ struct EquipeView: View {
             }
         }
         .navigationSplitViewStyle(.balanced)
-        .tint(.green)
+        .tint(PaletteMat.vert)
         .sensoryFeedback(.success, trigger: joueurs.count)
         .sheet(isPresented: $afficherAjout) {
             NouveauJoueurView { joueur in
@@ -188,7 +188,7 @@ struct EquipeView: View {
                             afficherAjout = true
                         }
                         .buttonStyle(.borderedProminent)
-                        .tint(.green)
+                        .tint(PaletteMat.vert)
                     }
                 }
             }
@@ -207,6 +207,7 @@ struct EquipeView: View {
             }
         }
         .navigationTitle("Équipe")
+        .listStyle(.sidebar)
         .searchable(text: $recherche, prompt: "Rechercher un joueur")
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
@@ -284,19 +285,7 @@ struct EquipeView: View {
 
     // MARK: - Bouton retour
     private var boutonRetour: some View {
-        Button {
-            retour()
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 14, weight: .semibold))
-                Image(systemName: "volleyball.fill")
-                    .font(.system(size: 14))
-                Text("Accueil")
-                    .font(.subheadline.weight(.medium))
-            }
-            .foregroundStyle(.green)
-        }
+        BoutonRetourAccueil(couleur: PaletteMat.vert) { retour() }
     }
 }
 

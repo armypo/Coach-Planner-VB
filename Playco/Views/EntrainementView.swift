@@ -35,6 +35,7 @@ struct EntrainementView: View {
         }
     }
     @State private var choixJoueurLive: ChoixJoueurLive?
+    @State private var recherche = ""
 
     enum SelectionEntrainement: Hashable {
         case programme(ProgrammeMuscu)
@@ -46,7 +47,10 @@ struct EntrainementView: View {
     @State private var seancesEquipe: [SeanceMuscu] = []
 
     private func recalculerDonnees() {
-        programmesFiltres = programmes.filtreEquipe(codeEquipeActif)
+        let equipe = programmes.filtreEquipe(codeEquipeActif)
+        programmesFiltres = recherche.isEmpty ? equipe : equipe.filter {
+            $0.nom.localizedCaseInsensitiveContains(recherche)
+        }
         seancesEquipe = seances.filtreEquipe(codeEquipeActif)
     }
 
@@ -94,13 +98,33 @@ struct EntrainementView: View {
         .onChange(of: seances) { recalculerDonnees() }
         .onChange(of: codeEquipeActif) { recalculerDonnees() }
         .onChange(of: selectionSidebar) { choixJoueurLive = nil }
+        .onChange(of: recherche) { recalculerDonnees() }
         .sensoryFeedback(.success, trigger: programmesFiltres.count)
-        .alert("Nouveau programme", isPresented: $afficherNouveauProgramme) {
-            TextField("Nom du programme", text: $nomNouveauProgramme)
-            Button("Annuler", role: .cancel) { nomNouveauProgramme = "" }
-            Button("Créer") { creerProgramme() }
-        } message: {
-            Text("Entrez un nom pour votre programme d'entraînement.")
+        .sheet(isPresented: $afficherNouveauProgramme) {
+            // D (uniformisation) : création en Form, comme les autres sections
+            // — fin de l'alert-TextField.
+            NavigationStack {
+                Form {
+                    Section("Programme") {
+                        TextField("Nom du programme", text: $nomNouveauProgramme)
+                    }
+                }
+                .navigationTitle("Nouveau programme")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Annuler") {
+                            nomNouveauProgramme = ""
+                            afficherNouveauProgramme = false
+                        }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Créer") { creerProgramme() }
+                            .disabled(nomNouveauProgramme.trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
+                }
+            }
+            .presentationDetents([.medium])
         }
         .sheet(isPresented: $afficherBibliotheque) {
             NavigationStack {
@@ -153,7 +177,8 @@ struct EntrainementView: View {
             }
 
         }
-        .listStyle(.insetGrouped)
+        .listStyle(.sidebar)
+        .searchable(text: $recherche, prompt: "Rechercher un programme")
     }
 
     // MARK: - Ligne programme
@@ -294,23 +319,12 @@ struct EntrainementView: View {
         modelContext.insert(prog)
         try? modelContext.save()
         nomNouveauProgramme = ""
+        afficherNouveauProgramme = false
         selectionSidebar = .programme(prog)
     }
 
     private var boutonRetour: some View {
-        Button {
-            onRetour()
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 14, weight: .semibold))
-                Image(systemName: "volleyball.fill")
-                    .font(.system(size: 14))
-                Text("Accueil")
-                    .font(.subheadline.weight(.medium))
-            }
-            .foregroundStyle(PaletteMat.violet)
-        }
+        BoutonRetourAccueil(couleur: PaletteMat.violet) { onRetour() }
     }
 }
 
