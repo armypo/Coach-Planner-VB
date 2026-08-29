@@ -1,9 +1,10 @@
 //  Playco
 //  Copyright © 2026 Christopher Dionne. Tous droits réservés.
 //
-//  Tests MembreFactory — création unifiée d'un membre d'équipe (SIWA strict) :
-//  aucun secret stocké, code d'invitation généré, liaison JoueurEquipe et
-//  gestion des exclusions en mémoire (lot du wizard).
+//  Tests MembreFactory — création unifiée d'un membre du STAFF (SIWA strict) :
+//  aucun secret stocké, code d'invitation généré, gestion des exclusions en
+//  mémoire (lot du wizard). Pivot coach-first : la factory ne sert plus qu'aux
+//  assistants — plus de liaison JoueurEquipe.
 //
 
 import Testing
@@ -38,7 +39,7 @@ struct MembreFactoryTests {
 
         // Act
         let membre = MembreFactory.creerMembre(
-            prenom: "Jean", nom: "Tremblay", role: .etudiant,
+            prenom: "Jean", nom: "Tremblay", role: .assistantCoach,
             codeEquipe: "ELANS01", context: context, exclusions: &exclusions
         )
         try context.save()
@@ -50,7 +51,7 @@ struct MembreFactoryTests {
                 "Un code d'invitation doit être généré pour la jonction SIWA")
         #expect(membre.utilisateur.codeEquipe == "ELANS01")
         #expect(membre.utilisateur.codeEcole == "ELANS01")
-        #expect(membre.utilisateur.role == .etudiant)
+        #expect(membre.utilisateur.role == .assistantCoach)
         #expect(membre.utilisateur.prenom == "Jean")
         #expect(membre.utilisateur.nom == "Tremblay")
 
@@ -70,7 +71,7 @@ struct MembreFactoryTests {
 
         // Act
         let membre = MembreFactory.creerMembre(
-            prenom: "Alice", nom: "Martin", role: .etudiant,
+            prenom: "Alice", nom: "Martin", role: .assistantCoach,
             codeEquipe: "GARN26", context: context, exclusions: &exclusions
         )
         try context.save()
@@ -84,14 +85,14 @@ struct MembreFactoryTests {
         #expect(cred.codeEquipe == "GARN26")
         #expect(cred.motDePasseClair.isEmpty,
                 "Invariant sécurité : jamais de mot de passe en clair (SIWA strict)")
-        #expect(cred.joueurEquipeID == nil, "Sans joueur fourni, pas de liaison roster")
+        #expect(cred.joueurEquipeID == nil, "Marqueur de staff : jamais de liaison roster (pivot coach-first)")
     }
 
-    // MARK: - Liaison JoueurEquipe
+    // MARK: - Aucune liaison roster (pivot coach-first)
 
-    @Test("creerMembre lie le JoueurEquipe (identifiant + utilisateurID croisés)")
-    func liaisonJoueurEquipe() throws {
-        // Arrange
+    @Test("creerMembre ne touche JAMAIS au roster : un joueur homonyme reste sans compte")
+    func aucuneLiaisonRoster() throws {
+        // Arrange — un joueur du roster porte le même nom que l'assistant créé
         let context = try creerContexteEnMemoire()
         let joueur = JoueurEquipe(nom: "Tremblay", prenom: "Jean", numero: 7, poste: .passeur)
         joueur.codeEquipe = "ELANS01"
@@ -100,22 +101,18 @@ struct MembreFactoryTests {
 
         // Act
         let membre = MembreFactory.creerMembre(
-            prenom: "Jean", nom: "Tremblay", role: .etudiant,
-            codeEquipe: "ELANS01", joueur: joueur,
+            prenom: "Jean", nom: "Tremblay", role: .assistantCoach,
+            codeEquipe: "ELANS01",
             context: context, exclusions: &exclusions
         )
         try context.save()
 
-        // Assert — liens croisés Utilisateur ↔ JoueurEquipe
-        #expect(joueur.identifiant == membre.utilisateur.identifiant)
-        #expect(joueur.utilisateurID == membre.utilisateur.id)
-        #expect(membre.utilisateur.joueurEquipeID == joueur.id)
-        #expect(membre.utilisateur.numero == 7, "Le numéro de maillot doit être recopié")
-        #expect(membre.utilisateur.posteRaw == PosteJoueur.passeur.rawValue)
-
-        // Le marqueur CredentialAthlete pointe aussi vers le joueur
+        // Assert — le joueur reste une donnée pure, sans lien de compte
+        #expect(joueur.utilisateurID == nil)
+        #expect(joueur.identifiant.isEmpty)
+        #expect(membre.utilisateur.joueurEquipeID == nil)
         let cred = try #require(try fetchCredentials(context).first)
-        #expect(cred.joueurEquipeID == joueur.id)
+        #expect(cred.joueurEquipeID == nil)
     }
 
     // MARK: - Identifiant souhaité
@@ -128,7 +125,7 @@ struct MembreFactoryTests {
 
         // Act
         let membre = MembreFactory.creerMembre(
-            prenom: "Jean", nom: "Perso", role: .etudiant,
+            prenom: "Jean", nom: "Perso", role: .assistantCoach,
             codeEquipe: "EQ1", identifiantSouhaite: " Jean.Perso ",
             context: context, exclusions: &exclusions
         )
@@ -148,7 +145,7 @@ struct MembreFactoryTests {
 
         // Act
         let membre = MembreFactory.creerMembre(
-            prenom: "Marie", nom: "Roy", role: .etudiant,
+            prenom: "Marie", nom: "Roy", role: .assistantCoach,
             codeEquipe: "EQ1", identifiantSouhaite: "   ",
             context: context, exclusions: &exclusions
         )
@@ -168,11 +165,11 @@ struct MembreFactoryTests {
 
         // Act — deux membres homonymes créés dans le même lot, sans save intermédiaire
         let m1 = MembreFactory.creerMembre(
-            prenom: "Jean", nom: "Dupont", role: .etudiant,
+            prenom: "Jean", nom: "Dupont", role: .assistantCoach,
             codeEquipe: "EQ1", context: context, exclusions: &exclusions
         )
         let m2 = MembreFactory.creerMembre(
-            prenom: "Jean", nom: "Dupont", role: .etudiant,
+            prenom: "Jean", nom: "Dupont", role: .assistantCoach,
             codeEquipe: "EQ1", context: context, exclusions: &exclusions
         )
 
@@ -188,17 +185,13 @@ struct MembreFactoryTests {
 
     // MARK: - Libellé de rôle
 
-    @Test("Libellé de rôle dans le récap : Athlète / Assistant / Coach")
+    @Test("Libellé de rôle dans le récap : Assistant / Coach")
     func libelleRoleRecap() throws {
         // Arrange
         let context = try creerContexteEnMemoire()
         var exclusions: Set<String> = []
 
         // Act
-        let athlete = MembreFactory.creerMembre(
-            prenom: "A", nom: "Thlete", role: .etudiant,
-            codeEquipe: "EQ1", context: context, exclusions: &exclusions
-        )
         let assistant = MembreFactory.creerMembre(
             prenom: "B", nom: "Assist", role: .assistantCoach,
             codeEquipe: "EQ1", context: context, exclusions: &exclusions
@@ -209,7 +202,6 @@ struct MembreFactoryTests {
         )
 
         // Assert
-        #expect(athlete.recap.role == "Athlète")
         #expect(assistant.recap.role == "Assistant")
         #expect(coach.recap.role == "Coach")
     }
