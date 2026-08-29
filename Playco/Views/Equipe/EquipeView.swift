@@ -139,7 +139,7 @@ struct EquipeView: View {
                                 joueurRow(j)
                             }
                         }
-                        .onDelete(perform: (authService.utilisateurConnecte?.role.peutGererEquipe ?? false) ? { indices in
+                        .onDelete(perform: (authService.utilisateurConnecte != nil) ? { indices in
                             let toDelete = indices.compactMap { i in
                                 i < joueursPoste.count ? joueursPoste[i] : nil
                             }
@@ -174,7 +174,7 @@ struct EquipeView: View {
                 } description: {
                     Text("Ajoutez des joueurs à votre équipe")
                 } actions: {
-                    if authService.utilisateurConnecte?.role.peutGererEquipe ?? false {
+                    if authService.utilisateurConnecte != nil {
                         Button("Nouveau joueur", systemImage: "plus") {
                             afficherAjout = true
                         }
@@ -211,7 +211,6 @@ struct EquipeView: View {
                     Button { afficherAjout = true } label: {
                         Image(systemName: "plus")
                     }
-                    .siAutorise(authService.utilisateurConnecte?.role.peutGererEquipe ?? false)
                 }
             }
         }

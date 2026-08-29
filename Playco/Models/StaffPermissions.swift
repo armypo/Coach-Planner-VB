@@ -5,9 +5,10 @@
 import Foundation
 import SwiftData
 
-/// Permissions granulaires pour un membre du staff (assistant-coach, préparateur, etc.)
-/// Par défaut, toutes les permissions sont activées (mêmes droits que l'entraîneur-chef).
-/// L'entraîneur-chef peut restreindre les permissions individuellement.
+/// GELÉ (pivot coach-first, D6) : assistant = head coach, mêmes droits — plus
+/// aucune permission granulaire. Le @Model reste au schéma CloudKit (suppression
+/// = migration destructive) mais n'est plus jamais écrit ni lu par l'UI
+/// (GestionStaffView supprimée, lectureSeule du live supprimée).
 @Model
 final class StaffPermissions {
     var id: UUID = UUID()

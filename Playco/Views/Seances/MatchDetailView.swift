@@ -43,7 +43,7 @@ struct MatchDetailView: View {
     @State private var exerciceTerrain: Exercice?
 
     private var peutModifier: Bool {
-        authService.utilisateurConnecte?.role.peutModifierSeances ?? false
+        authService.utilisateurConnecte != nil
     }
 
     /// Cherche ou crée l'exercice terrain lié à cette séance

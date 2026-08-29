@@ -39,7 +39,7 @@ struct ListeSeancesView: View {
                         SeanceCardRow(
                             seance: seance,
                             estSelectionnee: seanceSelectionnee?.id == seance.id,
-                            onPresences: (authService.utilisateurConnecte?.role.peutEvaluer ?? false) ? {
+                            onPresences: (authService.utilisateurConnecte != nil) ? {
                                 seancePresences = seance
                             } : nil,
                             onStatsMatch: nil
@@ -54,7 +54,7 @@ struct ListeSeancesView: View {
                             Button { seancePresences = seance } label: {
                                 Label("Présences", systemImage: "checkmark.circle")
                             }
-                            if authService.utilisateurConnecte?.role.peutModifierSeances ?? false {
+                            if authService.utilisateurConnecte != nil {
                                 Divider()
                                 Button { renommer(seance) } label: {
                                     Label("Renommer", systemImage: "pencil")
@@ -69,14 +69,14 @@ struct ListeSeancesView: View {
                             }
                         }
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                            if authService.utilisateurConnecte?.role.peutModifierSeances ?? false {
+                            if authService.utilisateurConnecte != nil {
                                 Button(role: .destructive) { supprimer(seance) } label: {
                                     Label("Supprimer", systemImage: "trash")
                                 }
                             }
                         }
                         .swipeActions(edge: .leading) {
-                            if authService.utilisateurConnecte?.role.peutModifierSeances ?? false {
+                            if authService.utilisateurConnecte != nil {
                                 Button { dupliquer(seance) } label: {
                                     Label("Dupliquer", systemImage: "doc.on.doc")
                                 }
@@ -92,7 +92,7 @@ struct ListeSeancesView: View {
         .navigationTitle("Séances")
         .toolbar {
             // S3 : bouton + visible seulement pour coach/admin
-            if authService.utilisateurConnecte?.role.peutModifierSeances ?? false {
+            if authService.utilisateurConnecte != nil {
                 ToolbarItem(placement: .primaryAction) {
                     Button { afficherNouvelleSeance = true } label: {
                         Image(systemName: "plus.circle.fill")
@@ -130,7 +130,7 @@ struct ListeSeancesView: View {
         } description: {
             Text("Commencez par créer votre première séance")
         } actions: {
-            if authService.utilisateurConnecte?.role.peutModifierSeances ?? false {
+            if authService.utilisateurConnecte != nil {
                 Button("Nouvelle séance", systemImage: "plus") {
                     afficherNouvelleSeance = true
                 }

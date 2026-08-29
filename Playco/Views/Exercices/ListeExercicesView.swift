@@ -38,9 +38,9 @@ struct ListeExercicesView: View {
         (seance.exercices ?? []).reduce(0) { $0 + $1.duree }
     }
 
-    private var peutModifier: Bool {
-        authService.utilisateurConnecte?.role.peutModifierSeances ?? false
-    }
+    /// D6 (pivot coach-first) : tous les coachs connectés ont les mêmes droits —
+    /// seule garde résiduelle : une session valide.
+    private var peutModifier: Bool { authService.utilisateurConnecte != nil }
 
     /// Génère le PDF dans un fichier temporaire (nom basé sur l'id — revue :
     /// pas de collision d'homonymes ni de séparateurs de chemin) et ouvre la

@@ -154,7 +154,6 @@ struct CalendrierView: View {
                             .symbolRenderingMode(.hierarchical)
                     }
                     // Lecture seule pour l'athlète : pas de création de séance.
-                    .siAutorise(authService.utilisateurConnecte?.role.peutModifierSeances ?? false)
                 }
             }
         }

@@ -57,7 +57,7 @@ struct MatchsView: View {
     }
 
     private var peutModifier: Bool {
-        authService.utilisateurConnecte?.role.peutModifierSeances ?? false
+        authService.utilisateurConnecte != nil
     }
 
     var body: some View {
@@ -73,14 +73,12 @@ struct MatchsView: View {
                         Button { afficherNouveauMatch = true } label: {
                             Image(systemName: "plus")
                         }
-                        .siAutorise(peutModifier)
                     }
                     // 2.3.2 — match éclair : un match hors calendrier en 2 champs
                     ToolbarItem(placement: .primaryAction) {
                         Button { afficherMatchEclair = true } label: {
                             Image(systemName: "bolt")
                         }
-                        .siAutorise(peutModifier)
                         .accessibilityLabel("Match éclair")
                         .accessibilityHint("Crée un match immédiat : adversaire et service, rien d'autre")
                     }

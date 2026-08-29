@@ -48,7 +48,7 @@ struct ExerciceDetailView: View {
         .navigationTitle(titreAvecDuree)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if authService.utilisateurConnecte?.role.peutModifierSeances ?? false {
+            if authService.utilisateurConnecte != nil {
                 ToolbarItem(placement: .primaryAction) {
                     HStack(spacing: 10) {
                         Button { afficherDuree = true } label: {

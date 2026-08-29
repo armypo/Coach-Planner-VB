@@ -53,7 +53,7 @@ struct ScoutingReportView: View {
     }
 
     private var peutModifier: Bool {
-        authService.utilisateurConnecte?.role.peutModifierStrategies ?? false
+        authService.utilisateurConnecte != nil
     }
 
     // MARK: - Pickers data
@@ -236,7 +236,6 @@ struct ScoutingReportView: View {
                             .font(.subheadline.weight(.semibold))
                     }
                     .buttonStyle(GlassButtonStyle())
-                    .siAutorise(peutModifier)
                 }
                 boutonRepli(.joueurs)
             }
@@ -289,7 +288,6 @@ struct ScoutingReportView: View {
                             .font(.subheadline.weight(.semibold))
                     }
                     .buttonStyle(GlassButtonStyle())
-                    .siAutorise(peutModifier)
                 }
                 boutonRepli(.forces)
             }
@@ -318,7 +316,6 @@ struct ScoutingReportView: View {
                                 Image(systemName: "minus.circle.fill")
                                     .foregroundStyle(PaletteMat.negatif.opacity(0.7))
                             }
-                            .siAutorise(peutModifier)
                         }
                     }
                 }
@@ -345,7 +342,6 @@ struct ScoutingReportView: View {
                             .font(.subheadline.weight(.semibold))
                     }
                     .buttonStyle(GlassButtonStyle())
-                    .siAutorise(peutModifier)
                 }
                 boutonRepli(.faiblesses)
             }
@@ -374,7 +370,6 @@ struct ScoutingReportView: View {
                                 Image(systemName: "minus.circle.fill")
                                     .foregroundStyle(PaletteMat.negatif.opacity(0.7))
                             }
-                            .siAutorise(peutModifier)
                         }
                     }
                 }
@@ -468,7 +463,6 @@ struct ScoutingReportView: View {
                             .font(.subheadline.weight(.semibold))
                     }
                     .buttonStyle(GlassButtonStyle())
-                    .siAutorise(peutModifier)
                 }
                 boutonRepli(.strategies)
             }
@@ -532,7 +526,6 @@ struct ScoutingReportView: View {
                         .font(.caption)
                         .foregroundStyle(PaletteMat.negatif.opacity(0.7))
                 }
-                .siAutorise(peutModifier)
             }
 
             TextEditor(text: strategie.description)

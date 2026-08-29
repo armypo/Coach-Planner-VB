@@ -67,7 +67,7 @@ struct JoueurDetailView: View {
         ScrollView {
             VStack(spacing: LiquidGlassKit.espaceLG) {
                 enteteJoueur
-                if authService.utilisateurConnecte?.role.peutGererEquipe ?? false {
+                if authService.utilisateurConnecte != nil {
                     sectionDisponibiliteConsentement
                 }
                 sectionResume
@@ -100,7 +100,7 @@ struct JoueurDetailView: View {
                     ComparaisonView(joueur: joueur, estIncorporee: true)
                 }
 
-                if authService.utilisateurConnecte?.role.peutGererEquipe ?? false,
+                if authService.utilisateurConnecte != nil,
                    ongletAnalyse == .statistiques {
                     sectionEditionStats
                     sectionNotes
@@ -111,7 +111,7 @@ struct JoueurDetailView: View {
         .navigationTitle(joueur.nomComplet)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if authService.utilisateurConnecte?.role.peutGererEquipe ?? false {
+            if authService.utilisateurConnecte != nil {
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
                         Button {

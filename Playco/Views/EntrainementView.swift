@@ -41,10 +41,6 @@ struct EntrainementView: View {
         case seanceLive(ProgrammeMuscu)
     }
 
-    private var role: RoleUtilisateur {
-        authService.utilisateurConnecte?.role ?? .etudiant
-    }
-
     /// Données filtrées cachées
     @State private var programmesFiltres: [ProgrammeMuscu] = []
     @State private var seancesEquipe: [SeanceMuscu] = []
@@ -67,7 +63,6 @@ struct EntrainementView: View {
                         Button { afficherNouveauProgramme = true } label: {
                             Image(systemName: "plus")
                         }
-                        .siAutorise(role.peutGererProgrammes)
                     }
                     ToolbarItem(placement: .bottomBar) {
                         HStack(spacing: 24) {
@@ -130,13 +125,11 @@ struct EntrainementView: View {
                         ligneProgramme(prog)
                     }
                     .swipeActions(edge: .trailing) {
-                        if role.peutGererProgrammes {
-                            Button(role: .destructive) {
-                                prog.estArchive = true
-                                try? modelContext.save()
-                            } label: {
-                                Label("Supprimer", systemImage: "trash")
-                            }
+                        Button(role: .destructive) {
+                            prog.estArchive = true
+                            try? modelContext.save()
+                        } label: {
+                            Label("Supprimer", systemImage: "trash")
                         }
                     }
                 }
@@ -147,13 +140,11 @@ struct EntrainementView: View {
                     } description: {
                         Text("Appuyez sur + pour créer un programme")
                     } actions: {
-                        if role.peutGererProgrammes {
-                            Button("Nouveau programme", systemImage: "plus") {
-                                afficherNouveauProgramme = true
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .tint(PaletteMat.violet)
+                        Button("Nouveau programme", systemImage: "plus") {
+                            afficherNouveauProgramme = true
                         }
+                        .buttonStyle(.borderedProminent)
+                        .tint(PaletteMat.violet)
                     }
                 }
             } header: {

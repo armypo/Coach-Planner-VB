@@ -17,7 +17,7 @@ struct BibliothequeMusculationView: View {
     @State private var exerciceEdite: ExerciceMuscu?
 
     private var peutModifier: Bool {
-        authService.utilisateurConnecte?.role.peutGererProgrammes ?? false
+        authService.utilisateurConnecte != nil
     }
 
     private var exercicesFiltres: [ExerciceMuscu] {
@@ -113,7 +113,6 @@ struct BibliothequeMusculationView: View {
                 Button { afficherCreation = true } label: {
                     Image(systemName: "plus")
                 }
-                .siAutorise(peutModifier)
             }
         }
         .sheet(isPresented: $afficherCreation) {

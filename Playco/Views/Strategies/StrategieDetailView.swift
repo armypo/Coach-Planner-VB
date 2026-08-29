@@ -46,7 +46,6 @@ struct StrategieDetailView: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 menuActions
-                    .siAutorise(authService.utilisateurConnecte?.role.peutModifierStrategies ?? false)
             }
             ToolbarItem(placement: .primaryAction) {
                 // Badge catégorie

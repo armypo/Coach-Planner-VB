@@ -74,7 +74,7 @@ struct ProgrammeDetailView: View {
                     Button { afficherAjout = true } label: {
                         Label("Ajouter un exercice", systemImage: "plus")
                     }
-                    if let role = authService.utilisateurConnecte?.role, role.peutGererProgrammes {
+                    if authService.utilisateurConnecte != nil {
                         Button { afficherAssignation = true } label: {
                             Label("Assigner joueurs", systemImage: "person.3.fill")
                         }

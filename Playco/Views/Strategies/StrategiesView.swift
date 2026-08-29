@@ -134,7 +134,7 @@ struct StrategiesView: View {
                             strategieRow(strategie)
                         }
                     }
-                    .onDelete(perform: (authService.utilisateurConnecte?.role.peutModifierStrategies ?? false) ? { indices in
+                    .onDelete(perform: (authService.utilisateurConnecte != nil) ? { indices in
                         let toDelete = indices.compactMap { i in
                             i < items.count ? items[i] : nil
                         }
@@ -162,7 +162,6 @@ struct StrategiesView: View {
                 } label: {
                     Image(systemName: "plus")
                 }
-                .siAutorise(authService.utilisateurConnecte?.role.peutModifierStrategies ?? false)
             }
             // Rapports accessible via sidebar
             ToolbarItem(placement: .primaryAction) {
@@ -172,7 +171,6 @@ struct StrategiesView: View {
                     Image(systemName: "person.3.fill")
                 }
                 .help("Mes formations")
-                .siAutorise(authService.utilisateurConnecte?.role.peutModifierStrategies ?? false)
             }
         }
     }

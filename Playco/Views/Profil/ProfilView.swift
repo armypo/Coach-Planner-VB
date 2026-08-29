@@ -15,11 +15,6 @@ struct ProfilView: View {
     @Query private var equipes: [Equipe]
     @Query private var profils: [ProfilCoach]
 
-    private var estCoach: Bool {
-        let role = authService.utilisateurConnecte?.role
-        return role == .coach || role == .admin
-    }
-
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -28,16 +23,17 @@ struct ProfilView: View {
                         // En-tête profil
                         carteProfilHeader(utilisateur)
 
-                        if estCoach {
-                            // Code d'équipe
-                            sectionCodeEquipe
+                        // D6 : assistant = head coach, mêmes droits — les
+                        // sections coach sont visibles pour tout le staff.
 
-                            // Organisation (gestion membres)
-                            sectionOrganisation
+                        // Code d'équipe
+                        sectionCodeEquipe
 
-                            // Gestion équipes (coach seulement)
-                            sectionEquipes
-                        }
+                        // Organisation (gestion membres)
+                        sectionOrganisation
+
+                        // Gestion équipes
+                        sectionEquipes
 
                         // Mode bord de terrain
                         sectionBordDeTerrain
@@ -72,7 +68,7 @@ struct ProfilView: View {
 
     private func carteProfilHeader(_ utilisateur: Utilisateur) -> some View {
         VStack(spacing: 16) {
-            AvatarEditableView(utilisateur: utilisateur, taille: 90, editable: estCoach)
+            AvatarEditableView(utilisateur: utilisateur, taille: 90, editable: true)
 
             Text(utilisateur.nomComplet)
                 .font(.title2.weight(.bold))
@@ -142,7 +138,6 @@ struct ProfilView: View {
 
     @State private var afficherTutoriel = false
     @State private var afficherAjoutAssistant = false
-    @State private var afficherGestionStaff = false
     @State private var afficherJournalSync = false
     @State private var afficherIdentifiantsEquipe = false
 
@@ -161,10 +156,6 @@ struct ProfilView: View {
                 boutonAction(icone: "figure.volleyball", titre: "Ajouter un assistant",
                              couleur: PaletteMat.bleu) {
                     afficherAjoutAssistant = true
-                }
-                boutonAction(icone: "lock.shield", titre: "Permissions du staff",
-                             couleur: PaletteMat.vert) {
-                    afficherGestionStaff = true
                 }
                 boutonAction(icone: "key.fill", titre: "Identifiants de l'équipe",
                              couleur: PaletteMat.violet) {
@@ -187,16 +178,6 @@ struct ProfilView: View {
         }
         .sheet(isPresented: $afficherAjoutAssistant) {
             AjoutUtilisateurView(codeEquipe: codeEquipe)
-        }
-        .sheet(isPresented: $afficherGestionStaff) {
-            NavigationStack {
-                GestionStaffView()
-                    .toolbar {
-                        ToolbarItem(placement: .topBarTrailing) {
-                            Button("Fermer") { afficherGestionStaff = false }
-                        }
-                    }
-            }
         }
     }
 

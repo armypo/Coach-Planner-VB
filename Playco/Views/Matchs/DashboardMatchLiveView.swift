@@ -47,7 +47,6 @@ struct DashboardMatchLiveView: View {
     @Query(filter: #Predicate<JoueurEquipe> { $0.estActif == true },
            sort: \JoueurEquipe.numero) private var tousJoueurs: [JoueurEquipe]
 
-    @Query private var toutesPermissions: [StaffPermissions]
     @State private var afficherSubstitutions = false
     @State private var afficherRotation = false
     @State private var afficherDetailsJoueurs = false
@@ -163,15 +162,6 @@ struct DashboardMatchLiveView: View {
         cache = s
     }
 
-    private var lectureSeule: Bool {
-        guard let user = authService.utilisateurConnecte else { return true }
-        if user.role == .admin || user.role == .coach { return false }
-        if let perms = toutesPermissions.first(where: { $0.assistantID == user.id && $0.codeEquipe == codeEquipeActif }) {
-            return !perms.peutGererStats
-        }
-        return true
-    }
-
     var body: some View {
         ScrollView {
             VStack(spacing: LiquidGlassKit.espaceMD) {
@@ -218,8 +208,6 @@ struct DashboardMatchLiveView: View {
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-                        .disabled(lectureSeule)
-                        .opacity(lectureSeule ? 0.4 : 1)
                         .accessibilityLabel("Modifier la rotation. Actuellement rotation \(viewModel.rotationActuelle)")
                         .accessibilityHint("Double-tapez pour ouvrir le sélecteur de rotation")
 
@@ -265,8 +253,6 @@ struct DashboardMatchLiveView: View {
                             .frame(minHeight: 44)
                             .contentShape(Rectangle())
                         }
-                        .disabled(lectureSeule)
-                        .opacity(lectureSeule ? 0.4 : 1)
                         .accessibilityLabel("Substitutions : \(viewModel.subsUtiliseesDansSet) sur \(viewModel.subsMaxParSet) utilisées dans ce set")
                         .accessibilityHint("Double-tapez pour gérer les substitutions")
                     }
@@ -438,8 +424,8 @@ struct DashboardMatchLiveView: View {
                             .foregroundStyle(.red)
                     }
                     .buttonStyle(.plain)
-                    .disabled(lectureSeule || viewModel.tempsMortsNousRestants <= 0)
-                    .opacity(!lectureSeule && viewModel.tempsMortsNousRestants > 0 ? 1 : 0.4)
+                    .disabled(viewModel.tempsMortsNousRestants <= 0)
+                    .opacity(viewModel.tempsMortsNousRestants > 0 ? 1 : 0.4)
                 }
 
                 // Adversaire
@@ -472,8 +458,8 @@ struct DashboardMatchLiveView: View {
                             .foregroundStyle(.orange)
                     }
                     .buttonStyle(.plain)
-                    .disabled(lectureSeule || viewModel.tempsMortsAdvRestants <= 0)
-                    .opacity(!lectureSeule && viewModel.tempsMortsAdvRestants > 0 ? 1 : 0.4)
+                    .disabled(viewModel.tempsMortsAdvRestants <= 0)
+                    .opacity(viewModel.tempsMortsAdvRestants > 0 ? 1 : 0.4)
                 }
             }
         }
