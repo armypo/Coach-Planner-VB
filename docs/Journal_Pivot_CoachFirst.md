@@ -24,6 +24,24 @@
 - **Vérification** : build 0/0 ; **276/276 tests, 43 suites**.
 - **Différé** : reformulation « collecte de données / vidéo » complète des textes d'attestation + retention-fr (fait a minima : mention messagerie retirée) ; textes légaux externes (placeholders).
 
-## Chantier C — Déplacements navigation
+## Chantier C — Déplacements navigation ✅ 2026-08-29
 
-_(en cours)_
+- `2fef2bc` — 7 déplacements : **C1** scouting → Matchs (section « Préparation » en sidebar, retiré de Stratégies) ; **C2** toolbar match 7 chips → 3 groupes-menus (Préparer · En direct · Après) ; **C3** Heatmap/Rotations hors du bottomBar Matchs (hub Équipe canonique) ; **C4** Calendrier au Dock (4e item) + retiré des bottomBars + Planification accessible depuis le calendrier ; **C6** Formations en entrée de sidebar nommée ; **C7** Présences dans l'écran d'exercices ; **C8** Exports CSV dans le hub Statistiques.
+- **Écarts (différés à la coquille 2.5a)** : C5 dock persistant dans les sections + recherche deep-link (collision avec les bottomBars restants sans refonte) ; C1 en push plutôt qu'en sheet.
+- **Vérification** : build 0/0 ; 276/276 tests.
+
+## Chantier D — Uniformisation, vague 1 ✅ 2026-08-29
+
+- `bed47f5` — BoutonRetourAccueil partagé (5 copies remplacées) ; **confirmation sur la suppression de match** (cascade destructive au swipe corrigée) ; sidebars homogènes (.sidebar + searchable Matchs/Entraînement) ; icône « + » unique ; création programme muscu alert → Form ; tints alignés palette mate ; FiltresStats (code mort) supprimé.
+- **Vague 1bis (à faire, avec Mat Nuit)** : « Fermer » standardisé (~20 sites), ~20 empty states ad hoc → ContentUnavailableView, kit stats généralisé, campagne paddings/rayons (8 pires fichiers), formulaires VStack custom → Form, purge .rounded/.hierarchical, échelle typo.
+
+## Chantier E — Parité de sync assistant (D6) — À VENIR
+
+Phasé E1→E4 (voir plan) : durcir les 4 `publierX` (fetch-puis-modifier), publier disponibilité/attestation, puis contenus de préparation, analyse, écriture assistant. Le plus gros chantier technique restant — session dédiée recommandée.
+
+## Reste global
+
+- Rebase de `suivis/pr6` (démo) après le retour de la branche sur `main` (PR différée — GitHub indisponible le 2026-08-29).
+- Refresh complet de `CLAUDE.md` (sections paywall/messagerie/athlète périmées) — ligne d'historique ajoutée en attendant.
+- Textes légaux externes (placeholders) à écrire sans athlètes ni abonnements ; reformulation complète attestation → collecte/vidéo.
+- Action humaine n°1 : renseigner `TelemetryDeckAppID` (la rétention est le seul KPI de l'app gratuite).
