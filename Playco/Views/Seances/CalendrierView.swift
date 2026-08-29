@@ -8,6 +8,7 @@ import SwiftData
 struct CalendrierView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
+    @State private var afficherPlanification = false
     @Environment(\.codeEquipeActif) private var codeEquipeActif
     @Environment(AuthService.self) private var authService
     @Query(filter: #Predicate<Seance> { $0.estArchivee == false },
@@ -125,10 +126,24 @@ struct CalendrierView: View {
         }
         .navigationTitle("Calendrier")
         .navigationBarTitleDisplayMode(.large)
+        .sheet(isPresented: $afficherPlanification) {
+            NavigationStack {
+                PlanificationSaisonView()
+            }
+        }
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("Fermer") { dismiss() }
                     .foregroundStyle(.secondary)
+            }
+            // C4 (pivot) : la planification de saison (phases) vit à côté du
+            // calendrier — vue mois / vue saison au même endroit.
+            ToolbarItem(placement: .secondaryAction) {
+                Button {
+                    afficherPlanification = true
+                } label: {
+                    Label("Planification", systemImage: "chart.bar.xaxis")
+                }
             }
             ToolbarItem(placement: .primaryAction) {
                 HStack(spacing: 10) {

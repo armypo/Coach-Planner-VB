@@ -123,6 +123,15 @@ struct EquipeView: View {
                     Label("Palmarès & records", systemImage: "trophy.fill")
                         .font(.subheadline.weight(.medium))
                 }
+                // C8 (pivot) : les exports CSV vivent dans le hub, plus
+                // derrière une icône de toolbar anonyme.
+                Button {
+                    afficherExport = true
+                } label: {
+                    Label("Exports CSV", systemImage: "square.and.arrow.up")
+                        .font(.subheadline.weight(.medium))
+                }
+                .buttonStyle(.plain)
             }
 
             // Joueurs par poste (filtrés par recherche)
@@ -204,13 +213,8 @@ struct EquipeView: View {
                 boutonRetour
             }
             ToolbarItem(placement: .primaryAction) {
-                HStack(spacing: LiquidGlassKit.espaceSM) {
-                    Button { afficherExport = true } label: {
-                        Image(systemName: "square.and.arrow.up")
-                    }
-                    Button { afficherAjout = true } label: {
-                        Image(systemName: "plus")
-                    }
+                Button { afficherAjout = true } label: {
+                    Image(systemName: "plus")
                 }
             }
         }

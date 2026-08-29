@@ -25,6 +25,7 @@ struct ContentView: View {
     @State private var sectionActive: SectionApp?
     @State private var afficherProfil: Bool = false
     @State private var afficherRecherche: Bool = false
+    @State private var afficherCalendrier: Bool = false
     @State private var equipeSelectionnee: Equipe?
     @State private var selectionEquipeFaite = false
     @State private var afficherToastDesactivation = false
@@ -200,6 +201,9 @@ struct ContentView: View {
                     DockBarView(
                         sectionActive: $sectionActive,
                         badgeSeanceAujourdhui: seanceAujourdhui,
+                        onCalendrier: {
+                            afficherCalendrier = true
+                        },
                         onProfil: {
                             afficherProfil = true
                         },
@@ -220,6 +224,11 @@ struct ContentView: View {
         .environment(\.themeHautContraste, UserDefaults.standard.bool(forKey: "themeHautContraste"))
         .sheet(isPresented: $afficherProfil) {
             vueProfil
+        }
+        .sheet(isPresented: $afficherCalendrier) {
+            NavigationStack {
+                CalendrierView()
+            }
         }
         .sheet(isPresented: $afficherRecherche) {
             RechercheGlobaleView { section in

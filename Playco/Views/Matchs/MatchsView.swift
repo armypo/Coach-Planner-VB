@@ -28,9 +28,7 @@ struct MatchsView: View {
     @State private var matchSelectionne: Seance?
     @State private var afficherNouveauMatch = false
     @State private var afficherMatchEclair = false
-    @State private var afficherCalendrier = false
-    @State private var afficherHeatmap = false
-    @State private var afficherStatsRotation = false
+    @State private var afficherScouting = false
 
     /// Données filtrées cachées
     @State private var matchs: [Seance] = []
@@ -82,28 +80,9 @@ struct MatchsView: View {
                         .accessibilityLabel("Match éclair")
                         .accessibilityHint("Crée un match immédiat : adversaire et service, rien d'autre")
                     }
-                    ToolbarItem(placement: .bottomBar) {
-                        HStack(spacing: 20) {
-                            Button {
-                                afficherCalendrier = true
-                            } label: {
-                                Label("Calendrier", systemImage: "calendar")
-                                    .font(.subheadline.weight(.medium))
-                            }
-                            Button {
-                                afficherHeatmap = true
-                            } label: {
-                                Label("Heatmap", systemImage: "square.grid.3x3.fill")
-                                    .font(.subheadline.weight(.medium))
-                            }
-                            Button {
-                                afficherStatsRotation = true
-                            } label: {
-                                Label("Rotations", systemImage: "arrow.triangle.2.circlepath")
-                                    .font(.subheadline.weight(.medium))
-                            }
-                        }
-                    }
+                    // C3/C4 (pivot) : Heatmap et Rotations vivent dans le hub
+                    // Statistiques d'Équipe, le calendrier au Dock — plus de
+                    // bottomBar dans Matchs.
                 }
         } detail: {
             NavigationStack {
@@ -153,31 +132,9 @@ struct MatchsView: View {
                 matchSelectionne = match
             }
         }
-        .sheet(isPresented: $afficherCalendrier) {
+        .sheet(isPresented: $afficherScouting) {
             NavigationStack {
-                CalendrierView()
-            }
-        }
-        .sheet(isPresented: $afficherHeatmap) {
-            NavigationStack {
-                HeatmapEquipeView()
-                    .navigationTitle("Heatmap terrain")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .topBarTrailing) {
-                            Button("Fermer") { afficherHeatmap = false }
-                        }
-                    }
-            }
-        }
-        .sheet(isPresented: $afficherStatsRotation) {
-            NavigationStack {
-                StatsParRotationView()
-                    .toolbar {
-                        ToolbarItem(placement: .topBarTrailing) {
-                            Button("Fermer") { afficherStatsRotation = false }
-                        }
-                    }
+                ScoutingReportListView()
             }
         }
     }
@@ -186,6 +143,37 @@ struct MatchsView: View {
 
     private var sidebarContent: some View {
         List(selection: $matchSelectionne) {
+            // C1 (pivot) : le scouting vit dans Matchs — préparé ici, consommé
+            // ici (chip « Plan de match » du détail + dashboard live).
+            Section {
+                Button {
+                    afficherScouting = true
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "binoculars.fill")
+                            .font(.body)
+                            .foregroundStyle(MatNuit.brique)
+                            .frame(width: 28)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Rapports de scouting")
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(.primary)
+                            Text("Analyse des adversaires")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                    .padding(.vertical, 4)
+                }
+                .buttonStyle(.plain)
+            } header: {
+                Text("Préparation")
+            }
+
             // Matchs à venir
             if !matchsAVenir.isEmpty {
                 Section {

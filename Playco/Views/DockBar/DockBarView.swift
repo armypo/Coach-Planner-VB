@@ -17,6 +17,7 @@ private struct DockItem: Identifiable {
 struct DockBarView: View {
     @Binding var sectionActive: SectionApp?
     var badgeSeanceAujourdhui: Bool = false // V5 : point orange sur Profil
+    var onCalendrier: (() -> Void)?
     var onProfil: (() -> Void)?
     var onRecherche: (() -> Void)?
 
@@ -37,6 +38,10 @@ struct DockBarView: View {
         [
             DockItem(id: "recherche", label: "Recherche", icone: "magnifyingglass",
                      couleur: PaletteMat.orange, section: nil),
+            // C4 (pivot) : le calendrier unifié (séances + matchs + sync Apple
+            // Calendar) gagne un accès racine — fin de la double porte modale.
+            DockItem(id: "calendrier", label: "Calendrier", icone: "calendar",
+                     couleur: PaletteMat.vert, section: nil),
             DockItem(id: "profil", label: "Profil", icone: "person.circle.fill",
                      couleur: PaletteMat.bleu, section: nil),
         ]
@@ -88,6 +93,8 @@ struct DockBarView: View {
 
             if item.id == "recherche" {
                 onRecherche?()
+            } else if item.id == "calendrier" {
+                onCalendrier?()
             } else if item.id == "profil" {
                 onProfil?()
             }
@@ -153,7 +160,8 @@ struct DockBarView: View {
         .contentShape(Rectangle())
         .accessibilityLabel(item.label)
         .accessibilityValue(badgeAccessibilityValue(for: item))
-        .accessibilityHint(item.id == "profil" ? "Ouvre le profil utilisateur" : "Ouvre la recherche globale")
+        .accessibilityHint(item.id == "profil" ? "Ouvre le profil utilisateur" :
+                           (item.id == "calendrier" ? "Ouvre le calendrier unifié" : "Ouvre la recherche globale"))
     }
 
     private func badgeAccessibilityValue(for item: DockItem) -> String {

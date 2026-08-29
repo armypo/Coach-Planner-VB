@@ -18,6 +18,7 @@ struct ListeExercicesView: View {
     @Environment(\.editMode) private var editMode
     @Environment(AuthService.self) private var authService
     @Bindable var seance: Seance
+    @State private var afficherPresences = false
     @Environment(\.codeEquipeActif) private var codeEquipeActif
     @Query(filter: #Predicate<JoueurEquipe> { $0.estActif == true },
            sort: \JoueurEquipe.numero) private var tousJoueurs: [JoueurEquipe]
@@ -91,6 +92,9 @@ struct ListeExercicesView: View {
             }
             .presentationDetents([.medium])
         }
+        .sheet(isPresented: $afficherPresences) {
+            PresencesView(seance: seance)
+        }
         .alert("Impossible de générer le plan", isPresented: $erreurPlanPratique) {
             Button("OK", role: .cancel) { }
         } message: {
@@ -103,6 +107,16 @@ struct ListeExercicesView: View {
             ToolbarItem(placement: .secondaryAction) {
                 if !(seance.exercices ?? []).isEmpty {
                     Button("Plan de pratique") { genererPlanPratique() }
+                }
+            }
+            // C7 (pivot) : les présences se prennent ICI, l'écran où le coach
+            // est pendant la pratique — plus seulement via le contextMenu de la
+            // liste des séances.
+            ToolbarItem(placement: .secondaryAction) {
+                Button {
+                    afficherPresences = true
+                } label: {
+                    Label("Présences", systemImage: "checklist")
                 }
             }
             ToolbarItem(placement: .primaryAction) {

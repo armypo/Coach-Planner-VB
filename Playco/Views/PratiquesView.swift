@@ -15,7 +15,6 @@ struct PratiquesView: View {
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var seanceSelectionnee: Seance?
     @State private var afficherBibliotheque = false
-    @State private var afficherCalendrier = false
     @State private var afficherPlanification = false
 
     var body: some View {
@@ -26,15 +25,10 @@ struct PratiquesView: View {
                     ToolbarItem(placement: .topBarLeading) {
                         boutonRetour
                     }
+                    // C4 (pivot) : le calendrier a un accès racine (Dock) —
+                    // plus de double porte modale par section.
                     ToolbarItem(placement: .bottomBar) {
                         HStack(spacing: 24) {
-                            Button {
-                                afficherCalendrier = true
-                            } label: {
-                                Label("Calendrier", systemImage: "calendar")
-                                    .font(.subheadline.weight(.medium))
-                            }
-
                             Button {
                                 afficherBibliotheque = true
                             } label: {
@@ -62,11 +56,6 @@ struct PratiquesView: View {
         }
         .navigationSplitViewStyle(.balanced)
         .tint(.orange)
-        .sheet(isPresented: $afficherCalendrier) {
-            NavigationStack {
-                CalendrierView()
-            }
-        }
         .sheet(isPresented: $afficherPlanification) {
             NavigationStack {
                 PlanificationSaisonView()
