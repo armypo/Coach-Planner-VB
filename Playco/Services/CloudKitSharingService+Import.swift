@@ -110,19 +110,6 @@ extension CloudKitSharingService {
         let seanceRecords = try await fetchRecords(type: RecordType.seance, codeEquipe: codeEquipe)
         for record in seanceRecords { importerSeance(from: record, context: context) }
 
-        // 8. Tier d'équipe INFORMATIONNEL depuis AbonnementPartage (Public DB).
-        // SÉCURITÉ : cette valeur (non signée) ne sert QU'À l'affichage — elle
-        // n'accorde aucun accès et ne bloque aucune connexion (cf. appliquerGateTier
-        // role-aware, et paywallDoitBloquer côté coach uniquement).
-        if let snap = await CloudKitPublicSyncAbonnement.shared.lireStatut(codeEquipe: codeEquipe),
-           let tier = Tier(rawValue: snap.tierRaw) {
-            let codeRech = codeEquipe
-            let descEq = FetchDescriptor<Equipe>(predicate: #Predicate { $0.codeEquipe == codeRech })
-            if let eqLocale = try? context.fetch(descEq).first, eqLocale.tierAbonnement != tier {
-                eqLocale.tierAbonnement = tier
-                logger.info("Tier équipe (informationnel) pour \(codeEquipe, privacy: .private): \(tier.rawValue, privacy: .public)")
-            }
-        }
 
         do {
             try context.save()

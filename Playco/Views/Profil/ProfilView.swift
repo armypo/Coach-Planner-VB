@@ -8,7 +8,6 @@ import SwiftData
 /// Vue profil / paramètres — adaptée selon le rôle (Coach, Élève, Admin)
 struct ProfilView: View {
     @Environment(AuthService.self) private var authService
-    @Environment(AbonnementService.self) private var abonnementService
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @Environment(\.codeEquipeActif) private var codeEquipeActif
@@ -30,9 +29,6 @@ struct ProfilView: View {
                         carteProfilHeader(utilisateur)
 
                         if estCoach {
-                            // Mon abonnement (Pro / Club / essai / expiré)
-                            sectionAbonnement
-
                             // Code d'équipe
                             sectionCodeEquipe
 
@@ -199,7 +195,6 @@ struct ProfilView: View {
                              couleur: PaletteMat.orange) {
                     afficherAjoutEleve = true
                 }
-                .bloqueSiNonClub(source: "creation_athlete")
                 // Jointure SIWA réservée athlète/assistant : on propose un assistant
                 // (mêmes permissions qu'un coach) — un membre « Coach » ne pourrait
                 // jamais se connecter (roleJonctionAutorise rejette .coach).
@@ -606,32 +601,3 @@ extension Notification.Name {
     static let allerChoixInitial = Notification.Name("allerChoixInitial")
 }
 
-// MARK: - Section abonnement (paywall v2.0)
-
-extension ProfilView {
-    var sectionAbonnement: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label("Mon abonnement", systemImage: "creditcard.fill")
-                .font(.headline)
-                .foregroundStyle(PaletteMat.orange)
-
-            HStack {
-                BadgeStatut(statut: abonnementService.statut)
-                Spacer()
-                NavigationLink {
-                    GestionAbonnementView()
-                } label: {
-                    HStack(spacing: 6) {
-                        Text("Gérer")
-                            .font(.subheadline.weight(.medium))
-                        Image(systemName: "chevron.right")
-                            .font(.caption2)
-                    }
-                    .foregroundStyle(PaletteMat.orange)
-                }
-            }
-        }
-        .padding(20)
-        .glassCard()
-    }
-}

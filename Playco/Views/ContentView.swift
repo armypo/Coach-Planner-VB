@@ -19,8 +19,6 @@ struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(AuthService.self) private var authService
     @Environment(AppleSignInService.self) private var appleSignInService
-    @Environment(AbonnementService.self) private var abonnementService
-    @Environment(StoreKitService.self) private var storeKitService
     @Environment(CloudKitSharingService.self) private var sharingService
     @Environment(CloudKitSyncService.self) private var syncService
     @Environment(\.scenePhase) private var scenePhase
@@ -89,15 +87,6 @@ struct ContentView: View {
                     }
             }
         }
-        .safeAreaInset(edge: .top) {
-            // Bannière paywall : visible uniquement pour les coachs en essai/grace/expiré
-            if authService.estConnecte,
-               let user = authService.utilisateurConnecte,
-               user.role == .coach || user.role == .admin {
-                BanniereAbonnementView()
-                    .animation(LiquidGlassKit.springDefaut, value: abonnementService.statut)
-            }
-        }
         .animation(.spring(response: 0.45, dampingFraction: 0.85), value: authService.estConnecte)
         .animation(.spring(response: 0.45, dampingFraction: 0.85), value: selectionEquipeFaite)
         .onChange(of: authService.estConnecte) {
@@ -126,13 +115,6 @@ struct ContentView: View {
                 if let appleID = authService.utilisateurConnecte?.appleUserID, !appleID.isEmpty,
                    await appleSignInService.estRevoque(appleUserID: appleID) {
                     authService.deconnexion()
-                }
-                // Coach : re-évaluer le statut d'abonnement (renouvellement/refund Apple).
-                if let user = authService.utilisateurConnecte,
-                   user.role == .coach || user.role == .admin {
-                    await abonnementService.rafraichir(
-                        utilisateur: user, context: modelContext, storeKit: storeKitService
-                    )
                 }
                 // Données partagées : athlète/assistant importent, coach publie.
                 await synchroniserDonneesPartagees()
@@ -180,12 +162,6 @@ struct ContentView: View {
         switch user.role {
         case .etudiant, .assistantCoach:
             await sharingService.syncDepuisPublic(codeEquipe: code, context: modelContext)
-            // Statut d'abonnement de l'équipe (informationnel, lecture seule) pour
-            // afficher le plan du coach. Ne débloque AUCUNE fonctionnalité. Chargé
-            // pour l'athlète uniquement (seul rôle qui l'affiche, cf. MonProfilAthleteView).
-            if user.role == .etudiant {
-                await abonnementService.chargerStatutEquipe(codeEquipe: code)
-            }
         case .coach, .admin:
             await sharingService.publierMisesAJourCoach(codeEquipe: code, context: modelContext)
         }

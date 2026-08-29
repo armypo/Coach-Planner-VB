@@ -10,7 +10,6 @@ struct MonProfilAthleteView: View {
     var onRetour: () -> Void
 
     @Environment(AuthService.self) private var authService
-    @Environment(AbonnementService.self) private var abonnementService
     @Query(sort: \JoueurEquipe.nom) private var joueurs: [JoueurEquipe]
 
     private var monJoueur: JoueurEquipe? {
@@ -33,30 +32,8 @@ struct MonProfilAthleteView: View {
                 ToolbarItem(placement: .topBarLeading) {
                     boutonRetour
                 }
-                if abonnementService.tierEquipeActif != .aucun {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        chipPlanEquipe
-                    }
-                }
             }
         }
-    }
-
-    /// Chip lecture seule indiquant le plan d'abonnement du coach de l'équipe.
-    /// Purement informatif — ne débloque rien (cf. `AbonnementService.tierEquipeActif`).
-    private var chipPlanEquipe: some View {
-        let tier = abonnementService.tierEquipeActif
-        let couleur: Color = tier == .club ? PaletteMat.violet : PaletteMat.orange
-        return HStack(spacing: 6) {
-            Image(systemName: "star.circle.fill").font(.caption)
-            Text(tier.label)
-                .font(.caption.weight(.semibold))
-        }
-        .foregroundStyle(couleur)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
-        .background(couleur.opacity(0.12), in: Capsule())
-        .accessibilityLabel("Plan de l'équipe : \(tier.label)")
     }
 
     private var etatVide: some View {

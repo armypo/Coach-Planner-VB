@@ -99,7 +99,6 @@ struct ListeSeancesView: View {
                             .font(.title3)
                             .symbolRenderingMode(.hierarchical)
                     }
-                    .bloqueSiNonPayant(source: "creation_seance")
                 }
             }
         }

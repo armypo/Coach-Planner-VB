@@ -74,7 +74,6 @@ struct MatchsView: View {
                             Image(systemName: "plus")
                         }
                         .siAutorise(peutModifier)
-                        .bloqueSiNonPayant(source: "creation_match")
                     }
                     // 2.3.2 — match éclair : un match hors calendrier en 2 champs
                     ToolbarItem(placement: .primaryAction) {
@@ -82,7 +81,6 @@ struct MatchsView: View {
                             Image(systemName: "bolt")
                         }
                         .siAutorise(peutModifier)
-                        .bloqueSiNonPayant(source: "match_eclair")
                         .accessibilityLabel("Match éclair")
                         .accessibilityHint("Crée un match immédiat : adversaire et service, rien d'autre")
                     }

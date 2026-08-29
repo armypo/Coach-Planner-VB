@@ -137,7 +137,6 @@ struct JoueurDetailView: View {
                     } label: {
                         Image(systemName: "ellipsis.circle")
                     }
-                    .bloqueSiNonPayant(source: "gestion_joueur")
                 }
             }
         }

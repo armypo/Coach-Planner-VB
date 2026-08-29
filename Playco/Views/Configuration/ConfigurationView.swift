@@ -67,8 +67,6 @@ struct ConfigurationView: View {
     // Sheet récap des identifiants créés à la finalisation
     @State private var afficherRecap = false
     @State private var credsRecap: [CredentialRecap] = []
-    // Sheet de bienvenue paywall (après le récap)
-    @State private var afficherBienvenuePaywall = false
 
     // MARK: - Validation
 
@@ -125,14 +123,6 @@ struct ConfigurationView: View {
         .sheet(isPresented: $afficherRecap) {
             IdentifiantsRecapSheet(creds: credsRecap) {
                 afficherRecap = false
-                // Après les identifiants → présenter le paywall de bienvenue
-                afficherBienvenuePaywall = true
-            }
-            .interactiveDismissDisabled(true)
-        }
-        .fullScreenCover(isPresented: $afficherBienvenuePaywall) {
-            BienvenuePaywallView {
-                afficherBienvenuePaywall = false
                 onTermine()
             }
             .interactiveDismissDisabled(true)
@@ -507,12 +497,12 @@ struct ConfigurationView: View {
         wizardEnCours = false
 
         // Présenter le sheet récap si au moins un credential a été créé,
-        // sinon aller directement au paywall de bienvenue.
+        // sinon terminer directement.
         if !recaps.isEmpty {
             credsRecap = recaps
             afficherRecap = true
         } else {
-            afficherBienvenuePaywall = true
+            onTermine()
         }
     }
 

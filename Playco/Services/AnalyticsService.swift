@@ -134,14 +134,4 @@ enum EvenementAnalytics {
     static let erreurCritique = "erreur_critique"
     static let configurationCompletee = "configuration_completee"
     static let exportPDFGenere = "export_pdf_genere"
-
-    // Paywall v2.0 (8 événements)
-    static let paywallAffiche     = "paywall_affiche"
-    static let paywallFerme       = "paywall_ferme"
-    static let essaiDemarre       = "essai_demarre"
-    static let essaiExpire        = "essai_expire"
-    static let achatInitie        = "achat_initie"
-    static let achatReussi        = "achat_reussi"
-    static let achatEchoue        = "achat_echoue"
-    static let restaurationTentee = "restauration_tentee"
 }

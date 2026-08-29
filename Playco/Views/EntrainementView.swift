@@ -71,7 +71,6 @@ struct EntrainementView: View {
                             Image(systemName: "plus")
                         }
                         .siAutorise(role.peutGererProgrammes)
-                        .bloqueSiNonPayant(source: "creation_programme")
                     }
                     ToolbarItem(placement: .bottomBar) {
                         HStack(spacing: 24) {
