@@ -14,6 +14,16 @@
 - `ac6a5ac` **feat(pivot-A): retrait de la messagerie (D1) + fix warnings MetricKit** — MessagerieView, PolitiqueMessagerie (+6 tests), item Messages du Dock, badges/non-lus, page tutoriel messagerie. `MessageEquipe` @Model conservé (schéma + cascade). Fix annexe : 5 warnings d'isolation MetricKitService (toolchain courante).
 - **Vérification** : build 0 erreur / 0 warning (iPad Pro 13-inch M5) ; **275/275 tests, 43 suites** (base nuit 303 − 28 tests paywall/messagerie supprimés).
 
-## Chantier B — Retrait athlète
+## Chantier B — Retrait athlète ✅ 2026-08-29
+
+- `6edc08b` **B1 comptes & jonction** — MembreFactory sans `joueur:` ; NouveauJoueurView réécrite (JoueurEquipe pur) ; wizard étape 5 joueurs sans identifiants ; AjoutUtilisateurView assistant-only ; `roleJonctionAutorise` → `.assistantCoach` seul ; libellés ChoixInitial/Login/IdentifiantsEquipe recentrés assistants ; grille QR projetable + section Identifiants de la fiche joueur supprimées.
+- `9887942` **B3 surfaces + muscu (D2)** — MonProfilAthleteView supprimée ; branches `.etudiant` de ContentView/AccueilView retirées ; `masquerPratiquesAthletes` hors UI (champ gelé) ; **sélecteur « Pour quel joueur ? »** avant la séance muscu live (le coach saisit au nom d'un athlète, indisponibles 2.2.b désactivés).
+- `5408484` **B4 permissions (D6)** — PermissionsRole supprimé (~40 sites balayés, gardes → « session valide ») ; GestionStaffView + lecture seule du live supprimées ; distinction `estCoach` de ProfilView supprimée ; `StaffPermissions` @Model gelé.
+- `6b7e401` **B5 nettoyages** — cascade de suppression d'équipe complétée (PhaseSaison, CredentialAthlete, Utilisateur membres, Presence/Evaluation/TestPhysique par joueurID capturés avant suppression ; Abonnement volontairement exclu) ; fin des écritures miroir (EditionJoueurView → nouveau champ `JoueurEquipe.poidsKg` additif, AvatarEditableView) ; code mort purgé (EvaluationView, SaisieStatsMatchView, ModifierUtilisateurView + clusters ProfilSubViews, StatsLiveSheetWrapper, publierModificationsEquipe).
+- `fdbc671` **B6 tests** — MultiUtilisateur/MembreFactory/RejoindreEquipe refondus coach/assistant + test de régression « jonction .etudiant rejetée ».
+- **Vérification** : build 0/0 ; **276/276 tests, 43 suites**.
+- **Différé** : reformulation « collecte de données / vidéo » complète des textes d'attestation + retention-fr (fait a minima : mention messagerie retirée) ; textes légaux externes (placeholders).
+
+## Chantier C — Déplacements navigation
 
 _(en cours)_
