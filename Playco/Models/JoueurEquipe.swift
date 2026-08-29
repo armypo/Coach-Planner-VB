@@ -56,6 +56,9 @@ final class JoueurEquipe {
     var posteRaw: String = PosteJoueur.recepteur.rawValue  // PosteJoueur.rawValue
     var dateNaissance: Date? = nil
     var taille: Int = 0       // cm
+    /// Poids en kg (pivot coach-first : vivait sur l'Utilisateur athlète lié,
+    /// désormais porté par la donnée joueur — champ additif CloudKit-safe).
+    var poidsKg: Double = 0
     var notes: String = ""
     @Attribute(.externalStorage) var photoData: Data? = nil
     var estActif: Bool = true

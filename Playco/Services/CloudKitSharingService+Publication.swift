@@ -114,51 +114,6 @@ extension CloudKitSharingService {
         }
     }
 
-    /// Publie uniquement les records modifiés depuis la dernière sync
-    func publierModificationsEquipe(
-        equipe: Equipe,
-        etablissement: Etablissement?,
-        utilisateurs: [Utilisateur],
-        joueurs: [JoueurEquipe],
-        context: ModelContext
-    ) async {
-        estEnCoursDePublication = true
-        erreur = nil
-        let seuil = derniereSyncDate
-
-        do {
-            // Équipe modifiée ?
-            if equipe.dateModification > seuil {
-                try await publierEquipe(equipe)
-            }
-
-            // Établissement modifié ?
-            if let etab = etablissement, etab.dateModification > seuil {
-                try await publierEtablissement(etab, codeEquipe: equipe.codeEquipe)
-            }
-
-            // Utilisateurs modifiés
-            let usersModifies = utilisateurs.filter { $0.dateModification > seuil }
-            for utilisateur in usersModifies {
-                try await publierUtilisateur(utilisateur, codeEquipe: equipe.codeEquipe)
-            }
-
-            // Joueurs modifiés
-            let joueursModifies = joueurs.filter { $0.dateModification > seuil }
-            for joueur in joueursModifies {
-                try await publierJoueur(joueur)
-            }
-
-            derniereSyncDate = Date()
-            let totalPub = (equipe.dateModification > seuil ? 1 : 0) + usersModifies.count + joueursModifies.count
-            logger.info("Sync incrémentale: \(totalPub) records publiés pour \(equipe.codeEquipe, privacy: .private)")
-        } catch {
-            logger.error("Erreur sync incrémentale: \(error.localizedDescription)")
-            self.erreur = error.localizedDescription
-        }
-
-        estEnCoursDePublication = false
-    }
 
     /// Sweep de publication côté coach : republie tout ce qui a changé depuis la
     /// dernière sync (équipe, établissement, utilisateurs, joueurs+stats, séances,

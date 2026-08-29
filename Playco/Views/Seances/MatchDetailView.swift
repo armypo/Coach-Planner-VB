@@ -518,40 +518,6 @@ struct InfoMatchSheet: View {
 // MARK: - Wrappers pour sheets standalone (créent leur propre ViewModel)
 
 /// Wrapper pour StatsLiveView en sheet standalone (hors MatchLiveSplitView)
-struct StatsLiveSheetWrapper: View {
-    @Bindable var seance: Seance
-
-    @Environment(\.modelContext) private var modelContext
-    @Environment(\.codeEquipeActif) private var codeEquipeActif
-    @Query(filter: #Predicate<JoueurEquipe> { $0.estActif == true },
-           sort: \JoueurEquipe.numero) private var tousJoueurs: [JoueurEquipe]
-
-    @State private var viewModel: MatchLiveViewModel?
-
-    private var joueursEquipe: [JoueurEquipe] {
-        tousJoueurs.filtreEquipe(codeEquipeActif)
-    }
-
-    var body: some View {
-        Group {
-            if let vm = viewModel {
-                StatsLiveView(viewModel: vm)
-            } else {
-                ProgressView()
-            }
-        }
-        .onAppear {
-            if viewModel == nil {
-                viewModel = MatchLiveViewModel(
-                    seance: seance,
-                    modelContext: modelContext,
-                    joueurs: joueursEquipe,
-                    codeEquipe: codeEquipeActif
-                )
-            }
-        }
-    }
-}
 
 /// Wrapper pour DashboardMatchLiveView en sheet standalone
 struct DashboardLiveSheetWrapper: View {

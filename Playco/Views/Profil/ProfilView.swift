@@ -276,6 +276,11 @@ struct ProfilView: View {
     private func supprimerEquipe(_ equipe: Equipe) {
         let code = equipe.codeEquipe
 
+        // IDs des joueurs de l'équipe — capturés AVANT leur suppression (les
+        // entités Presence/Evaluation/TestPhysique sont clés par joueurID).
+        let descJoueursIDs = FetchDescriptor<JoueurEquipe>(predicate: #Predicate { $0.codeEquipe == code })
+        let joueursIDs = ((try? modelContext.fetch(descJoueursIDs)) ?? []).map(\.id)
+
         // Supprimer toutes les entités liées par codeEquipe. Prédicats concrets
         // par type (#Predicate ne se génère pas sur un protocole) — évite de
         // fetch TOUTE la table (PointMatch/ActionRallye grossissent à chaque point).
@@ -295,6 +300,26 @@ struct ProfilView: View {
         supprimerEntites(FetchDescriptor<ObjectifJoueur>(predicate: #Predicate { $0.codeEquipe == code }))
         supprimerEntites(FetchDescriptor<ActionRallye>(predicate: #Predicate { $0.codeEquipe == code }))
         supprimerEntites(FetchDescriptor<CategorieExercice>(predicate: #Predicate { $0.codeEquipe == code }))
+        supprimerEntites(FetchDescriptor<PhaseSaison>(predicate: #Predicate { $0.codeEquipe == code }))
+        supprimerEntites(FetchDescriptor<CredentialAthlete>(predicate: #Predicate { $0.codeEquipe == code }))
+
+        // Presence / Evaluation / TestPhysique n'ont PAS de codeEquipe (angle
+        // mort historique) : purge par joueurID (IDs capturés en tête de
+        // cascade, avant la suppression des JoueurEquipe).
+        if !joueursIDs.isEmpty {
+            supprimerEntites(FetchDescriptor<Presence>(predicate: #Predicate { joueursIDs.contains($0.joueurID) }))
+            supprimerEntites(FetchDescriptor<Evaluation>(predicate: #Predicate { joueursIDs.contains($0.joueurID) }))
+            supprimerEntites(FetchDescriptor<TestPhysique>(predicate: #Predicate { joueursIDs.contains($0.joueurID) }))
+        }
+
+        // Comptes membres de l'équipe (assistants + athlètes legacy) — jamais
+        // le compte connecté. `Abonnement` n'est PAS supprimé (donnée par
+        // utilisateur, trace d'achat — pas une donnée d'équipe).
+        let idConnecte = authService.utilisateurConnecte?.id
+        let descUsers = FetchDescriptor<Utilisateur>(predicate: #Predicate { $0.codeEquipe == code })
+        for user in (try? modelContext.fetch(descUsers)) ?? [] where user.id != idConnecte {
+            modelContext.delete(user)
+        }
 
         // Les AssistantCoach, CreneauRecurrent, MatchCalendrier sont en cascade via la relation Equipe
         // Supprimer l'équipe elle-même

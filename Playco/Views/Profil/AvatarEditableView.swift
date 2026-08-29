@@ -59,15 +59,6 @@ struct AvatarEditableView: View {
                     if let uiImage = UIImage(data: data),
                        let compressed = uiImage.jpegData(compressionQuality: 0.6) {
                         utilisateur.photoData = compressed
-                        // Synchroniser la photo vers JoueurEquipe lié
-                        if let joueurID = utilisateur.joueurEquipeID {
-                            let descriptor = FetchDescriptor<JoueurEquipe>(
-                                predicate: #Predicate { $0.id == joueurID }
-                            )
-                            if let joueur = try? modelContext.fetch(descriptor).first {
-                                joueur.photoData = compressed
-                            }
-                        }
                         try? modelContext.save()
                     }
                 }
