@@ -10,7 +10,7 @@ import Foundation
 import MetricKit
 import os
 
-private let logger = Logger(subsystem: "com.origotech.playco", category: "MetricKit")
+nonisolated private let logger = Logger(subsystem: "com.origotech.playco", category: "MetricKit")
 
 final class MetricKitService: NSObject, MXMetricManagerSubscriber {
 
@@ -56,7 +56,7 @@ final class MetricKitService: NSObject, MXMetricManagerSubscriber {
 
 private extension MXHistogram<UnitDuration> {
     /// Estimation grossière de la moyenne d'un histogramme MetricKit (log seulement).
-    var averageestimation: Double {
+    nonisolated var averageestimation: Double {
         var total = 0.0, poids = 0.0
         let enumerateur = bucketEnumerator
         while let bucket = enumerateur.nextObject() as? MXHistogramBucket<UnitDuration> {

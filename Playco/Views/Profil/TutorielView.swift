@@ -147,19 +147,6 @@ struct TutorielView: View {
         ),
         DonneesPageTutoriel(
             id: 9,
-            icone: "bubble.left.and.bubble.right.fill",
-            couleur: PaletteMat.violet,
-            titre: "Messagerie & Collaboration",
-            description: "Communiquez avec votre équipe via la messagerie intégrée. Envoyez des messages à toute l'équipe ou en conversation privée avec un joueur.",
-            astuces: [
-                "Fil d'équipe visible par tous les membres",
-                "Conversations privées coach ↔ athlète",
-                "Badges de messages non-lus dans le dock flottant",
-                "Multi-équipes : chaque équipe a son propre fil"
-            ]
-        ),
-        DonneesPageTutoriel(
-            id: 10,
             icone: "calendar",
             couleur: PaletteMat.orange,
             titre: "Calendrier & Planification",
@@ -172,7 +159,7 @@ struct TutorielView: View {
             ]
         ),
         DonneesPageTutoriel(
-            id: 11,
+            id: 10,
             icone: "square.and.arrow.up.fill",
             couleur: PaletteMat.bleu,
             titre: "Export & Partage",

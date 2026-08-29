@@ -389,7 +389,7 @@ struct JoueurDetailView: View {
                         .font(.caption)
                 }
 
-                Text("En attestant, tu confirmes avoir obtenu le consentement d'un parent ou tuteur pour ce joueur mineur (collecte de données et messagerie).")
+                Text("En attestant, tu confirmes avoir obtenu le consentement d'un parent ou tuteur pour ce joueur mineur (collecte de données).")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }

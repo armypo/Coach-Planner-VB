@@ -24,7 +24,6 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var sectionActive: SectionApp?
     @State private var afficherProfil: Bool = false
-    @State private var afficherMessages: Bool = false
     @State private var afficherRecherche: Bool = false
     @State private var equipeSelectionnee: Equipe?
     @State private var selectionEquipeFaite = false
@@ -32,15 +31,6 @@ struct ContentView: View {
     @State private var toastTask: Task<Void, Never>?
 
     @Query private var equipes: [Equipe]
-    @Query(sort: \MessageEquipe.dateEnvoi) private var tousMessages: [MessageEquipe]
-
-    /// Messages non lus pour l'utilisateur courant
-    private var nbMessagesNonLus: Int {
-        guard let uid = authService.utilisateurConnecte?.id else { return 0 }
-        let code = codeEquipeActif
-        guard !code.isEmpty else { return 0 }
-        return tousMessages.filter { $0.codeEquipe == code && !$0.estLuPar(uid) }.count
-    }
 
     // Query pour détecter si une séance est prévue aujourd'hui
     @Query(filter: #Predicate<Seance> { $0.estArchivee == false },
@@ -209,11 +199,7 @@ struct ContentView: View {
                     Spacer()
                     DockBarView(
                         sectionActive: $sectionActive,
-                        badgeMessages: nbMessagesNonLus > 0,
                         badgeSeanceAujourdhui: seanceAujourdhui,
-                        onMessages: {
-                            afficherMessages = true
-                        },
                         onProfil: {
                             afficherProfil = true
                         },
@@ -234,9 +220,6 @@ struct ContentView: View {
         .environment(\.themeHautContraste, UserDefaults.standard.bool(forKey: "themeHautContraste"))
         .sheet(isPresented: $afficherProfil) {
             vueProfil
-        }
-        .sheet(isPresented: $afficherMessages) {
-            vueMessages
         }
         .sheet(isPresented: $afficherRecherche) {
             RechercheGlobaleView { section in
@@ -263,11 +246,6 @@ struct ContentView: View {
         case .entrainement:
             EntrainementView { withAnimation { sectionActive = nil } }
         }
-    }
-
-    /// Sheet messages — messagerie inter-équipe
-    private var vueMessages: some View {
-        MessagerieView()
     }
 
     /// Sheet profil — adapté selon le rôle

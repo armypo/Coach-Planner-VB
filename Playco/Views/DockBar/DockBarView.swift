@@ -16,9 +16,7 @@ private struct DockItem: Identifiable {
 /// Dock bar flottant — style cohérent avec l'app (material + ombres subtiles)
 struct DockBarView: View {
     @Binding var sectionActive: SectionApp?
-    var badgeMessages: Bool = false       // V5 : point rouge sur Messages
     var badgeSeanceAujourdhui: Bool = false // V5 : point orange sur Profil
-    var onMessages: (() -> Void)?
     var onProfil: (() -> Void)?
     var onRecherche: (() -> Void)?
 
@@ -39,8 +37,6 @@ struct DockBarView: View {
         [
             DockItem(id: "recherche", label: "Recherche", icone: "magnifyingglass",
                      couleur: PaletteMat.orange, section: nil),
-            DockItem(id: "messages", label: "Messages", icone: "bubble.left.and.bubble.right.fill",
-                     couleur: PaletteMat.violet, section: nil),
             DockItem(id: "profil", label: "Profil", icone: "person.circle.fill",
                      couleur: PaletteMat.bleu, section: nil),
         ]
@@ -92,8 +88,6 @@ struct DockBarView: View {
 
             if item.id == "recherche" {
                 onRecherche?()
-            } else if item.id == "messages" {
-                onMessages?()
             } else if item.id == "profil" {
                 onProfil?()
             }
@@ -137,12 +131,6 @@ struct DockBarView: View {
                 }
                 // V5 : Badge notification
                 .overlay(alignment: .topTrailing) {
-                    if item.id == "messages" && badgeMessages {
-                        Circle()
-                            .fill(.red)
-                            .frame(width: 10, height: 10)
-                            .offset(x: 4, y: -4)
-                    }
                     if item.id == "profil" && badgeSeanceAujourdhui {
                         Circle()
                             .fill(.orange)
@@ -165,11 +153,10 @@ struct DockBarView: View {
         .contentShape(Rectangle())
         .accessibilityLabel(item.label)
         .accessibilityValue(badgeAccessibilityValue(for: item))
-        .accessibilityHint(item.id == "messages" ? "Ouvre la messagerie d'équipe" : (item.id == "profil" ? "Ouvre le profil utilisateur" : "Ouvre la recherche globale"))
+        .accessibilityHint(item.id == "profil" ? "Ouvre le profil utilisateur" : "Ouvre la recherche globale")
     }
 
     private func badgeAccessibilityValue(for item: DockItem) -> String {
-        if item.id == "messages" && badgeMessages { return "Nouveaux messages non lus" }
         if item.id == "profil" && badgeSeanceAujourdhui { return "Séance prévue aujourd'hui" }
         return ""
     }
