@@ -37,7 +37,7 @@ struct JournalSyncView: View {
                         }
                     }
                 }
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button("Fermer") { dismiss() }
                 }
             }

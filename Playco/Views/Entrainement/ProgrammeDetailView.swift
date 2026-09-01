@@ -189,25 +189,17 @@ struct ProgrammeDetailView: View {
     }
 
     private var etatVide: some View {
-        VStack(spacing: 16) {
-            Spacer()
-            Image(systemName: "dumbbell")
-                .font(.system(size: 50))
-                .foregroundStyle(.tertiary)
-            Text("Aucun exercice")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            Button { afficherAjout = true } label: {
-                Label("Ajouter un exercice", systemImage: "plus.circle.fill")
-                    .font(.subheadline.weight(.medium))
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 10)
-                    .background(PaletteMat.violet.opacity(0.1), in: Capsule())
-                    .foregroundStyle(PaletteMat.violet)
+        ContentUnavailableView {
+            Label("Aucun exercice", systemImage: "dumbbell")
+        } description: {
+            Text("Ajoutez les exercices du programme pour lancer une séance.")
+        } actions: {
+            Button("Ajouter un exercice", systemImage: "plus") {
+                afficherAjout = true
             }
-            Spacer()
+            .buttonStyle(.borderedProminent)
+            .tint(PaletteMat.violet)
         }
-        .frame(maxWidth: .infinity)
     }
 
     private func sauvegarder() {

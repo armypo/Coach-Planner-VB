@@ -57,7 +57,7 @@ struct ProfilView: View {
             .navigationTitle("Paramètres")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button("Fermer") { dismiss() }
                 }
             }
@@ -169,7 +169,7 @@ struct ProfilView: View {
             NavigationStack {
                 IdentifiantsEquipeView()
                     .toolbar {
-                        ToolbarItem(placement: .topBarTrailing) {
+                        ToolbarItem(placement: .cancellationAction) {
                             Button("Fermer") { afficherIdentifiantsEquipe = false }
                         }
                     }

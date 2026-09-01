@@ -95,7 +95,7 @@ struct ScoutingReportListView: View {
         .navigationTitle("Rapports")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItem(placement: .cancellationAction) {
                 Button("Fermer") { dismiss() }
             }
             ToolbarItem(placement: .primaryAction) {

@@ -207,7 +207,7 @@ struct MatchDetailView: View {
                 .navigationTitle("Plan de match")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
-                    ToolbarItem(placement: .confirmationAction) {
+                    ToolbarItem(placement: .cancellationAction) {
                         Button("Fermer") { afficherPlanMatch = false }
                     }
                 }
@@ -236,7 +236,7 @@ struct MatchDetailView: View {
                     .navigationTitle("Dashboard Live")
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar {
-                        ToolbarItem(placement: .confirmationAction) {
+                        ToolbarItem(placement: .cancellationAction) {
                             Button("Fermer") { afficherDashboardLive = false }
                         }
                     }
@@ -251,7 +251,7 @@ struct MatchDetailView: View {
                     .navigationTitle("Mode en direct — \(seance.nom)")
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar {
-                        ToolbarItem(placement: .confirmationAction) {
+                        ToolbarItem(placement: .cancellationAction) {
                             Button("Fermer") { afficherModeLive = false }
                         }
                     }

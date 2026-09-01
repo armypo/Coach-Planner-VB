@@ -194,27 +194,19 @@ struct BibliothequeMusculationView: View {
     // MARK: - État vide
 
     private var etatVide: some View {
-        VStack(spacing: 16) {
-            Spacer()
-            Image(systemName: "dumbbell")
-                .font(.system(size: 50))
-                .foregroundStyle(.tertiary)
-            Text("Aucun exercice trouvé")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+        ContentUnavailableView {
+            Label("Aucun exercice trouvé", systemImage: "dumbbell")
+        } description: {
+            Text("Modifiez la recherche ou créez un nouvel exercice.")
+        } actions: {
             if peutModifier {
-                Button { afficherCreation = true } label: {
-                    Label("Créer un exercice", systemImage: "plus.circle.fill")
-                        .font(.subheadline.weight(.medium))
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 10)
-                        .background(PaletteMat.violet.opacity(0.1), in: Capsule())
-                        .foregroundStyle(PaletteMat.violet)
+                Button("Créer un exercice", systemImage: "plus") {
+                    afficherCreation = true
                 }
+                .buttonStyle(.borderedProminent)
+                .tint(PaletteMat.violet)
             }
-            Spacer()
         }
-        .frame(maxWidth: .infinity)
     }
 }
 

@@ -336,15 +336,11 @@ struct HistoriqueView: View {
     var body: some View {
         Group {
             if seances.isEmpty {
-                VStack(spacing: 16) {
-                    Image(systemName: "clock")
-                        .font(.system(size: 50))
-                        .foregroundStyle(.tertiary)
-                    Text("Aucun entraînement complété")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                ContentUnavailableView {
+                    Label("Aucun entraînement complété", systemImage: "clock")
+                } description: {
+                    Text("Les séances lancées depuis un programme apparaîtront ici.")
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 List {
                     ForEach(seances) { seance in

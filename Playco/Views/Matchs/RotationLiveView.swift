@@ -42,7 +42,7 @@ struct RotationLiveView: View {
             .navigationTitle("Rotation")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button("Fermer") { dismiss() }
                 }
             }

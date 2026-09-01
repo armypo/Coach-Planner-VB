@@ -165,7 +165,7 @@ struct AjoutUtilisateurView: View {
             .navigationTitle("Nouvel assistant")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button("Fermer") { dismiss() }
                 }
             }
