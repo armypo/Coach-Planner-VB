@@ -414,57 +414,23 @@ struct NouvelMatchSheet: View {
 
     var body: some View {
         NavigationStack {
-            VStack(alignment: .leading, spacing: 16) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("ADVERSAIRE")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .tracking(0.5)
+            // D vague 1bis : création en Form — pattern unique des sheets.
+            Form {
+                Section("Match") {
                     TextField("Nom de l'équipe adverse", text: $adversaire)
-                        .font(.title3)
-                        .padding(14)
-                        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
                         .focused($focused)
                         .autocorrectionDisabled()
-                }
-
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("NOM DU MATCH (optionnel)")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .tracking(0.5)
-                    TextField("ex : Demi-finale", text: $nom)
-                        .padding(14)
-                        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
+                    TextField("Nom du match (optionnel) — ex : Demi-finale", text: $nom)
                         .autocorrectionDisabled()
                 }
-
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("DATE DU MATCH")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .tracking(0.5)
-                    DatePicker("", selection: $date, displayedComponents: [.date, .hourAndMinute])
-                        .datePickerStyle(.compact)
-                        .labelsHidden()
+                Section("Détails") {
+                    DatePicker("Date", selection: $date, displayedComponents: [.date, .hourAndMinute])
                         .environment(\.locale, Locale(identifier: "fr_FR"))
-                        .tint(.red)
-                }
-
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("LIEU")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .tracking(0.5)
-                    TextField("ex : Domicile, Gymnase XYZ", text: $lieu)
-                        .padding(14)
-                        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
+                        .tint(MatNuit.brique)
+                    TextField("Lieu — ex : Domicile, Gymnase XYZ", text: $lieu)
                         .autocorrectionDisabled()
                 }
-
-                Spacer()
             }
-            .padding(LiquidGlassKit.espaceLG)
             .navigationTitle("Nouveau match")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
