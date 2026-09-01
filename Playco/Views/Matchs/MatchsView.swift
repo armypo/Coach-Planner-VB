@@ -365,6 +365,8 @@ struct MatchsView: View {
 
                     joueur.passesDecisives = max(0, joueur.passesDecisives - stat.passesDecisives)
                     joueur.manchettes = max(0, joueur.manchettes - stat.manchettes)
+                    // E3 — republier le cumul corrigé au prochain sweep.
+                    joueur.dateModification = Date()
                 }
                 // Supprimer la ligne StatsMatch
                 modelContext.delete(stat)

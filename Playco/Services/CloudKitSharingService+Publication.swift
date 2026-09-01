@@ -117,9 +117,13 @@ extension CloudKitSharingService {
 
     /// Sweep de publication côté coach : republie tout ce qui a changé depuis la
     /// dernière sync (équipe, établissement, utilisateurs, joueurs+stats, séances,
-    /// matchs) pour un `codeEquipe`. DRY : un seul point d'appel (foreground coach)
-    /// couvre toutes les créations/éditions sans triggers éparpillés.
-    func publierMisesAJourCoach(codeEquipe: String, context: ModelContext) async {
+    /// matchs, contenus de préparation, analyse) pour un `codeEquipe`. DRY : un
+    /// seul point d'appel (foreground coach) couvre toutes les créations/éditions
+    /// sans triggers éparpillés.
+    /// - Parameter modeMatchActif: D6 mode déconnecté — quand un match live est
+    ///   en cours, les stats/points in-game NE se publient PAS (un seul preneur
+    ///   de stats ; la publication se fait à la sortie du live).
+    func publierMisesAJourCoach(codeEquipe: String, context: ModelContext, modeMatchActif: Bool = false) async {
         guard !codeEquipe.isEmpty else { return }
         estEnCoursDePublication = true
         defer { estEnCoursDePublication = false }
@@ -176,6 +180,23 @@ extension CloudKitSharingService {
             for exo in (try? context.fetch(descBiblio)) ?? []
             where exo.dateModification > seuil && idsCoachs.contains(exo.codeCoach) {
                 try await publierBibliotheque(exo, codeEquipe: codeEquipe)
+            }
+
+            // E3 — analyse. Formations toujours ; stats/points JAMAIS pendant un
+            // match live (D6 : publiés à la sortie via publierAnalyseMatch, le
+            // sweep sert de filet de sécurité incrémental).
+            let descForm = FetchDescriptor<FormationPersonnalisee>(predicate: #Predicate { $0.codeEquipe == codeEquipe })
+            for formation in (try? context.fetch(descForm)) ?? [] where formation.dateModification > seuil {
+                try await publierFormation(formation)
+            }
+            if !modeMatchActif {
+                let descStats = FetchDescriptor<StatsMatch>(predicate: #Predicate { $0.codeEquipe == codeEquipe })
+                for stat in (try? context.fetch(descStats)) ?? [] where stat.dateModification > seuil {
+                    try await publierStatsMatch(stat)
+                }
+                let descPoints = FetchDescriptor<PointMatch>(predicate: #Predicate { $0.codeEquipe == codeEquipe })
+                let pointsNouveaux = ((try? context.fetch(descPoints)) ?? []).filter { $0.horodatage > seuil }
+                try await publierPointsMatch(pointsNouveaux, seanceID: nil, supprimerFantomes: false)
             }
             derniereSyncDate = Date()
         } catch {
@@ -359,6 +380,8 @@ extension CloudKitSharingService {
             "scoreAdversaire": seance.scoreAdversaire as CKRecordValue,
             "resultatRaw": seance.resultatRaw as CKRecordValue,
             "estArchivee": (seance.estArchivee ? 1 : 0) as CKRecordValue,
+            // E3 — l'assistant doit savoir qu'un match est finalisé (chip Analyse).
+            "statsEntrees": (seance.statsEntrees ? 1 : 0) as CKRecordValue,
             "dateModification": seance.dateModification as CKRecordValue
         ]
     }

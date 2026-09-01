@@ -114,6 +114,9 @@ extension CloudKitSharingService {
         // se rattachent à leur séance parente).
         try await importerContenusPreparation(codeEquipe: codeEquipe, context: context)
 
+        // 7d. E3 — analyse (box scores, points live incrémentaux, formations).
+        try await importerAnalyse(codeEquipe: codeEquipe, context: context)
+
         do {
             try context.save()
         } catch {
@@ -142,6 +145,9 @@ extension CloudKitSharingService {
 
             // E2 — contenus de préparation (après les séances pour le rattachement).
             try await importerContenusPreparation(codeEquipe: codeEquipe, context: context)
+
+            // E3 — analyse (box scores, points live incrémentaux, formations).
+            try await importerAnalyse(codeEquipe: codeEquipe, context: context)
 
             do {
                 try context.save()
@@ -377,6 +383,7 @@ extension CloudKitSharingService {
             existant.scoreAdversaire = record["scoreAdversaire"] as? Int ?? existant.scoreAdversaire
             existant.resultatRaw = record.chaineSecurisee("resultatRaw") ?? existant.resultatRaw
             existant.estArchivee = (record["estArchivee"] as? Int ?? 0) == 1
+            existant.statsEntrees = (record["statsEntrees"] as? Int ?? (existant.statsEntrees ? 1 : 0)) == 1
             existant.dateModification = remoteDateMod
             return
         }
@@ -391,6 +398,7 @@ extension CloudKitSharingService {
         seance.scoreAdversaire = record["scoreAdversaire"] as? Int ?? 0
         seance.resultatRaw = record.chaineSecurisee("resultatRaw") ?? ""
         seance.estArchivee = (record["estArchivee"] as? Int ?? 0) == 1
+        seance.statsEntrees = (record["statsEntrees"] as? Int ?? 0) == 1
         seance.dateModification = remoteDateMod
         context.insert(seance)
     }
@@ -410,10 +418,16 @@ extension CloudKitSharingService {
     /// garde-fou contre une requête dégénérée, jamais atteint en usage normal.
     private static let maxPagesFetch = 25
 
-    private func fetchRecords(type: String, codeEquipe: String) async throws -> [CKRecord] {
+    func fetchRecords(type: String, codeEquipe: String) async throws -> [CKRecord] {
         // Les deux champs (codeEquipe ET codeEcole) doivent être QUERYABLE dans le
         // schéma CloudKit public pour UtilisateurPartage (action humaine ASC).
         let predicate = Self.predicatRecherche(estUtilisateur: type == RecordType.utilisateur, codeEquipe: codeEquipe)
+        return try await fetchRecords(type: type, predicate: predicate)
+    }
+
+    /// Variante à prédicat libre (E3 : requêtes par seanceID/horodatage).
+    /// Interne au service (partagé entre extensions), paginé par curseur.
+    func fetchRecords(type: String, predicate: NSPredicate) async throws -> [CKRecord] {
         let query = CKQuery(recordType: type, predicate: predicate)
 
         var allRecords: [CKRecord] = []

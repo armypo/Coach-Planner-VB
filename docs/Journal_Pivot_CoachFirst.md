@@ -57,6 +57,17 @@ Phasé E1→E4 (voir plan) : durcir les 4 `publierX` (fetch-puis-modifier), publ
 - **Limite connue** : le bump par signature `onChange` peut ré-horodater un contenu réimporté pendant que sa vue est ouverte (écho borné, contenu identique) — les règles de merge E4 documenteront.
 - **Tests** : +13 (`CloudKitPartagePreparationTests` — binaires inline/asset/round-trip, mappings, gardes joueursData/estFavori, rattachement exercice piège #16, orphelin no-op, merges, dédup bibliothèque multi-équipes). **299/299, 45 suites** ; build 0/0.
 
+### E3 — Analyse ✅ 2026-09-01
+
+- **feat(pivot-E3)** — 3 nouveaux record types : `StatsMatchPartage` (box scores, fetch-puis-modifier + merge `dateModification` via nouveau champ additif `StatsMatch.dateModification`), `PointMatchPartage` (points live IMMUABLES — création seule à l'import, type d'action validé contre l'enum, jamais de fallback fabriqué), `FormationPartagee` (formations perso, **dédup par clé fonctionnelle** type×rotation×mode×équipe : deux coachs qui personnalisent la même rotation ne créent pas de doublon, dernier écrivain gagne). Nouveau fichier `CloudKitSharingService+Analyse.swift`.
+- **Volumes PointMatch (jamais de re-sweep complet)** : publication par LOTS de 400 (`modifyRecords`, savePolicy `.allKeys` — points immuables, écrasement idempotent, échec partiel ⇒ le sweep échoue et le seuil n'avance pas) ; sweep incrémental par `horodatage > seuil` ; import incrémental borné au `horodatage` max local (requête `codeEquipe + horodatage`) avec pré-chargement des IDs locaux (pas un fetch par record).
+- **D6 mode déconnecté respecté** : le sweep saute stats+points quand `modeMatchActif` (paramètre passé par ContentView depuis `CloudKitSyncService`) ; la publication in-game se fait à la SORTIE du live — `publierAnalyseMatch` appelé au `onDisappear` de `MatchLiveSplitView` et à la finalisation (`MatchDetailView`), avec **purge des fantômes** (points annulés après une publication précédente : diff remote/local par seanceID → suppressions). Gate rôle coach/admin pour l'instant (E4 étendra aux assistants).
+- **`statsEntrees` ajouté au miroir `SeancePartagee`** (l'assistant voit le chip « Analyse » d'un match finalisé) ; `finaliserStats` bump désormais `stat/joueur/seance.dateModification` ; la cascade de suppression de match (MatchsView) bump `joueur.dateModification` (cumuls corrigés republiés).
+- **Refactor** : `fetchRecords(type:predicate:)` extrait (interne au service) pour les requêtes par seanceID/horodatage.
+- **Actions schéma CloudKit (ASC, au premier déploiement)** : `seanceID` QUERYABLE sur `PointMatchPartage` (purge fantômes), `horodatage` QUERYABLE/SORTABLE sur `PointMatchPartage` (import incrémental), `codeEquipe` QUERYABLE sur les 7 nouveaux types E2/E3.
+- **Limites connues (documentées)** : un fantôme déjà importé par l'assistant avant sa purge remote reste local (rare : annulation APRÈS une publication ; réconciliation par diff = E4+) ; les StatsMatch/PointMatch d'un match supprimé côté coach restent en Public DB (le match archivé se propage et les masque).
+- **Tests** : +8 (`CloudKitPartageAnalyseTests` 7 — lots, mappings stats/points, immuabilité + rejet type inconnu, formations dédup par clé ; `FinalisationMatchTests` +1 — bumps E3). **307/307, 46 suites** ; build 0/0.
+
 ## Reste global
 
 - Rebase de `suivis/pr6` (démo) après le retour de la branche sur `main` (PR différée — GitHub indisponible le 2026-08-29).

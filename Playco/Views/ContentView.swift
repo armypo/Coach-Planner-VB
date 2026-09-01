@@ -154,7 +154,11 @@ struct ContentView: View {
         case .etudiant, .assistantCoach:
             await sharingService.syncDepuisPublic(codeEquipe: code, context: modelContext)
         case .coach, .admin:
-            await sharingService.publierMisesAJourCoach(codeEquipe: code, context: modelContext)
+            // D6 mode déconnecté : pendant un match live, le sweep ne publie
+            // pas les stats/points in-game (un seul preneur de stats).
+            await sharingService.publierMisesAJourCoach(
+                codeEquipe: code, context: modelContext,
+                modeMatchActif: syncService.modeMatchActif)
         }
     }
 

@@ -14,6 +14,8 @@ struct MatchLiveSplitView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.codeEquipeActif) private var codeEquipeActif
     @Environment(CloudKitSyncService.self) private var syncService
+    @Environment(CloudKitSharingService.self) private var sharingService
+    @Environment(AuthService.self) private var authService
     @Environment(AnalyticsService.self) private var analyticsService
     @Query(filter: #Predicate<JoueurEquipe> { $0.estActif == true },
            sort: \JoueurEquipe.numero) private var tousJoueurs: [JoueurEquipe]
@@ -124,6 +126,15 @@ struct MatchLiveSplitView: View {
                 syncService.activerModeMatch(false)
             }
             MatchLiveRestauration.effacer()
+            // E3 (D6) : publication des données in-game à la SORTIE du live —
+            // un seul preneur de stats pendant le match, sync à la sortie.
+            // E4 étendra aux assistants ; ici même gate rôle que le sweep.
+            let role = authService.utilisateurConnecte?.role
+            if role == .admin || role == .coach {
+                let seanceLive = seance
+                let contexte = modelContext
+                Task { await sharingService.publierAnalyseMatch(seance: seanceLive, context: contexte) }
+            }
         }
         .onChange(of: joueursEquipe) {
             viewModel?.mettreAJourJoueurs(joueursEquipe, codeEquipe: codeEquipeActif)

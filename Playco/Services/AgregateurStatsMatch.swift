@@ -169,6 +169,8 @@ enum AgregateurStatsMatch {
             stat.passesDecisives += c.passesDecisives
             stat.manchettes += c.manchettes
             stat.setsJoues = c.setsJoues
+            // E3 — sweep de publication incrémental (parité assistant D6).
+            stat.dateModification = Date()
         }
 
         let joueursTouches = joueurs.filter { compteurs.keys.contains($0.id) }
@@ -179,6 +181,8 @@ enum AgregateurStatsMatch {
         }
 
         seance.statsEntrees = true
+        // E3 — statsEntrees fait partie du miroir SeancePartagee (chip Analyse).
+        seance.dateModification = Date()
     }
 
     /// Recalcule le cumul carrière d'un joueur depuis la somme de ses

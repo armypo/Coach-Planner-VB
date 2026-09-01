@@ -55,6 +55,10 @@ final class CloudKitSharingService {
         static let strategie = "StrategiePartagee"
         static let scouting = "ScoutingPartage"
         static let bibliotheque = "BibliothequePartagee"
+        // E3 — analyse (parité assistant D6)
+        static let statsMatch = "StatsMatchPartage"
+        static let pointMatch = "PointMatchPartage"
+        static let formation = "FormationPartagee"
     }
 
     // MARK: - Erreurs
