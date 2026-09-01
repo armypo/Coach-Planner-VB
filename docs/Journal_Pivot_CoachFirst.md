@@ -84,6 +84,6 @@ Phasé E1→E4 (voir plan) : plomberie durcie, contenus de préparation, analyse
 
 - **Action humaine (Dashboard CloudKit, avant prod du miroir élargi)** : champs QUERYABLE des nouveaux record types E2/E3 (`codeEquipe` partout ; `seanceID` + `horodatage` sur `PointMatchPartage`) + rôle d'écriture créateur-seul sur les nouveaux types (même posture que `docs/Securite_AbonnementPublicDB.md`).
 - Rebase de `suivis/pr6` (démo) après le retour de la branche sur `main` (PR différée — GitHub indisponible le 2026-08-29).
-- Refresh complet de `CLAUDE.md` (sections paywall/messagerie/athlète périmées) — ligne d'historique ajoutée en attendant.
+- ✅ 2026-08-29 : refresh complet de `CLAUDE.md` — toutes les sections descriptives réécrites à l'état pivot (résumé, stack, navigation, tables de fichiers, conventions auth/rôles D6, design Mat Nuit, pièges 22/23/26 réécrits + 27 fetch-puis-modifier + 28 mode déconnecté, build/tests, état actuel) ; historique des patchs et section MCP préservés tels quels.
 - Textes légaux externes (placeholders) à écrire sans athlètes ni abonnements ; reformulation complète attestation → collecte/vidéo.
 - Action humaine n°1 : renseigner `TelemetryDeckAppID` (la rétention est le seul KPI de l'app gratuite).
