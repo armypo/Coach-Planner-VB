@@ -92,30 +92,46 @@ extension CloudKitSharingService {
             }
         }
 
+        // E′ §2 — chaîne de confiance par créateur, construite AVANT tout import.
+        let confiance = try await construireConfianceEquipe(codeEquipe: codeEquipe)
+
+        // E′ §4 — tombstones appliqués en PREMIER (les suppressions gagnent
+        // sur les records d'entité périmés).
+        try await importerTombstones(codeEquipe: codeEquipe, confiance: confiance, context: context)
+
         // 6. Importer les Utilisateur de mapping d'équipe (SANS secret — cf.
         // `champsPublicsUtilisateur`). Requis pour la jointure SIWA : `reclamerMembreLocal`
         // retrouve la ligne de roster par code d'invitation puis y rattache l'appleUserID.
         let utilisateurRecords = try await fetchRecords(type: RecordType.utilisateur, codeEquipe: codeEquipe)
-        for record in utilisateurRecords {
-            importerUtilisateur(from: record, context: context)
+        for record in utilisateurRecords where accepterRecord(record, confiance: confiance, codeEquipe: codeEquipe) {
+            if let (entiteID, date) = importerUtilisateur(from: record, context: context) {
+                etatSync.poserFiligrane(codeEquipe, entiteID: entiteID, date: date)
+            }
         }
 
         // 7. Récupérer et importer les joueurs
         let joueurRecords = try await fetchRecords(type: RecordType.joueur, codeEquipe: codeEquipe)
-        for record in joueurRecords {
-            importerJoueur(from: record, context: context)
+        for record in joueurRecords where accepterRecord(record, confiance: confiance, codeEquipe: codeEquipe) {
+            if let (entiteID, date) = importerJoueur(from: record, context: context),
+               !etatSync.estSupprimee(codeEquipe, entiteID: entiteID, dateModification: date) {
+                etatSync.poserFiligrane(codeEquipe, entiteID: entiteID, date: date)
+            }
         }
 
         // 7b. Importer les séances (incl. matchs type=.match).
         let seanceRecords = try await fetchRecords(type: RecordType.seance, codeEquipe: codeEquipe)
-        for record in seanceRecords { importerSeance(from: record, context: context) }
+        for record in seanceRecords where accepterRecord(record, confiance: confiance, codeEquipe: codeEquipe) {
+            if let (entiteID, date) = importerSeance(from: record, context: context) {
+                etatSync.poserFiligrane(codeEquipe, entiteID: entiteID, date: date)
+            }
+        }
 
         // 7c. E2 — contenus de préparation (APRÈS les séances : les exercices
         // se rattachent à leur séance parente).
-        try await importerContenusPreparation(codeEquipe: codeEquipe, context: context)
+        try await importerContenusPreparation(codeEquipe: codeEquipe, confiance: confiance, context: context)
 
         // 7d. E3 — analyse (box scores, points live incrémentaux, formations).
-        try await importerAnalyse(codeEquipe: codeEquipe, context: context)
+        try await importerAnalyse(codeEquipe: codeEquipe, confiance: confiance, context: context)
 
         do {
             try context.save()
@@ -125,9 +141,9 @@ extension CloudKitSharingService {
         }
 
         // E4 — baseline de publication : après un import initial complet, tout
-        // le contenu local vient du remote — le premier sweep de publication de
-        // cet appareil ne doit pas re-téléverser l'équipe entière.
-        derniereSyncDate = Date()
+        // le contenu local vient du remote (et filigrané) — le premier sweep de
+        // cet appareil ne re-téléverse pas l'équipe. Seuil PAR ÉQUIPE (E′).
+        etatSync.modifier(codeEquipe) { $0.seuilPublication = Date() }
 
         logger.info("Équipe \(codeEquipe, privacy: .private) importée: \(joueurRecords.count) joueurs (comptes non répliqués)")
     }
@@ -137,22 +153,36 @@ extension CloudKitSharingService {
 
     /// Synchronise les nouvelles données depuis le public DB (appel périodique)
     func syncDepuisPublic(codeEquipe: String, context: ModelContext) async {
+        #if DEMO
+        return
+        #endif
         do {
+            // E′ §2/§4 : confiance par créateur puis tombstones, avant tout import.
+            let confiance = try await construireConfianceEquipe(codeEquipe: codeEquipe)
+            try await importerTombstones(codeEquipe: codeEquipe, confiance: confiance, context: context)
+
             // SÉCURITÉ : pas d'import de comptes Utilisateur (credentials). On ne
             // rafraîchit que les données non sensibles (roster, séances, calendrier).
             let joueurRecords = try await fetchRecords(type: RecordType.joueur, codeEquipe: codeEquipe)
-            for record in joueurRecords {
-                importerJoueur(from: record, context: context)
+            for record in joueurRecords where accepterRecord(record, confiance: confiance, codeEquipe: codeEquipe) {
+                if let (entiteID, date) = importerJoueur(from: record, context: context),
+                   !etatSync.estSupprimee(codeEquipe, entiteID: entiteID, dateModification: date) {
+                    etatSync.poserFiligrane(codeEquipe, entiteID: entiteID, date: date)
+                }
             }
 
             let seanceRecords = try await fetchRecords(type: RecordType.seance, codeEquipe: codeEquipe)
-            for record in seanceRecords { importerSeance(from: record, context: context) }
+            for record in seanceRecords where accepterRecord(record, confiance: confiance, codeEquipe: codeEquipe) {
+                if let (entiteID, date) = importerSeance(from: record, context: context) {
+                    etatSync.poserFiligrane(codeEquipe, entiteID: entiteID, date: date)
+                }
+            }
 
             // E2 — contenus de préparation (après les séances pour le rattachement).
-            try await importerContenusPreparation(codeEquipe: codeEquipe, context: context)
+            try await importerContenusPreparation(codeEquipe: codeEquipe, confiance: confiance, context: context)
 
             // E3 — analyse (box scores, points live incrémentaux, formations).
-            try await importerAnalyse(codeEquipe: codeEquipe, context: context)
+            try await importerAnalyse(codeEquipe: codeEquipe, confiance: confiance, context: context)
 
             do {
                 try context.save()
@@ -172,18 +202,131 @@ extension CloudKitSharingService {
 
     /// Importe exercices de séance, stratégies, scoutings et bibliothèque.
     /// Appelé APRÈS l'import des séances (rattachement des exercices).
-    func importerContenusPreparation(codeEquipe: String, context: ModelContext) async throws {
+    /// E′ : confiance par créateur, tombstones respectés, filigranes posés.
+    func importerContenusPreparation(codeEquipe: String, confiance: ConfianceEquipe, context: ModelContext) async throws {
+        func integrer(_ resultat: (UUID, Date)?) {
+            guard let (entiteID, date) = resultat,
+                  !etatSync.estSupprimee(codeEquipe, entiteID: entiteID, dateModification: date) else { return }
+            etatSync.poserFiligrane(codeEquipe, entiteID: entiteID, date: date)
+        }
+        func supprimee(_ record: CKRecord, cleID: String) -> Bool {
+            guard let idStr = record.chaineSecurisee(cleID), let id = UUID(uuidString: idStr) else { return true }
+            let date = record["dateModification"] as? Date ?? .distantPast
+            return etatSync.estSupprimee(codeEquipe, entiteID: id, dateModification: date)
+        }
+
         let exerciceRecords = try await fetchRecords(type: RecordType.exercice, codeEquipe: codeEquipe)
-        for record in exerciceRecords { importerExercice(from: record, context: context) }
+        for record in exerciceRecords
+        where accepterRecord(record, confiance: confiance, codeEquipe: codeEquipe) && !supprimee(record, cleID: "exerciceID") {
+            integrer(importerExercice(from: record, context: context))
+        }
 
         let strategieRecords = try await fetchRecords(type: RecordType.strategie, codeEquipe: codeEquipe)
-        for record in strategieRecords { importerStrategie(from: record, context: context) }
+        for record in strategieRecords
+        where accepterRecord(record, confiance: confiance, codeEquipe: codeEquipe) && !supprimee(record, cleID: "strategieID") {
+            integrer(importerStrategie(from: record, context: context))
+        }
 
         let scoutingRecords = try await fetchRecords(type: RecordType.scouting, codeEquipe: codeEquipe)
-        for record in scoutingRecords { importerScouting(from: record, context: context) }
+        for record in scoutingRecords
+        where accepterRecord(record, confiance: confiance, codeEquipe: codeEquipe) && !supprimee(record, cleID: "scoutingID") {
+            integrer(importerScouting(from: record, context: context))
+        }
 
         let biblioRecords = try await fetchRecords(type: RecordType.bibliotheque, codeEquipe: codeEquipe)
-        for record in biblioRecords { importerBibliotheque(from: record, context: context) }
+        for record in biblioRecords
+        where accepterRecord(record, confiance: confiance, codeEquipe: codeEquipe) && !supprimee(record, cleID: "exerciceID") {
+            integrer(importerBibliotheque(from: record, context: context))
+        }
+    }
+
+    // MARK: - Confiance par créateur (E′ §2)
+
+    /// Construit l'ensemble de confiance d'une équipe depuis la Public DB :
+    /// racine = créateur du record `equipe-<code>` (recordName unique,
+    /// infalsifiable), membres = racine + assistants dont la copie
+    /// UtilisateurPartage revendique un couple (utilisateurID, codeInvitation)
+    /// émis par la racine.
+    func construireConfianceEquipe(codeEquipe: String) async throws -> ConfianceEquipe {
+        let equipeRecords = try await fetchRecords(type: RecordType.equipe, codeEquipe: codeEquipe)
+        let racine = equipeRecords.first?.creatorUserRecordID?.recordName
+        let utilisateurRecords = try await fetchRecords(type: RecordType.utilisateur, codeEquipe: codeEquipe)
+        let lignes: [(createur: String, utilisateurID: String, codeInvitation: String)] =
+            utilisateurRecords.compactMap { record in
+                guard let createur = record.creatorUserRecordID?.recordName,
+                      let utilisateurID = record.chaineSecurisee("utilisateurID") else { return nil }
+                return (createur, utilisateurID, record.chaineSecurisee("codeInvitation") ?? "")
+            }
+        return Self.construireConfiance(racine: racine, lignes: lignes)
+    }
+
+    /// E′ §1-2 : un record n'est importé que s'il (1) porte une identité
+    /// d'écrivain (les records legacy pré-E′ sont inertes), (2) vient d'un
+    /// créateur de confiance (métadonnée serveur, infalsifiable), (3) revendique
+    /// la bonne équipe.
+    func accepterRecord(_ record: CKRecord, confiance: ConfianceEquipe, codeEquipe: String) -> Bool {
+        guard let ecrivain = record.chaineSecurisee("ecrivainID"), !ecrivain.isEmpty else { return false }
+        guard confiance.accepte(createur: record.creatorUserRecordID?.recordName) else { return false }
+        return record.chaineSecurisee("codeEquipe") == codeEquipe
+    }
+
+    // MARK: - Tombstones (E′ §4)
+
+    /// Importe et applique les tombstones de suppression AVANT tout le reste :
+    /// entité locale supprimée si le tombstone est au moins aussi récent que sa
+    /// dateModification ; les records d'entité plus vieux sont ensuite ignorés
+    /// (`EtatSyncEquipe.estSupprimee`). Une re-création postérieure gagne.
+    func importerTombstones(codeEquipe: String, confiance: ConfianceEquipe, context: ModelContext) async throws {
+        let records = try await fetchRecords(type: RecordType.suppression, codeEquipe: codeEquipe)
+        for record in records where accepterRecord(record, confiance: confiance, codeEquipe: codeEquipe) {
+            guard let idStr = record.chaineSecurisee("entiteID"),
+                  let entiteID = UUID(uuidString: idStr),
+                  let typeCible = record.chaineSecurisee("typeCible"),
+                  let horodatage = record["horodatage"] as? Date else { continue }
+            etatSync.enregistrerTombstone(codeEquipe, entiteID: entiteID, horodatage: horodatage)
+            appliquerTombstone(typeCible: typeCible, entiteID: entiteID,
+                               horodatage: horodatage, context: context)
+        }
+    }
+
+    /// Supprime localement l'entité visée si le tombstone gagne le LWW.
+    private func appliquerTombstone(typeCible: String, entiteID: UUID, horodatage: Date, context: ModelContext) {
+        func supprimer<T: PersistentModel>(_ desc: FetchDescriptor<T>, date: (T) -> Date) {
+            guard let entite = try? context.fetch(desc).first,
+                  EtatSyncEquipe.tombstoneGagne(horodatageTombstone: horodatage,
+                                                dateModificationLocale: date(entite)) else { return }
+            context.delete(entite)
+        }
+        switch typeCible {
+        case RecordType.exercice:
+            supprimer(FetchDescriptor<Exercice>(predicate: #Predicate { $0.id == entiteID }),
+                      date: { $0.dateModification })
+        case RecordType.bibliotheque:
+            supprimer(FetchDescriptor<ExerciceBibliotheque>(predicate: #Predicate { $0.id == entiteID }),
+                      date: { $0.dateModification })
+        case RecordType.formation:
+            supprimer(FetchDescriptor<FormationPersonnalisee>(predicate: #Predicate { $0.id == entiteID }),
+                      date: { $0.dateModification })
+        case RecordType.joueur:
+            supprimer(FetchDescriptor<JoueurEquipe>(predicate: #Predicate { $0.id == entiteID }),
+                      date: { $0.dateModification })
+        case RecordType.scouting:
+            supprimer(FetchDescriptor<ScoutingReport>(predicate: #Predicate { $0.id == entiteID }),
+                      date: { $0.dateModification })
+        case RecordType.statsMatch:
+            supprimer(FetchDescriptor<StatsMatch>(predicate: #Predicate { $0.id == entiteID }),
+                      date: { $0.dateModification })
+        case Self.typeCiblePointsSeance:
+            // Portée séance : purge tous les points locaux du match supprimé
+            // antérieurs au tombstone (le preneur de stats qui recrée gagne).
+            let points = (try? context.fetch(
+                FetchDescriptor<PointMatch>(predicate: #Predicate { $0.seanceID == entiteID }))) ?? []
+            for point in points where point.horodatage <= horodatage {
+                context.delete(point)
+            }
+        default:
+            break
+        }
     }
 
     // MARK: - Import vers SwiftData
@@ -211,9 +354,10 @@ extension CloudKitSharingService {
         return etab
     }
 
-    func importerUtilisateur(from record: CKRecord, context: ModelContext) {
+    @discardableResult
+    func importerUtilisateur(from record: CKRecord, context: ModelContext) -> (UUID, Date)? {
         guard let idString = record.chaineSecurisee("utilisateurID"),
-              let uuid = UUID(uuidString: idString) else { return }
+              let uuid = UUID(uuidString: idString) else { return nil }
 
         // Vérifier si cet utilisateur existe déjà
         let descripteur = FetchDescriptor<Utilisateur>(
@@ -222,7 +366,7 @@ extension CloudKitSharingService {
         if let existant = try? context.fetch(descripteur).first {
             // Comparer dateModification — ne mettre à jour que si le remote est plus récent
             let remoteDateMod = record["dateModification"] as? Date ?? .distantPast
-            guard remoteDateMod > existant.dateModification else { return }
+            guard remoteDateMod > existant.dateModification else { return nil }
 
             // Mettre à jour les champs mutables
             existant.estActif = (record["estActif"] as? Int ?? 1) == 1
@@ -255,7 +399,7 @@ extension CloudKitSharingService {
             if let posteRaw = record.chaineSecurisee("posteRaw") {
                 existant.posteRaw = posteRaw
             }
-            return
+            return (uuid, remoteDateMod)
         }
 
         // Créer le nouvel utilisateur de mapping d'équipe. SÉCURITÉ : aucun secret
@@ -287,13 +431,19 @@ extension CloudKitSharingService {
         if let posteRaw = record.chaineSecurisee("posteRaw") {
             utilisateur.posteRaw = posteRaw
         }
+        // E′ (revue : inflation de timestamp) — la branche CRÉATION adopte la
+        // dateModification DISTANTE, comme la branche update (anti-écho).
+        let remoteDateMod = record["dateModification"] as? Date ?? .distantPast
+        utilisateur.dateModification = remoteDateMod
 
         context.insert(utilisateur)
+        return (uuid, remoteDateMod)
     }
 
-    func importerJoueur(from record: CKRecord, context: ModelContext) {
+    @discardableResult
+    func importerJoueur(from record: CKRecord, context: ModelContext) -> (UUID, Date)? {
         guard let idString = record.chaineSecurisee("joueurID"),
-              let uuid = UUID(uuidString: idString) else { return }
+              let uuid = UUID(uuidString: idString) else { return nil }
 
         // Vérifier si ce joueur existe déjà
         let descripteur = FetchDescriptor<JoueurEquipe>(
@@ -302,7 +452,7 @@ extension CloudKitSharingService {
         if let existant = try? context.fetch(descripteur).first {
             // Comparer dateModification — ne mettre à jour que si le remote est plus récent
             let remoteDateMod = record["dateModification"] as? Date ?? .distantPast
-            guard remoteDateMod > existant.dateModification else { return }
+            guard remoteDateMod > existant.dateModification else { return nil }
             existant.nom = record.chaineSecurisee("nom") ?? existant.nom
             existant.prenom = record.chaineSecurisee("prenom") ?? existant.prenom
             existant.numero = record["numero"] as? Int ?? existant.numero
@@ -310,7 +460,7 @@ extension CloudKitSharingService {
             appliquerStats(record, sur: existant)
             appliquerDisponibilite(record, sur: existant)
             existant.dateModification = remoteDateMod
-            return
+            return (uuid, remoteDateMod)
         }
 
         let joueur = JoueurEquipe(
@@ -328,26 +478,25 @@ extension CloudKitSharingService {
         }
         appliquerStats(record, sur: joueur)
         appliquerDisponibilite(record, sur: joueur)
+        // E′ — la branche création adopte la dateModification distante (anti-écho).
+        let remoteDateMod = record["dateModification"] as? Date ?? .distantPast
+        joueur.dateModification = remoteDateMod
 
         context.insert(joueur)
+        return (uuid, remoteDateMod)
     }
 
-    /// Applique disponibilité + attestation de consentement (E1 — parité D6).
-    /// Sanitisé : le statut est validé contre l'enum `StatutDisponibilite`
-    /// (les records publics sont des données externes non fiables).
+    /// E′ §7 — PII minimale : seul un BOOLÉEN de disponibilité transite par la
+    /// Public DB. Le motif (santé) et l'attestation parentale restent locaux au
+    /// compte qui les a saisis. Indisponible distant → statut générique
+    /// `.indisponible` (sans écraser un motif local plus riche) ; disponible
+    /// distant → statut vidé.
     private func appliquerDisponibilite(_ record: CKRecord, sur joueur: JoueurEquipe) {
-        if let statut = record.chaineSecurisee("statutDisponibiliteRaw"),
-           statut.isEmpty || StatutDisponibilite(rawValue: statut) != nil {
-            joueur.statutDisponibiliteRaw = statut
-        }
-        if let atteste = record["consentementParentalAtteste"] as? Int {
-            joueur.consentementParentalAtteste = atteste == 1
-        }
-        if let dateAttestation = record["dateAttestationConsentement"] as? Date {
-            joueur.dateAttestationConsentement = dateAttestation
-        }
-        if let nomAttestant = record.chaineSecurisee("attesteParNom") {
-            joueur.attesteParNom = nomAttestant
+        guard let dispo = record["estDisponible"] as? Int else { return }
+        if dispo == 1 {
+            joueur.statutDisponibiliteRaw = ""
+        } else if joueur.estDisponible {
+            joueur.statutDisponibilite = .indisponible
         }
     }
 
@@ -371,14 +520,16 @@ extension CloudKitSharingService {
         joueur.manchettes = record["manchettes"] as? Int ?? joueur.manchettes
     }
 
-    /// Importe une séance (merge `dateModification`). Lecture seule athlète.
-    func importerSeance(from record: CKRecord, context: ModelContext) {
+    /// Importe une séance (merge `dateModification`).
+    /// - Returns: (entiteID, dateModification appliquée) pour le filigrane, nil si ignoré.
+    @discardableResult
+    func importerSeance(from record: CKRecord, context: ModelContext) -> (UUID, Date)? {
         guard let idString = record.chaineSecurisee("seanceID"),
-              let uuid = UUID(uuidString: idString) else { return }
+              let uuid = UUID(uuidString: idString) else { return nil }
         let remoteDateMod = record["dateModification"] as? Date ?? .distantPast
         let desc = FetchDescriptor<Seance>(predicate: #Predicate { $0.id == uuid })
         if let existant = try? context.fetch(desc).first {
-            guard remoteDateMod > existant.dateModification else { return }
+            guard remoteDateMod > existant.dateModification else { return nil }
             existant.nom = record.chaineSecurisee("nom") ?? existant.nom
             existant.date = record["date"] as? Date ?? existant.date
             existant.typeSeanceRaw = record.chaineSecurisee("typeSeanceRaw") ?? existant.typeSeanceRaw
@@ -390,7 +541,7 @@ extension CloudKitSharingService {
             existant.estArchivee = (record["estArchivee"] as? Int ?? 0) == 1
             existant.statsEntrees = (record["statsEntrees"] as? Int ?? (existant.statsEntrees ? 1 : 0)) == 1
             existant.dateModification = remoteDateMod
-            return
+            return (uuid, remoteDateMod)
         }
         let seance = Seance(nom: record.chaineSecurisee("nom") ?? "",
                             date: record["date"] as? Date ?? Date(),
@@ -406,6 +557,7 @@ extension CloudKitSharingService {
         seance.statsEntrees = (record["statsEntrees"] as? Int ?? 0) == 1
         seance.dateModification = remoteDateMod
         context.insert(seance)
+        return (uuid, remoteDateMod)
     }
 
     // MARK: - Helpers CloudKit
@@ -430,10 +582,12 @@ extension CloudKitSharingService {
         return try await fetchRecords(type: type, predicate: predicate)
     }
 
-    /// Variante à prédicat libre (E3 : requêtes par seanceID/horodatage).
+    /// Variante à prédicat libre (E3 : requêtes par seanceID/publieLe).
     /// Interne au service (partagé entre extensions), paginé par curseur.
-    func fetchRecords(type: String, predicate: NSPredicate) async throws -> [CKRecord] {
+    func fetchRecords(type: String, predicate: NSPredicate,
+                      tri: [NSSortDescriptor]? = nil) async throws -> [CKRecord] {
         let query = CKQuery(recordType: type, predicate: predicate)
+        if let tri { query.sortDescriptors = tri }
 
         var allRecords: [CKRecord] = []
         var (results, curseur) = try await publicDB.records(matching: query, resultsLimit: 200)

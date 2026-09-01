@@ -28,12 +28,14 @@ final class CloudKitSharingService {
     var estEnCoursDeRecuperation = false
     var erreur: String?
 
-    /// Date de la dernière sync réussie (persistée en UserDefaults)
-    // interne (partagé entre extensions du service)
-    var derniereSyncDate: Date {
-        get { UserDefaults.standard.object(forKey: "derniereSyncPublic") as? Date ?? .distantPast }
-        set { UserDefaults.standard.set(newValue, forKey: "derniereSyncPublic") }
-    }
+    /// E′ — identité d'ÉCRIVAIN de cet appareil (`Utilisateur.id` du compte
+    /// connecté, stable inter-appareils d'un même compte). Posée par ContentView
+    /// avant toute sync et par la jonction. Aucune publication sans écrivain.
+    var ecrivainID: String?
+
+    /// E′ — état de sync PAR ÉQUIPE : seuil de publication, filigranes anti-écho,
+    /// tombstones traités, borne d'import des points (docs/Architecture_SyncEPrime.md §3).
+    let etatSync = EtatSyncEquipe()
 
     // MARK: - CloudKit
 
@@ -59,6 +61,71 @@ final class CloudKitSharingService {
         static let statsMatch = "StatsMatchPartage"
         static let pointMatch = "PointMatchPartage"
         static let formation = "FormationPartagee"
+        // E′ — tombstones de suppression (docs/Architecture_SyncEPrime.md §4)
+        static let suppression = "SuppressionPartagee"
+    }
+
+    // MARK: - Nommage par écrivain (E′ §1)
+
+    /// RecordName par écrivain : deux coachs n'écrivent JAMAIS le même record
+    /// (la Public DB n'autorise l'écriture d'un record existant qu'à son
+    /// créateur). L'import fusionne les copies par LWW. Fonction pure testable.
+    static func nomRecord(_ prefixe: String, id: String, ecrivain: String) -> String {
+        "\(prefixe)-\(id)-w\(ecrivain)"
+    }
+
+    /// Portée séance des tombstones de points live (un tombstone couvre tous
+    /// les points d'un match supprimé — jamais un tombstone par point).
+    static let typeCiblePointsSeance = "PointMatchSeance"
+
+    // MARK: - Confiance par créateur (E′ §2)
+
+    /// Ensemble des créateurs CloudKit acceptés à l'import d'une équipe.
+    /// `creatorUserRecordID` est posé par le SERVEUR — infalsifiable, contrairement
+    /// aux champs du record (codeEquipe, IDs…) qu'un tiers peut copier.
+    struct ConfianceEquipe {
+        /// Créateur du record `equipe-<code>` (recordName unique : le premier
+        /// créateur le détient). nil = équipe introuvable → tout est rejeté.
+        let racine: String?
+        /// Racine + assistants dont la copie UtilisateurPartage correspond à une
+        /// ligne créée par la racine (couple utilisateurID+codeInvitation).
+        let membres: Set<String>
+
+        /// Mes propres records reviennent avec le créateur placeholder
+        /// `__defaultOwner__` — toujours de confiance (ils sont à moi).
+        static let proprietaireLocal = "__defaultOwner__"
+
+        func accepte(createur: String?) -> Bool {
+            guard let createur else { return false }
+            if createur == Self.proprietaireLocal { return true }
+            return membres.contains(createur)
+        }
+    }
+
+    /// Construit l'ensemble de confiance à partir des lignes UtilisateurPartage.
+    /// Fonction pure testable. `lignes` = (createur, utilisateurID, codeInvitation).
+    static func construireConfiance(
+        racine: String?,
+        lignes: [(createur: String, utilisateurID: String, codeInvitation: String)]
+    ) -> ConfianceEquipe {
+        guard let racine else { return ConfianceEquipe(racine: nil, membres: []) }
+        var membres: Set<String> = [racine]
+        // Couples émis par la RACINE (ou par moi si je suis la racine).
+        let couplesRacine = Set(
+            lignes
+                .filter { $0.createur == racine || $0.createur == ConfianceEquipe.proprietaireLocal }
+                .filter { !$0.codeInvitation.isEmpty }
+                .map { "\($0.utilisateurID)|\($0.codeInvitation)" }
+        )
+        // Un écrivain tiers est accepté si sa copie revendique un couple émis
+        // par la racine (jeton au porteur — même niveau de confiance que la
+        // jonction par code d'invitation, D5).
+        for ligne in lignes where ligne.createur != racine && ligne.createur != ConfianceEquipe.proprietaireLocal {
+            if couplesRacine.contains("\(ligne.utilisateurID)|\(ligne.codeInvitation)") {
+                membres.insert(ligne.createur)
+            }
+        }
+        return ConfianceEquipe(racine: racine, membres: membres)
     }
 
     // MARK: - Plan de synchronisation par rôle (E4 — parité D6)

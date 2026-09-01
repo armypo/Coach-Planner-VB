@@ -14,6 +14,7 @@ struct MatchsView: View {
 
     @Environment(\.modelContext) private var modelContext
     @Environment(AuthService.self) private var authService
+    @Environment(CloudKitSharingService.self) private var sharingService
     @Environment(\.codeEquipeActif) private var codeEquipeActif
     @Query(filter: #Predicate<Seance> { $0.estArchivee == false },
            sort: \Seance.date, order: .reverse) private var toutesSeances: [Seance]
@@ -338,6 +339,26 @@ struct MatchsView: View {
 
     private func supprimerMatch(_ match: Seance) {
         if matchSelectionne?.id == match.id { matchSelectionne = nil }
+
+        // E′ §4 — tombstones AVANT les deletes : sans eux, les StatsMatch et
+        // PointMatch publiés par d'autres écrivains ressusciteraient à la
+        // prochaine sync (et regonfleraient les cumuls carrière).
+        if let user = authService.utilisateurConnecte {
+            sharingService.ecrivainID = user.id.uuidString
+            let code = match.codeEquipe
+            let idsStats = tousStatsMatch.filter { $0.seanceID == match.id }.map(\.id)
+            let seanceID = match.id
+            Task {
+                for statID in idsStats {
+                    await sharingService.publierSuppression(
+                        typeCible: CloudKitSharingService.RecordType.statsMatch,
+                        prefixeRecord: "stats", entiteID: statID, codeEquipe: code)
+                }
+                await sharingService.publierSuppression(
+                    typeCible: CloudKitSharingService.typeCiblePointsSeance,
+                    prefixeRecord: nil, entiteID: seanceID, codeEquipe: code)
+            }
+        }
 
         // Si stats déjà entrées → retirer les stats cumulées des joueurs
         if match.statsEntrees {

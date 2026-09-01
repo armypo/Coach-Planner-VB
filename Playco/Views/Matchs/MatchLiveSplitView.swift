@@ -129,8 +129,11 @@ struct MatchLiveSplitView: View {
             // E3/E4 (D6) : publication des données in-game à la SORTIE du live —
             // un seul preneur de stats pendant le match, sync à la sortie.
             // Tout rôle coach publie (assistant = head coach).
-            if let role = authService.utilisateurConnecte?.role,
-               CloudKitSharingService.planSync(role: role).publie {
+            if let user = authService.utilisateurConnecte,
+               CloudKitSharingService.planSync(role: user.role).publie {
+                // E′ §1 — identité d'écrivain posée AVANT la publication (le
+                // sweep n'a pas tourné pendant le live, le service peut être vierge).
+                sharingService.ecrivainID = user.id.uuidString
                 let seanceLive = seance
                 let contexte = modelContext
                 Task { await sharingService.publierAnalyseMatch(seance: seanceLive, context: contexte) }

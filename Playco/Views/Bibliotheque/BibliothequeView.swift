@@ -11,6 +11,7 @@ struct BibliothequeView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @Environment(AuthService.self) private var authService
+    @Environment(CloudKitSharingService.self) private var sharingService
     @Environment(\.codeEquipeActif) private var codeEquipeActif
     @Query(sort: \ExerciceBibliotheque.nom) private var tousExercicesBD: [ExerciceBibliotheque]
     @Query(sort: \CategorieExercice.nom) private var toutesCategoriesPerso: [CategorieExercice]
@@ -183,7 +184,20 @@ struct BibliothequeView: View {
             titleVisibility: .visible
         ) {
             Button("Supprimer", role: .destructive) {
-                if let exo = confirmerSuppression { modelContext.delete(exo) }
+                if let exo = confirmerSuppression {
+                    // E′ §4 — tombstone anti-résurrection (copies des autres coachs).
+                    if let user = authService.utilisateurConnecte {
+                        sharingService.ecrivainID = user.id.uuidString
+                        let exoID = exo.id
+                        let code = codeEquipeActif
+                        Task {
+                            await sharingService.publierSuppression(
+                                typeCible: CloudKitSharingService.RecordType.bibliotheque,
+                                prefixeRecord: nil, entiteID: exoID, codeEquipe: code)
+                        }
+                    }
+                    modelContext.delete(exo)
+                }
                 confirmerSuppression = nil
             }
             Button("Annuler", role: .cancel) { confirmerSuppression = nil }

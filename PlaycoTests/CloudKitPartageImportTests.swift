@@ -114,9 +114,9 @@ struct CloudKitPartageImportTests {
         #expect(j.matchsJoues == 8)
     }
 
-    // MARK: - Disponibilité & attestation (E1 — parité assistant D6)
+    // MARK: - Disponibilité (E′ §7 — PII minimale : booléen seul)
 
-    @Test("Importer un joueur applique disponibilité + attestation")
+    @Test("Importer un joueur indisponible pose le statut GÉNÉRIQUE — jamais de motif santé ni d'attestation depuis la Public DB")
     func importerJoueurDisponibilite() throws {
         let service = CloudKitSharingService()
         let ctx = try contexte()
@@ -125,6 +125,8 @@ struct CloudKitPartageImportTests {
         record["joueurID"] = id.uuidString
         record["nom"] = "Roy"
         record["prenom"] = "Alex"
+        record["estDisponible"] = 0
+        // Champs pré-E′ (ou forgés) : ne doivent JAMAIS être appliqués.
         record["statutDisponibiliteRaw"] = "blesse"
         record["consentementParentalAtteste"] = 1
         record["dateAttestationConsentement"] = Date(timeIntervalSince1970: 1_700_000_000)
@@ -134,13 +136,13 @@ struct CloudKitPartageImportTests {
         try ctx.save()
 
         let j = try #require(try ctx.fetch(FetchDescriptor<JoueurEquipe>()).first)
-        #expect(j.statutDisponibilite == .blesse)
-        #expect(j.consentementParentalAtteste)
-        #expect(j.dateAttestationConsentement == Date(timeIntervalSince1970: 1_700_000_000))
-        #expect(j.attesteParNom == "Coach Dionne")
+        #expect(j.statutDisponibilite == .indisponible, "Motif générique — la santé ne transite pas")
+        #expect(!j.consentementParentalAtteste, "L'attestation ne s'importe JAMAIS (registre légal local)")
+        #expect(j.dateAttestationConsentement == nil)
+        #expect(j.attesteParNom.isEmpty)
     }
 
-    @Test("Merge joueur : un remote plus récent met à jour la disponibilité")
+    @Test("Merge joueur : disponible côté remote plus récent vide le statut ; un motif local n'est pas dégradé par un booléen")
     func mergeJoueurDisponibilite() throws {
         let service = CloudKitSharingService()
         let ctx = try contexte()
@@ -153,17 +155,27 @@ struct CloudKitPartageImportTests {
         ctx.insert(local)
         try ctx.save()
 
+        // Remote plus récent : redevenu disponible → statut vidé.
         let record = CKRecord(recordType: "JoueurPartage")
         record["joueurID"] = id.uuidString
-        record["statutDisponibiliteRaw"] = "" // redevenu disponible côté remote
-        record["consentementParentalAtteste"] = 1
+        record["estDisponible"] = 1
         record["dateModification"] = Date(timeIntervalSince1970: 2_000_000_000)
-
         service.importerJoueur(from: record, context: ctx)
         try ctx.save()
-
         #expect(local.statutDisponibilite == .disponible)
-        #expect(local.consentementParentalAtteste)
+
+        // Motif local reposé PUIS booléen indisponible distant plus récent :
+        // le motif local (plus riche) est conservé, pas dégradé en générique.
+        local.statutDisponibilite = .suspendu
+        local.dateModification = Date(timeIntervalSince1970: 2_500_000_000)
+        let record2 = CKRecord(recordType: "JoueurPartage")
+        record2["joueurID"] = id.uuidString
+        record2["estDisponible"] = 0
+        record2["dateModification"] = Date(timeIntervalSince1970: 3_000_000_000)
+        service.importerJoueur(from: record2, context: ctx)
+        try ctx.save()
+        #expect(local.statutDisponibilite == .suspendu)
+        #expect(!local.estDisponible)
     }
 
     // MARK: - Anti-boucle E4 (réimport de sa propre publication)

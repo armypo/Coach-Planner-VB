@@ -152,15 +152,24 @@ struct ContentView: View {
         guard let user = authService.utilisateurConnecte else { return }
         let code = codeEquipeActif
         guard !code.isEmpty else { return }
+        // E′ §6 — mode déconnecté RÉEL : pendant un match live (y compris après
+        // un kill, tant que le marqueur de reprise est vivant), AUCUNE sync —
+        // ni import (résurrection de points annulés, pollution de l'état du
+        // preneur de stats) ni publication. Le seuil n'avançant pas, le sweep
+        // de sortie de live rattrape tout.
+        guard !syncService.modeMatchActif, MatchLiveRestauration.seanceEnCours() == nil else { return }
+
+        // E′ §1 — identité d'écrivain de ce compte (records par écrivain).
+        sharingService.ecrivainID = user.id.uuidString
+
         let plan = CloudKitSharingService.planSync(role: user.role)
         if plan.importe {
             await sharingService.syncDepuisPublic(codeEquipe: code, context: modelContext)
         }
         if plan.publie {
-            // D6 mode déconnecté : pendant un match live, le sweep ne publie
-            // pas les stats/points in-game (un seul preneur de stats).
             await sharingService.publierMisesAJourCoach(
                 codeEquipe: code, context: modelContext,
+                estAdmin: user.role == .admin,
                 modeMatchActif: syncService.modeMatchActif)
         }
     }

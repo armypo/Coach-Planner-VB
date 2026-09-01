@@ -55,19 +55,47 @@ extension CloudKitSharingService {
         }
     }
 
+    /// Résultat de lecture d'un champ binaire public. E′ §5 : ABSENT (champ
+    /// réellement vide → nil local légitime) est distinct d'ILLISIBLE (échec
+    /// asset, plafond) — un échec ne doit JAMAIS écraser un dessin local.
+    enum LectureBinaire {
+        case absente
+        case donnees(Data)
+        case illisible
+    }
+
     /// Lit un champ binaire publié soit inline (Data) soit en CKAsset,
     /// plafonné à `tailleMaxChampBinaire`.
-    static func lireChampBinaire(_ record: CKRecord, cle: String) -> Data? {
+    static func lireChampBinaire(_ record: CKRecord, cle: String) -> LectureBinaire {
         if let data = record[cle] as? Data {
-            return data.count <= tailleMaxChampBinaire ? data : nil
+            return data.count <= tailleMaxChampBinaire ? .donnees(data) : .illisible
         }
-        guard let asset = record[cle] as? CKAsset, let url = asset.fileURL else { return nil }
-        let attributs = try? FileManager.default.attributesOfItem(atPath: url.path)
-        if let taille = attributs?[.size] as? Int, taille > tailleMaxChampBinaire {
-            logger.warning("lireChampBinaire \(cle): asset de \(taille) octets refusé (plafond)")
-            return nil
+        if let asset = record[cle] as? CKAsset {
+            guard let url = asset.fileURL else { return .illisible }
+            let attributs = try? FileManager.default.attributesOfItem(atPath: url.path)
+            if let taille = attributs?[.size] as? Int, taille > tailleMaxChampBinaire {
+                logger.warning("lireChampBinaire \(cle): asset de \(taille) octets refusé (plafond)")
+                return .illisible
+            }
+            guard let data = try? Data(contentsOf: url) else { return .illisible }
+            return .donnees(data)
         }
-        return try? Data(contentsOf: url)
+        return .absente
+    }
+
+    /// Lit un LOT de champs binaires. nil si l'UN d'eux est ILLISIBLE — l'entité
+    /// entière est alors laissée intacte (retry au prochain cycle), jamais de
+    /// destruction d'un dessin local par un échec de téléchargement (E′ §5).
+    static func lireChampsBinaires(_ record: CKRecord, cles: [String]) -> [String: Data?]? {
+        var resultat: [String: Data?] = [:]
+        for cle in cles {
+            switch lireChampBinaire(record, cle: cle) {
+            case .illisible: return nil
+            case .absente: resultat[cle] = Data?.none
+            case .donnees(let data): resultat[cle] = data
+            }
+        }
+        return resultat
     }
 
     /// Sauvegarde un record après application des champs binaires, puis nettoie
@@ -87,6 +115,7 @@ extension CloudKitSharingService {
         defer {
             for url in temporaires { try? FileManager.default.removeItem(at: url) }
         }
+        _ = try appliquerIdentiteEcrivain(record)
         _ = try await publicDB.save(record)
     }
 
@@ -112,7 +141,8 @@ extension CloudKitSharingService {
         #if DEMO
         return
         #else
-        let recordID = CKRecord.ID(recordName: "exercice-\(exercice.id.uuidString)")
+        guard let ecrivain = ecrivainID, !ecrivain.isEmpty else { throw ErreurEcrivain.ecrivainAbsent }
+        let recordID = CKRecord.ID(recordName: Self.nomRecord("exercice", id: exercice.id.uuidString, ecrivain: ecrivain))
         let record = await recordPublicAJour(type: RecordType.exercice, recordID: recordID)
         try await sauvegarderAvecBinaires(
             record: record,
@@ -125,46 +155,53 @@ extension CloudKitSharingService {
 
     /// Importe un exercice (merge `dateModification`). La séance parente doit
     /// déjà exister localement (les séances sont importées AVANT — sinon
-    /// l'exercice est repris au prochain cycle de sync).
-    func importerExercice(from record: CKRecord, context: ModelContext) {
+    /// l'exercice est repris au prochain cycle de sync). E′ §5 : si un binaire
+    /// est ILLISIBLE, l'entité entière est laissée intacte (retry).
+    /// - Returns: (entiteID, dateModification appliquée) pour le filigrane, nil si ignoré.
+    @discardableResult
+    func importerExercice(from record: CKRecord, context: ModelContext) -> (UUID, Date)? {
         guard let idString = record.chaineSecurisee("exerciceID"),
-              let uuid = UUID(uuidString: idString) else { return }
+              let uuid = UUID(uuidString: idString) else { return nil }
         let remoteDateMod = record["dateModification"] as? Date ?? .distantPast
+        // Piège #5 : etapesData TOUJOURS propagé.
+        guard let binaires = Self.lireChampsBinaires(record, cles: ["dessinData", "elementsData", "etapesData"]) else {
+            return nil  // binaire illisible → aucune mise à jour, retry au prochain cycle
+        }
 
         let desc = FetchDescriptor<Exercice>(predicate: #Predicate { $0.id == uuid })
         if let existant = try? context.fetch(desc).first {
-            guard remoteDateMod > existant.dateModification else { return }
-            appliquerChampsExercice(record, sur: existant)
+            guard remoteDateMod > existant.dateModification else { return nil }
+            appliquerChampsExercice(record, binaires: binaires, sur: existant)
             existant.dateModification = remoteDateMod
-            return
+            return (uuid, remoteDateMod)
         }
 
         guard let seanceIDStr = record.chaineSecurisee("seanceID"),
-              let seanceUUID = UUID(uuidString: seanceIDStr) else { return }
+              let seanceUUID = UUID(uuidString: seanceIDStr) else { return nil }
         let descSeance = FetchDescriptor<Seance>(predicate: #Predicate { $0.id == seanceUUID })
-        guard let seance = try? context.fetch(descSeance).first else { return }
+        guard let seance = try? context.fetch(descSeance).first else { return nil }
 
         let exercice = Exercice(nom: record.chaineSecurisee("nom") ?? "")
         exercice.id = uuid
-        appliquerChampsExercice(record, sur: exercice)
+        appliquerChampsExercice(record, binaires: binaires, sur: exercice)
         exercice.dateModification = remoteDateMod
         context.insert(exercice)
         // Piège #16 : Seance.exercices est optionnel (CloudKit).
         if seance.exercices == nil { seance.exercices = [] }
         seance.exercices?.append(exercice)
+        return (uuid, remoteDateMod)
     }
 
-    private func appliquerChampsExercice(_ record: CKRecord, sur exercice: Exercice) {
+    private func appliquerChampsExercice(_ record: CKRecord, binaires: [String: Data?], sur exercice: Exercice) {
         exercice.nom = record.chaineSecurisee("nom") ?? exercice.nom
         exercice.notes = record.chaineSecurisee("notes") ?? exercice.notes
         exercice.ordre = record["ordre"] as? Int ?? exercice.ordre
         exercice.duree = record["duree"] as? Int ?? exercice.duree
         exercice.typeTerrain = record.chaineSecurisee("typeTerrain") ?? exercice.typeTerrain
         exercice.estArchive = (record["estArchive"] as? Int ?? (exercice.estArchive ? 1 : 0)) == 1
-        exercice.dessinData = Self.lireChampBinaire(record, cle: "dessinData")
-        exercice.elementsData = Self.lireChampBinaire(record, cle: "elementsData")
-        // Piège #5 : etapesData TOUJOURS propagé.
-        exercice.etapesData = Self.lireChampBinaire(record, cle: "etapesData")
+        exercice.dessinData = binaires["dessinData"] ?? nil
+        exercice.elementsData = binaires["elementsData"] ?? nil
+        exercice.etapesData = binaires["etapesData"] ?? nil
     }
 
     // MARK: - Stratégies collectives
@@ -188,7 +225,8 @@ extension CloudKitSharingService {
         #if DEMO
         return
         #else
-        let recordID = CKRecord.ID(recordName: "strategie-\(strategie.id.uuidString)")
+        guard let ecrivain = ecrivainID, !ecrivain.isEmpty else { throw ErreurEcrivain.ecrivainAbsent }
+        let recordID = CKRecord.ID(recordName: Self.nomRecord("strategie", id: strategie.id.uuidString, ecrivain: ecrivain))
         let record = await recordPublicAJour(type: RecordType.strategie, recordID: recordID)
         try await sauvegarderAvecBinaires(
             record: record,
@@ -199,18 +237,24 @@ extension CloudKitSharingService {
         #endif
     }
 
-    /// Importe une stratégie collective (merge `dateModification`).
-    func importerStrategie(from record: CKRecord, context: ModelContext) {
+    /// Importe une stratégie collective (merge `dateModification`). E′ §5 :
+    /// binaire illisible → entité intacte, retry.
+    /// - Returns: (entiteID, dateModification appliquée) pour le filigrane, nil si ignoré.
+    @discardableResult
+    func importerStrategie(from record: CKRecord, context: ModelContext) -> (UUID, Date)? {
         guard let idString = record.chaineSecurisee("strategieID"),
-              let uuid = UUID(uuidString: idString) else { return }
+              let uuid = UUID(uuidString: idString) else { return nil }
         let remoteDateMod = record["dateModification"] as? Date ?? .distantPast
+        guard let binaires = Self.lireChampsBinaires(record, cles: ["dessinData", "elementsData", "etapesData"]) else {
+            return nil
+        }
 
         let desc = FetchDescriptor<StrategieCollective>(predicate: #Predicate { $0.id == uuid })
         if let existante = try? context.fetch(desc).first {
-            guard remoteDateMod > existante.dateModification else { return }
-            appliquerChampsStrategie(record, sur: existante)
+            guard remoteDateMod > existante.dateModification else { return nil }
+            appliquerChampsStrategie(record, binaires: binaires, sur: existante)
             existante.dateModification = remoteDateMod
-            return
+            return (uuid, remoteDateMod)
         }
 
         let strategie = StrategieCollective(
@@ -219,21 +263,22 @@ extension CloudKitSharingService {
         )
         strategie.id = uuid
         strategie.codeEquipe = record.chaineSecurisee("codeEquipe") ?? ""
-        appliquerChampsStrategie(record, sur: strategie)
+        appliquerChampsStrategie(record, binaires: binaires, sur: strategie)
         strategie.dateModification = remoteDateMod
         context.insert(strategie)
+        return (uuid, remoteDateMod)
     }
 
-    private func appliquerChampsStrategie(_ record: CKRecord, sur strategie: StrategieCollective) {
+    private func appliquerChampsStrategie(_ record: CKRecord, binaires: [String: Data?], sur strategie: StrategieCollective) {
         strategie.nom = record.chaineSecurisee("nom") ?? strategie.nom
         strategie.categorieRaw = record.chaineSecurisee("categorieRaw") ?? strategie.categorieRaw
         strategie.descriptionStrategie = record.chaineSecurisee("descriptionStrategie") ?? strategie.descriptionStrategie
         strategie.notes = record.chaineSecurisee("notes") ?? strategie.notes
         strategie.typeTerrain = record.chaineSecurisee("typeTerrain") ?? strategie.typeTerrain
         strategie.estArchivee = (record["estArchivee"] as? Int ?? (strategie.estArchivee ? 1 : 0)) == 1
-        strategie.dessinData = Self.lireChampBinaire(record, cle: "dessinData")
-        strategie.elementsData = Self.lireChampBinaire(record, cle: "elementsData")
-        strategie.etapesData = Self.lireChampBinaire(record, cle: "etapesData")
+        strategie.dessinData = binaires["dessinData"] ?? nil
+        strategie.elementsData = binaires["elementsData"] ?? nil
+        strategie.etapesData = binaires["etapesData"] ?? nil
     }
 
     // MARK: - Rapports de scouting
@@ -269,7 +314,8 @@ extension CloudKitSharingService {
         #if DEMO
         return
         #else
-        let recordID = CKRecord.ID(recordName: "scouting-\(rapport.id.uuidString)")
+        guard let ecrivain = ecrivainID, !ecrivain.isEmpty else { throw ErreurEcrivain.ecrivainAbsent }
+        let recordID = CKRecord.ID(recordName: Self.nomRecord("scouting", id: rapport.id.uuidString, ecrivain: ecrivain))
         let record = await recordPublicAJour(type: RecordType.scouting, recordID: recordID)
         try await sauvegarderAvecBinaires(
             record: record,
@@ -283,29 +329,37 @@ extension CloudKitSharingService {
 
     /// Importe un rapport de scouting (merge `dateModification`).
     /// `joueursData` n'est jamais importé (jamais publié — cf. arbitrage E2) :
-    /// la liste locale des joueurs adverses reste intacte.
-    func importerScouting(from record: CKRecord, context: ModelContext) {
+    /// la liste locale des joueurs adverses reste intacte. E′ §5 : binaire
+    /// illisible → entité intacte, retry.
+    /// - Returns: (entiteID, dateModification appliquée) pour le filigrane, nil si ignoré.
+    @discardableResult
+    func importerScouting(from record: CKRecord, context: ModelContext) -> (UUID, Date)? {
         guard let idString = record.chaineSecurisee("scoutingID"),
-              let uuid = UUID(uuidString: idString) else { return }
+              let uuid = UUID(uuidString: idString) else { return nil }
         let remoteDateMod = record["dateModification"] as? Date ?? .distantPast
+        guard let binaires = Self.lireChampsBinaires(
+            record, cles: ["forcesData", "faiblessesData", "strategiesData", "tendancesZonalesData"]) else {
+            return nil
+        }
 
         let desc = FetchDescriptor<ScoutingReport>(predicate: #Predicate { $0.id == uuid })
         if let existant = try? context.fetch(desc).first {
-            guard remoteDateMod > existant.dateModification else { return }
-            appliquerChampsScouting(record, sur: existant)
+            guard remoteDateMod > existant.dateModification else { return nil }
+            appliquerChampsScouting(record, binaires: binaires, sur: existant)
             existant.dateModification = remoteDateMod
-            return
+            return (uuid, remoteDateMod)
         }
 
         let rapport = ScoutingReport()
         rapport.id = uuid
         rapport.codeEquipe = record.chaineSecurisee("codeEquipe") ?? ""
-        appliquerChampsScouting(record, sur: rapport)
+        appliquerChampsScouting(record, binaires: binaires, sur: rapport)
         rapport.dateModification = remoteDateMod
         context.insert(rapport)
+        return (uuid, remoteDateMod)
     }
 
-    private func appliquerChampsScouting(_ record: CKRecord, sur rapport: ScoutingReport) {
+    private func appliquerChampsScouting(_ record: CKRecord, binaires: [String: Data?], sur rapport: ScoutingReport) {
         rapport.adversaire = record.chaineSecurisee("adversaire") ?? rapport.adversaire
         rapport.dateMatch = record["dateMatch"] as? Date ?? rapport.dateMatch
         rapport.systemJeu = record.chaineSecurisee("systemJeu") ?? rapport.systemJeu
@@ -320,16 +374,16 @@ extension CloudKitSharingService {
         if let seanceIDStr = record.chaineSecurisee("seanceID") {
             rapport.seanceID = UUID(uuidString: seanceIDStr)
         }
-        if let forces = Self.lireChampBinaire(record, cle: "forcesData") {
+        if let forces = binaires["forcesData"] ?? nil {
             rapport.forcesData = forces
         }
-        if let faiblesses = Self.lireChampBinaire(record, cle: "faiblessesData") {
+        if let faiblesses = binaires["faiblessesData"] ?? nil {
             rapport.faiblessesData = faiblesses
         }
-        if let strategies = Self.lireChampBinaire(record, cle: "strategiesData") {
+        if let strategies = binaires["strategiesData"] ?? nil {
             rapport.strategiesData = strategies
         }
-        if let zones = Self.lireChampBinaire(record, cle: "tendancesZonalesData") {
+        if let zones = binaires["tendancesZonalesData"] ?? nil {
             rapport.tendancesZonalesData = zones
         }
     }
@@ -362,7 +416,8 @@ extension CloudKitSharingService {
         // Un record par couple item×équipe : un coach multi-équipes publie le
         // même item sous chaque code (sinon le champ codeEquipe « flotterait »
         // d'un sweep à l'autre et l'item disparaîtrait des requêtes assistants).
-        let recordID = CKRecord.ID(recordName: "biblio-\(exercice.id.uuidString)-\(codeEquipe)")
+        guard let ecrivain = ecrivainID, !ecrivain.isEmpty else { throw ErreurEcrivain.ecrivainAbsent }
+        let recordID = CKRecord.ID(recordName: Self.nomRecord("biblio", id: "\(exercice.id.uuidString)-\(codeEquipe)", ecrivain: ecrivain))
         let record = await recordPublicAJour(type: RecordType.bibliotheque, recordID: recordID)
         try await sauvegarderAvecBinaires(
             record: record,
@@ -375,17 +430,23 @@ extension CloudKitSharingService {
 
     /// Importe un exercice de bibliothèque (merge `dateModification`, dédup par
     /// `exerciceID` — un même item peut être publié sous plusieurs équipes).
-    func importerBibliotheque(from record: CKRecord, context: ModelContext) {
+    /// E′ §5 : binaire illisible → entité intacte, retry.
+    /// - Returns: (entiteID, dateModification appliquée) pour le filigrane, nil si ignoré.
+    @discardableResult
+    func importerBibliotheque(from record: CKRecord, context: ModelContext) -> (UUID, Date)? {
         guard let idString = record.chaineSecurisee("exerciceID"),
-              let uuid = UUID(uuidString: idString) else { return }
+              let uuid = UUID(uuidString: idString) else { return nil }
         let remoteDateMod = record["dateModification"] as? Date ?? .distantPast
+        guard let binaires = Self.lireChampsBinaires(record, cles: ["dessinData", "elementsData", "etapesData"]) else {
+            return nil
+        }
 
         let desc = FetchDescriptor<ExerciceBibliotheque>(predicate: #Predicate { $0.id == uuid })
         if let existant = try? context.fetch(desc).first {
-            guard remoteDateMod > existant.dateModification else { return }
-            appliquerChampsBibliotheque(record, sur: existant)
+            guard remoteDateMod > existant.dateModification else { return nil }
+            appliquerChampsBibliotheque(record, binaires: binaires, sur: existant)
             existant.dateModification = remoteDateMod
-            return
+            return (uuid, remoteDateMod)
         }
 
         let exercice = ExerciceBibliotheque(
@@ -395,12 +456,13 @@ extension CloudKitSharingService {
         exercice.id = uuid
         exercice.estPredefini = false
         exercice.codeCoach = record.chaineSecurisee("codeCoach") ?? ""
-        appliquerChampsBibliotheque(record, sur: exercice)
+        appliquerChampsBibliotheque(record, binaires: binaires, sur: exercice)
         exercice.dateModification = remoteDateMod
         context.insert(exercice)
+        return (uuid, remoteDateMod)
     }
 
-    private func appliquerChampsBibliotheque(_ record: CKRecord, sur exercice: ExerciceBibliotheque) {
+    private func appliquerChampsBibliotheque(_ record: CKRecord, binaires: [String: Data?], sur exercice: ExerciceBibliotheque) {
         exercice.nom = record.chaineSecurisee("nom") ?? exercice.nom
         exercice.categorie = record.chaineSecurisee("categorie") ?? exercice.categorie
         exercice.descriptionExo = record.chaineSecurisee("descriptionExo") ?? exercice.descriptionExo
@@ -408,8 +470,8 @@ extension CloudKitSharingService {
         exercice.notesCoach = record.chaineSecurisee("notesCoach") ?? exercice.notesCoach
         exercice.duree = record["duree"] as? Int ?? exercice.duree
         exercice.typeTerrain = record.chaineSecurisee("typeTerrain") ?? exercice.typeTerrain
-        exercice.dessinData = Self.lireChampBinaire(record, cle: "dessinData")
-        exercice.elementsData = Self.lireChampBinaire(record, cle: "elementsData")
-        exercice.etapesData = Self.lireChampBinaire(record, cle: "etapesData")
+        exercice.dessinData = binaires["dessinData"] ?? nil
+        exercice.elementsData = binaires["elementsData"] ?? nil
+        exercice.etapesData = binaires["etapesData"] ?? nil
     }
 }

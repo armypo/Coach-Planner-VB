@@ -386,8 +386,9 @@ struct MatchDetailView: View {
             // E3/E4 (D6) : publier immédiatement l'analyse du match finalisé
             // (box scores + points + statsEntrees) — le sweep sert de filet.
             // Tout rôle coach publie (assistant = head coach).
-            if let role = authService.utilisateurConnecte?.role,
-               CloudKitSharingService.planSync(role: role).publie {
+            if let user = authService.utilisateurConnecte,
+               CloudKitSharingService.planSync(role: user.role).publie {
+                sharingService.ecrivainID = user.id.uuidString
                 let seanceFinalisee = seance
                 let contexte = modelContext
                 Task { await sharingService.publierAnalyseMatch(seance: seanceFinalisee, context: contexte) }

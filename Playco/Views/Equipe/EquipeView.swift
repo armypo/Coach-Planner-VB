@@ -11,6 +11,7 @@ struct EquipeView: View {
 
     @Environment(\.modelContext) private var contexte
     @Environment(AuthService.self) private var authService
+    @Environment(CloudKitSharingService.self) private var sharingService
     @Environment(\.codeEquipeActif) private var codeEquipeActif
     @Query(sort: \JoueurEquipe.numero) private var tousJoueurs: [JoueurEquipe]
     @Query(filter: #Predicate<Seance> { $0.estArchivee == false },
@@ -160,6 +161,18 @@ struct EquipeView: View {
                                     )
                                     if let utilisateur = try? contexte.fetch(descriptor).first {
                                         utilisateur.joueurEquipeID = nil
+                                    }
+                                }
+                                // E′ §4 — tombstone : les copies JoueurPartage
+                                // des autres coachs ne le feront pas ressusciter.
+                                if let user = authService.utilisateurConnecte {
+                                    sharingService.ecrivainID = user.id.uuidString
+                                    let joueurID = joueur.id
+                                    let code = codeEquipeActif
+                                    Task {
+                                        await sharingService.publierSuppression(
+                                            typeCible: CloudKitSharingService.RecordType.joueur,
+                                            prefixeRecord: "joueur", entiteID: joueurID, codeEquipe: code)
                                     }
                                 }
                                 contexte.delete(joueur)

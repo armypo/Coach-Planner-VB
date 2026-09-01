@@ -23,6 +23,9 @@ extension CloudKitSharingService {
         joueurs: [JoueurEquipe],
         context: ModelContext
     ) async {
+        #if DEMO
+        return
+        #else
         estEnCoursDePublication = true
         erreur = nil
 
@@ -65,12 +68,16 @@ extension CloudKitSharingService {
         }
 
         estEnCoursDePublication = false
+        #endif
     }
 
     /// Rejoue les utilisateurs en attente dans `FileReplicationUtilisateur`.
     /// Appelé depuis CloudKitSyncService quand le réseau revient en ligne.
     /// `context` sert à récupérer les @Model Utilisateur frais depuis SwiftData.
     func rejouerFileAttente(context: ModelContext) async {
+        #if DEMO
+        return
+        #endif
         let ids = await FileReplicationUtilisateur.shared.listerPrets()
         guard !ids.isEmpty else { return }
 
@@ -101,6 +108,9 @@ extension CloudKitSharingService {
     /// dans `FileReplicationUtilisateur` pour re-publication automatique au retour
     /// réseau — sinon le membre resterait introuvable à la jointure (échec silencieux).
     func publierNouvelUtilisateur(_ utilisateur: Utilisateur, joueur: JoueurEquipe?, codeEquipe: String) async {
+        #if DEMO
+        return
+        #endif
         do {
             try await publierUtilisateur(utilisateur, codeEquipe: codeEquipe)
             await FileReplicationUtilisateur.shared.marquerPublie(utilisateur.id)
@@ -115,94 +125,206 @@ extension CloudKitSharingService {
     }
 
 
-    /// Sweep de publication côté coach : republie tout ce qui a changé depuis la
-    /// dernière sync (équipe, établissement, utilisateurs, joueurs+stats, séances,
-    /// matchs, contenus de préparation, analyse) pour un `codeEquipe`. DRY : un
-    /// seul point d'appel (foreground coach) couvre toutes les créations/éditions
-    /// sans triggers éparpillés.
-    /// - Parameter modeMatchActif: D6 mode déconnecté — quand un match live est
-    ///   en cours, les stats/points in-game NE se publient PAS (un seul preneur
-    ///   de stats ; la publication se fait à la sortie du live).
-    func publierMisesAJourCoach(codeEquipe: String, context: ModelContext, modeMatchActif: Bool = false) async {
-        guard !codeEquipe.isEmpty else { return }
+    /// Sweep de publication : republie ce que CET ÉCRIVAIN a modifié depuis le
+    /// dernier sweep réussi. E′ :
+    /// - seuil PAR ÉQUIPE capturé en DÉBUT de sweep, avancé SEULEMENT si zéro
+    ///   échec et hors mode match (fenêtres de perte fermées — retry idempotent) ;
+    /// - FILIGRANES anti-écho : une entité dont la version locale vient d'un
+    ///   import (dateModification == filigrane) n'est JAMAIS republiée — chaque
+    ///   coach ne pousse que ses propres modifications, vers SES records ;
+    /// - isolation par item : un échec n'avorte pas le reste du sweep.
+    /// - Parameter estAdmin: seules les ancres mono-écrivain equipe/etablissement
+    ///   sont réservées au head coach (E′ §1).
+    /// - Parameter modeMatchActif: D6 — stats/points in-game jamais publiés
+    ///   pendant un live (et le seuil n'avance pas : rattrapage à la sortie).
+    func publierMisesAJourCoach(codeEquipe: String, context: ModelContext,
+                                estAdmin: Bool = true, modeMatchActif: Bool = false) async {
+        #if DEMO
+        return
+        #else
+        guard !codeEquipe.isEmpty, ecrivainID?.isEmpty == false else { return }
         estEnCoursDePublication = true
         defer { estEnCoursDePublication = false }
-        let seuil = derniereSyncDate
 
-        do {
+        // E′ : le nouveau seuil est capturé AVANT le travail — une modification
+        // faite PENDANT le sweep reste > seuil et part au cycle suivant.
+        let seuil = etatSync.etat(codeEquipe).seuilPublication
+        let nouveauSeuil = Date()
+        var nbEchecs = 0
+
+        /// Publie une entité si (dateModification > seuil) ET (≠ filigrane
+        /// d'import). Isole l'échec : le sweep continue, le seuil n'avance pas.
+        func publierSiModifie(_ entiteID: UUID, _ dateModification: Date,
+                              _ publication: () async throws -> Void) async {
+            guard etatSync.doitPublier(codeEquipe, entiteID: entiteID,
+                                       dateModification: dateModification, seuil: seuil) else { return }
+            do {
+                try await publication()
+            } catch {
+                nbEchecs += 1
+                logger.warning("Sweep \(codeEquipe, privacy: .private): échec sur \(entiteID.uuidString, privacy: .private): \(error.localizedDescription)")
+            }
+        }
+
+        // Ancres mono-écrivain (E′ §1) : head coach seulement.
+        if estAdmin {
             let descEq = FetchDescriptor<Equipe>(predicate: #Predicate { $0.codeEquipe == codeEquipe })
             if let equipe = try? context.fetch(descEq).first {
-                if equipe.dateModification > seuil { try await publierEquipe(equipe) }
-                if let etab = equipe.etablissement, etab.dateModification > seuil {
-                    try await publierEtablissement(etab, codeEquipe: codeEquipe)
+                await publierSiModifie(equipe.id, equipe.dateModification) {
+                    try await self.publierEquipe(equipe)
+                }
+                if let etab = equipe.etablissement {
+                    await publierSiModifie(etab.id, etab.dateModification) {
+                        try await self.publierEtablissement(etab, codeEquipe: codeEquipe)
+                    }
                 }
             }
-            let descU = FetchDescriptor<Utilisateur>(predicate: #Predicate { $0.codeEcole == codeEquipe })
-            for u in (try? context.fetch(descU)) ?? [] where u.dateModification > seuil {
-                try await publierUtilisateur(u, codeEquipe: codeEquipe)
-            }
-            let descJ = FetchDescriptor<JoueurEquipe>(predicate: #Predicate { $0.codeEquipe == codeEquipe })
-            for j in (try? context.fetch(descJ)) ?? [] where j.dateModification > seuil {
-                try await publierJoueur(j)
-            }
-            // E2 : les séances ARCHIVÉES se publient aussi (l'archivage bump
-            // dateModification et doit se propager aux autres coachs — D6).
-            let descS = FetchDescriptor<Seance>(predicate: #Predicate { $0.codeEquipe == codeEquipe })
-            let seances = (try? context.fetch(descS)) ?? []
-            for s in seances where s.dateModification > seuil {
-                try await publierSeance(s)
-            }
-            // Les matchs sont publiés en tant que Seance (type=.match) ci-dessus.
-            // MatchCalendrier n'est plus partagé (déprécié/dormant).
-
-            // E2 — contenus de préparation (parité assistant D6).
-            for s in seances {
-                for exo in (s.exercices ?? []) where exo.dateModification > seuil {
-                    try await publierExercice(exo, seanceID: s.id, codeEquipe: codeEquipe)
-                }
-            }
-            let descStrat = FetchDescriptor<StrategieCollective>(predicate: #Predicate { $0.codeEquipe == codeEquipe })
-            for strat in (try? context.fetch(descStrat)) ?? [] where strat.dateModification > seuil {
-                try await publierStrategie(strat)
-            }
-            let descScout = FetchDescriptor<ScoutingReport>(predicate: #Predicate { $0.codeEquipe == codeEquipe })
-            for rapport in (try? context.fetch(descScout)) ?? [] where rapport.dateModification > seuil {
-                try await publierScouting(rapport)
-            }
-            // Bibliothèque : les items personnels des coachs de l'équipe
-            // (codeCoach = Utilisateur.id). Les prédéfinis ne se publient pas.
-            let idsCoachs = Set(
-                ((try? context.fetch(descU)) ?? [])
-                    .filter { $0.role != .etudiant }
-                    .map { $0.id.uuidString }
-            )
-            let descBiblio = FetchDescriptor<ExerciceBibliotheque>(predicate: #Predicate { $0.estPredefini == false })
-            for exo in (try? context.fetch(descBiblio)) ?? []
-            where exo.dateModification > seuil && idsCoachs.contains(exo.codeCoach) {
-                try await publierBibliotheque(exo, codeEquipe: codeEquipe)
-            }
-
-            // E3 — analyse. Formations toujours ; stats/points JAMAIS pendant un
-            // match live (D6 : publiés à la sortie via publierAnalyseMatch, le
-            // sweep sert de filet de sécurité incrémental).
-            let descForm = FetchDescriptor<FormationPersonnalisee>(predicate: #Predicate { $0.codeEquipe == codeEquipe })
-            for formation in (try? context.fetch(descForm)) ?? [] where formation.dateModification > seuil {
-                try await publierFormation(formation)
-            }
-            if !modeMatchActif {
-                let descStats = FetchDescriptor<StatsMatch>(predicate: #Predicate { $0.codeEquipe == codeEquipe })
-                for stat in (try? context.fetch(descStats)) ?? [] where stat.dateModification > seuil {
-                    try await publierStatsMatch(stat)
-                }
-                let descPoints = FetchDescriptor<PointMatch>(predicate: #Predicate { $0.codeEquipe == codeEquipe })
-                let pointsNouveaux = ((try? context.fetch(descPoints)) ?? []).filter { $0.horodatage > seuil }
-                try await publierPointsMatch(pointsNouveaux, seanceID: nil, supprimerFantomes: false)
-            }
-            derniereSyncDate = Date()
-        } catch {
-            logger.error("publierMisesAJourCoach: \(error.localizedDescription)")
-            self.erreur = error.localizedDescription
         }
+
+        let descU = FetchDescriptor<Utilisateur>(predicate: #Predicate { $0.codeEcole == codeEquipe })
+        for u in (try? context.fetch(descU)) ?? [] {
+            await publierSiModifie(u.id, u.dateModification) {
+                try await self.publierUtilisateur(u, codeEquipe: codeEquipe)
+            }
+        }
+        let descJ = FetchDescriptor<JoueurEquipe>(predicate: #Predicate { $0.codeEquipe == codeEquipe })
+        for j in (try? context.fetch(descJ)) ?? [] {
+            await publierSiModifie(j.id, j.dateModification) {
+                try await self.publierJoueur(j)
+            }
+        }
+        // E2 : les séances ARCHIVÉES se publient aussi (l'archivage bump
+        // dateModification et doit se propager aux autres coachs — D6).
+        let descS = FetchDescriptor<Seance>(predicate: #Predicate { $0.codeEquipe == codeEquipe })
+        let seances = (try? context.fetch(descS)) ?? []
+        for seance in seances {
+            await publierSiModifie(seance.id, seance.dateModification) {
+                try await self.publierSeance(seance)
+            }
+        }
+
+        // E2 — contenus de préparation (parité assistant D6).
+        for seance in seances {
+            for exo in (seance.exercices ?? []) {
+                await publierSiModifie(exo.id, exo.dateModification) {
+                    try await self.publierExercice(exo, seanceID: seance.id, codeEquipe: codeEquipe)
+                }
+            }
+        }
+        let descStrat = FetchDescriptor<StrategieCollective>(predicate: #Predicate { $0.codeEquipe == codeEquipe })
+        for strat in (try? context.fetch(descStrat)) ?? [] {
+            await publierSiModifie(strat.id, strat.dateModification) {
+                try await self.publierStrategie(strat)
+            }
+        }
+        let descScout = FetchDescriptor<ScoutingReport>(predicate: #Predicate { $0.codeEquipe == codeEquipe })
+        for rapport in (try? context.fetch(descScout)) ?? [] {
+            await publierSiModifie(rapport.id, rapport.dateModification) {
+                try await self.publierScouting(rapport)
+            }
+        }
+        // Bibliothèque : les items personnels des coachs de l'équipe
+        // (codeCoach = Utilisateur.id). Les prédéfinis ne se publient pas.
+        let idsCoachs = Set(
+            ((try? context.fetch(descU)) ?? [])
+                .filter { $0.role != .etudiant }
+                .map { $0.id.uuidString }
+        )
+        let descBiblio = FetchDescriptor<ExerciceBibliotheque>(predicate: #Predicate { $0.estPredefini == false })
+        for exo in ((try? context.fetch(descBiblio)) ?? []) where idsCoachs.contains(exo.codeCoach) {
+            await publierSiModifie(exo.id, exo.dateModification) {
+                try await self.publierBibliotheque(exo, codeEquipe: codeEquipe)
+            }
+        }
+
+        // E3 — analyse. Formations toujours ; stats/points JAMAIS pendant un
+        // match live (D6 : publiés à la sortie via publierAnalyseMatch — et le
+        // seuil n'avance pas tant que le live est actif, filet réel).
+        let descForm = FetchDescriptor<FormationPersonnalisee>(predicate: #Predicate { $0.codeEquipe == codeEquipe })
+        for formation in (try? context.fetch(descForm)) ?? [] {
+            await publierSiModifie(formation.id, formation.dateModification) {
+                try await self.publierFormation(formation)
+            }
+        }
+        if !modeMatchActif {
+            let descStats = FetchDescriptor<StatsMatch>(predicate: #Predicate { $0.codeEquipe == codeEquipe })
+            for stat in (try? context.fetch(descStats)) ?? [] {
+                await publierSiModifie(stat.id, stat.dateModification) {
+                    try await self.publierStatsMatch(stat)
+                }
+            }
+            // Points : immuables, filigranés à l'import (jamais republiés).
+            let descPoints = FetchDescriptor<PointMatch>(predicate: #Predicate { $0.codeEquipe == codeEquipe })
+            let filigranes = etatSync.etat(codeEquipe).filigranes
+            let pointsNouveaux = ((try? context.fetch(descPoints)) ?? []).filter {
+                $0.horodatage > seuil && filigranes[$0.id.uuidString] == nil
+            }
+            if !pointsNouveaux.isEmpty {
+                do {
+                    try await publierPointsMatch(pointsNouveaux, seanceID: nil, supprimerFantomes: false)
+                } catch {
+                    nbEchecs += 1
+                    logger.warning("Sweep points \(codeEquipe, privacy: .private): \(error.localizedDescription)")
+                }
+            }
+        }
+
+        // E′ : le seuil n'avance que sur cycle COMPLET — un échec ou un live en
+        // cours laissent tout re-candidater au prochain sweep (idempotent).
+        if nbEchecs == 0 && !modeMatchActif {
+            etatSync.modifier(codeEquipe) { $0.seuilPublication = nouveauSeuil }
+        } else if nbEchecs > 0 {
+            self.erreur = "Synchronisation partielle — nouvel essai au prochain cycle."
+        }
+        #endif
+    }
+
+    // MARK: - Identité d'écrivain & tombstones (E′)
+
+    enum ErreurEcrivain: Error { case ecrivainAbsent }
+
+    /// Pose le champ `ecrivainID` sur un record sortant. AUCUNE publication sans
+    /// identité d'écrivain (E′ §1 — l'import ignore les records anonymes).
+    func appliquerIdentiteEcrivain(_ record: CKRecord) throws -> String {
+        guard let ecrivain = ecrivainID, !ecrivain.isEmpty else {
+            throw ErreurEcrivain.ecrivainAbsent
+        }
+        record["ecrivainID"] = ecrivain as CKRecordValue
+        return ecrivain
+    }
+
+    /// E′ §4 — publie un TOMBSTONE de suppression et tente (best-effort) de
+    /// supprimer SON propre record de l'entité. Les copies des autres écrivains
+    /// sont neutralisées par le tombstone à l'import. Fire-and-forget : un échec
+    /// n'interrompt jamais la suppression locale (retenté au prochain appel si
+    /// la cascade republie).
+    func publierSuppression(typeCible: String, prefixeRecord: String?, entiteID: UUID, codeEquipe: String) async {
+        #if DEMO
+        return
+        #else
+        guard let ecrivain = ecrivainID, !ecrivain.isEmpty, !codeEquipe.isEmpty else { return }
+        let horodatage = Date()
+        // Mémoriser localement d'abord : même hors-ligne, cet appareil n'importera
+        // plus les copies périmées de l'entité supprimée.
+        etatSync.enregistrerTombstone(codeEquipe, entiteID: entiteID, horodatage: horodatage)
+        do {
+            let nom = Self.nomRecord("tomb", id: entiteID.uuidString, ecrivain: ecrivain)
+            let record = await recordPublicAJour(type: RecordType.suppression,
+                                                 recordID: CKRecord.ID(recordName: nom))
+            record["codeEquipe"] = codeEquipe as CKRecordValue
+            record["typeCible"] = typeCible as CKRecordValue
+            record["entiteID"] = entiteID.uuidString as CKRecordValue
+            record["horodatage"] = horodatage as CKRecordValue
+            record["ecrivainID"] = ecrivain as CKRecordValue
+            _ = try await publicDB.save(record)
+            if let prefixe = prefixeRecord {
+                let mien = CKRecord.ID(recordName: Self.nomRecord(prefixe, id: entiteID.uuidString, ecrivain: ecrivain))
+                try? await publicDB.deleteRecord(withID: mien)
+            }
+        } catch {
+            logger.warning("publierSuppression \(typeCible) \(entiteID.uuidString, privacy: .private): \(error.localizedDescription)")
+        }
+        #endif
     }
 
     // MARK: - Fetch-puis-modifier (E1 — parité assistant)
@@ -217,11 +339,13 @@ extension CloudKitSharingService {
             ?? CKRecord(recordType: type, recordID: recordID)
     }
 
-    /// Applique un dictionnaire de champs publics sur un record puis le sauvegarde.
-    private func sauvegarder(champs: [String: CKRecordValue], sur record: CKRecord) async throws {
+    /// Applique un dictionnaire de champs publics sur un record, pose l'identité
+    /// d'écrivain (E′), puis sauvegarde.
+    func sauvegarder(champs: [String: CKRecordValue], sur record: CKRecord) async throws {
         for (cle, valeur) in champs {
             record[cle] = valeur
         }
+        _ = try appliquerIdentiteEcrivain(record)
         _ = try await publicDB.save(record)
     }
 
@@ -304,13 +428,15 @@ extension CloudKitSharingService {
         // Revue 2.3 (révocation fail-open) : fetch-puis-modifier — sans quoi la
         // régénération du code d'invitation n'atteignait jamais la Public DB
         // (l'ancien QR photographié restait valide, le nouveau échouait).
-        let recordID = CKRecord.ID(recordName: "user-\(utilisateur.id.uuidString)")
+        guard let ecrivain = ecrivainID, !ecrivain.isEmpty else { throw ErreurEcrivain.ecrivainAbsent }
+        let recordID = CKRecord.ID(recordName: Self.nomRecord("user", id: utilisateur.id.uuidString, ecrivain: ecrivain))
         let record = await recordPublicAJour(type: RecordType.utilisateur, recordID: recordID)
         try await sauvegarder(champs: Self.champsPublicsUtilisateur(utilisateur, codeEquipe: codeEquipe), sur: record)
     }
 
     private func publierJoueur(_ joueur: JoueurEquipe) async throws {
-        let recordID = CKRecord.ID(recordName: "joueur-\(joueur.id.uuidString)")
+        guard let ecrivain = ecrivainID, !ecrivain.isEmpty else { throw ErreurEcrivain.ecrivainAbsent }
+        let recordID = CKRecord.ID(recordName: Self.nomRecord("joueur", id: joueur.id.uuidString, ecrivain: ecrivain))
         let record = await recordPublicAJour(type: RecordType.joueur, recordID: recordID)
         try await sauvegarder(champs: Self.champsPublicsJoueur(joueur), sur: record)
     }
@@ -349,19 +475,19 @@ extension CloudKitSharingService {
         champs["receptionsTotales"] = joueur.receptionsTotales as CKRecordValue
         champs["passesDecisives"] = joueur.passesDecisives as CKRecordValue
         champs["manchettes"] = joueur.manchettes as CKRecordValue
-        // Disponibilité + attestation de consentement (E1 — parité assistant D6).
-        champs["statutDisponibiliteRaw"] = joueur.statutDisponibiliteRaw as CKRecordValue
-        champs["consentementParentalAtteste"] = (joueur.consentementParentalAtteste ? 1 : 0) as CKRecordValue
-        champs["attesteParNom"] = joueur.attesteParNom as CKRecordValue
-        if let dateAttestation = joueur.dateAttestationConsentement {
-            champs["dateAttestationConsentement"] = dateAttestation as CKRecordValue
-        }
+        // E′ §7 — PII minimale : la Public DB est world-readable. Le MOTIF
+        // d'indisponibilité (blessé/malade = donnée de santé, souvent de mineurs)
+        // et l'attestation parentale (registre légal nominatif) ne transitent
+        // JAMAIS — seul un booléen de disponibilité est partagé (la composition
+        // des autres coachs grise le joueur, sans savoir pourquoi).
+        champs["estDisponible"] = (joueur.estDisponible ? 1 : 0) as CKRecordValue
         return champs
     }
 
     /// Publie une séance (pratique ou match) — parité entre coachs.
     func publierSeance(_ seance: Seance) async throws {
-        let recordID = CKRecord.ID(recordName: "seance-\(seance.id.uuidString)")
+        guard let ecrivain = ecrivainID, !ecrivain.isEmpty else { throw ErreurEcrivain.ecrivainAbsent }
+        let recordID = CKRecord.ID(recordName: Self.nomRecord("seance", id: seance.id.uuidString, ecrivain: ecrivain))
         let record = await recordPublicAJour(type: RecordType.seance, recordID: recordID)
         try await sauvegarder(champs: Self.champsPublicsSeance(seance), sur: record)
     }

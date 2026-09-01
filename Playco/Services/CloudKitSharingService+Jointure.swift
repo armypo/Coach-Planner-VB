@@ -55,6 +55,10 @@ extension CloudKitSharingService {
             logger.error("rejoindreEquipe: échec sauvegarde: \(error.localizedDescription)")
             throw SharingError.sauvegardeEchouee
         }
+        // E′ : l'assistant devient un ÉCRIVAIN — sa copie UtilisateurPartage
+        // (créée sous SON identité CloudKit, couple utilisateurID+codeInvitation
+        // hérité de la ligne racine) l'inscrit dans la chaîne de confiance §2.
+        ecrivainID = membre.id.uuidString
         await publierNouvelUtilisateur(membre, joueur: nil, codeEquipe: code)
         logger.info("Membre rattaché à l'équipe \(code, privacy: .private) via invitation")
         return membre

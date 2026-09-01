@@ -46,8 +46,12 @@ struct CloudKitPartagePreparationTests {
         let url = try #require(urlTemporaire)
         defer { try? FileManager.default.removeItem(at: url) }
         #expect(record["dessinData"] is CKAsset)
-        // Round-trip via la lecture unifiée.
-        #expect(CloudKitSharingService.lireChampBinaire(record, cle: "dessinData") == data)
+        // Round-trip via la lecture unifiée (tri-état E′).
+        guard case .donnees(let lue) = CloudKitSharingService.lireChampBinaire(record, cle: "dessinData") else {
+            Issue.record("Lecture attendue en .donnees")
+            return
+        }
+        #expect(lue == data)
     }
 
     @Test("Un champ binaire nil ou vide efface la clé du record")
@@ -69,16 +73,39 @@ struct CloudKitPartagePreparationTests {
         let data = Data("contenu".utf8)
 
         record["inline"] = data as CKRecordValue
-        #expect(CloudKitSharingService.lireChampBinaire(record, cle: "inline") == data)
+        guard case .donnees(let inline) = CloudKitSharingService.lireChampBinaire(record, cle: "inline") else {
+            Issue.record("inline attendu en .donnees")
+            return
+        }
+        #expect(inline == data)
 
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-asset-\(UUID().uuidString).bin")
         try data.write(to: url)
         defer { try? FileManager.default.removeItem(at: url) }
         record["asset"] = CKAsset(fileURL: url)
-        #expect(CloudKitSharingService.lireChampBinaire(record, cle: "asset") == data)
+        guard case .donnees(let asset) = CloudKitSharingService.lireChampBinaire(record, cle: "asset") else {
+            Issue.record("asset attendu en .donnees")
+            return
+        }
+        #expect(asset == data)
 
-        #expect(CloudKitSharingService.lireChampBinaire(record, cle: "absent") == nil)
+        // E′ §5 : ABSENT (champ vide légitime) ≠ ILLISIBLE (échec — jamais
+        // d'écrasement local).
+        guard case .absente = CloudKitSharingService.lireChampBinaire(record, cle: "absent") else {
+            Issue.record("clé manquante attendue en .absente")
+            return
+        }
+        record["troplourd"] = Data(count: CloudKitSharingService.tailleMaxChampBinaire + 1) as CKRecordValue
+        guard case .illisible = CloudKitSharingService.lireChampBinaire(record, cle: "troplourd") else {
+            Issue.record("binaire au-delà du plafond attendu en .illisible")
+            return
+        }
+        // Le lot entier est refusé si UN champ est illisible (entité intacte, retry).
+        #expect(CloudKitSharingService.lireChampsBinaires(record, cles: ["inline", "troplourd"]) == nil)
+        let lot = CloudKitSharingService.lireChampsBinaires(record, cles: ["inline", "absent"])
+        #expect(lot?["inline"] as? Data == data)
+        #expect((lot?["absent"] ?? nil) == nil)
     }
 
     // MARK: - Mappings publics

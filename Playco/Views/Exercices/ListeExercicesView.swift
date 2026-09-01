@@ -17,6 +17,7 @@ struct ListeExercicesView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.editMode) private var editMode
     @Environment(AuthService.self) private var authService
+    @Environment(CloudKitSharingService.self) private var sharingService
     @Bindable var seance: Seance
     @State private var afficherPresences = false
     @Environment(\.codeEquipeActif) private var codeEquipeActif
@@ -332,6 +333,18 @@ struct ListeExercicesView: View {
     }
 
     private func supprimerExercice(_ exercice: Exercice) {
+        // E′ §4 — tombstone : sans lui, les copies publiées par les autres
+        // coachs feraient ressusciter l'exercice à la prochaine sync.
+        if let user = authService.utilisateurConnecte {
+            sharingService.ecrivainID = user.id.uuidString
+            let exerciceID = exercice.id
+            let code = seance.codeEquipe
+            Task {
+                await sharingService.publierSuppression(
+                    typeCible: CloudKitSharingService.RecordType.exercice,
+                    prefixeRecord: "exercice", entiteID: exerciceID, codeEquipe: code)
+            }
+        }
         seance.exercices?.removeAll { $0.id == exercice.id }
         modelContext.delete(exercice)
         reordonner()

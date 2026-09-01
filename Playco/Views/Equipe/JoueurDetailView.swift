@@ -234,7 +234,7 @@ struct JoueurDetailView: View {
                     joueur.dateModification = Date() // sync partagée (revue 2.2.b)
                 }
             )) {
-                ForEach(StatutDisponibilite.allCases) { statut in
+                ForEach(StatutDisponibilite.casSelectionnables) { statut in
                     Text(statut.libelle).tag(statut)
                 }
             }

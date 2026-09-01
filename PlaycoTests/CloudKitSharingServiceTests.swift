@@ -312,7 +312,7 @@ struct CloudKitSharingPlanSyncTests {
 @MainActor
 struct CloudKitSharingMappingsTests {
 
-    @Test("champsPublicsJoueur publie disponibilité + attestation de consentement")
+    @Test("champsPublicsJoueur (E′ §7) : seul un BOOLÉEN de disponibilité transite — jamais le motif santé ni l'attestation")
     func joueurDisponibiliteEtAttestation() {
         let j = JoueurEquipe(nom: "Roy", prenom: "Alex", numero: 10, poste: .passeur)
         j.codeEquipe = "EQU1"
@@ -323,22 +323,25 @@ struct CloudKitSharingMappingsTests {
 
         let champs = CloudKitSharingService.champsPublicsJoueur(j)
 
-        #expect((champs["statutDisponibiliteRaw"] as? String) == "blesse")
-        #expect((champs["consentementParentalAtteste"] as? Int) == 1)
-        #expect((champs["dateAttestationConsentement"] as? Date) == Date(timeIntervalSince1970: 1_700_000_000))
-        #expect((champs["attesteParNom"] as? String) == "Coach Dionne")
+        #expect((champs["estDisponible"] as? Int) == 0)
+        // GARDE DE RÉGRESSION PII (Public DB world-readable) : le motif
+        // d'indisponibilité (donnée de santé, souvent de mineurs) et le
+        // registre d'attestation parentale ne se publient JAMAIS.
+        #expect(champs["statutDisponibiliteRaw"] == nil)
+        #expect(champs["consentementParentalAtteste"] == nil)
+        #expect(champs["dateAttestationConsentement"] == nil)
+        #expect(champs["attesteParNom"] == nil)
     }
 
-    @Test("champsPublicsJoueur : joueur disponible sans attestation → défauts CloudKit-safe")
+    @Test("champsPublicsJoueur : joueur disponible → estDisponible = 1")
     func joueurDisponibiliteDefauts() {
         let j = JoueurEquipe(nom: "Roy", prenom: "Alex", numero: 10, poste: .passeur)
 
         let champs = CloudKitSharingService.champsPublicsJoueur(j)
 
-        #expect((champs["statutDisponibiliteRaw"] as? String) == "")
-        #expect((champs["consentementParentalAtteste"] as? Int) == 0)
-        #expect(champs["dateAttestationConsentement"] == nil)
-        #expect((champs["attesteParNom"] as? String) == "")
+        #expect((champs["estDisponible"] as? Int) == 1)
+        #expect(champs["statutDisponibiliteRaw"] == nil)
+        #expect(champs["attesteParNom"] == nil)
     }
 
     @Test("champsPublicsJoueur mappe le roster et les stats cumulées")
