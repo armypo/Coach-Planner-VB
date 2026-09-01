@@ -92,6 +92,10 @@ extension CloudKitSharingService {
             }
         }
 
+        // E′ — écriture différée des filigranes (un seul write en fin d'import).
+        etatSync.debutLot(codeEquipe)
+        defer { etatSync.flush(codeEquipe) }
+
         // E′ §2 — chaîne de confiance par créateur, construite AVANT tout import.
         let confiance = try await construireConfianceEquipe(codeEquipe: codeEquipe)
 
@@ -109,11 +113,12 @@ extension CloudKitSharingService {
             }
         }
 
-        // 7. Récupérer et importer les joueurs
+        // 7. Récupérer et importer les joueurs (tombstone respecté AVANT l'import).
         let joueurRecords = try await fetchRecords(type: RecordType.joueur, codeEquipe: codeEquipe)
-        for record in joueurRecords where accepterRecord(record, confiance: confiance, codeEquipe: codeEquipe) {
-            if let (entiteID, date) = importerJoueur(from: record, context: context),
-               !etatSync.estSupprimee(codeEquipe, entiteID: entiteID, dateModification: date) {
+        for record in joueurRecords
+        where accepterRecord(record, confiance: confiance, codeEquipe: codeEquipe)
+            && !recordSupprime(record, cleID: "joueurID", codeEquipe: codeEquipe) {
+            if let (entiteID, date) = importerJoueur(from: record, context: context) {
                 etatSync.poserFiligrane(codeEquipe, entiteID: entiteID, date: date)
             }
         }
@@ -156,6 +161,8 @@ extension CloudKitSharingService {
         #if DEMO
         return
         #endif
+        etatSync.debutLot(codeEquipe)
+        defer { etatSync.flush(codeEquipe) }
         do {
             // E′ §2/§4 : confiance par créateur puis tombstones, avant tout import.
             let confiance = try await construireConfianceEquipe(codeEquipe: codeEquipe)
@@ -164,9 +171,10 @@ extension CloudKitSharingService {
             // SÉCURITÉ : pas d'import de comptes Utilisateur (credentials). On ne
             // rafraîchit que les données non sensibles (roster, séances, calendrier).
             let joueurRecords = try await fetchRecords(type: RecordType.joueur, codeEquipe: codeEquipe)
-            for record in joueurRecords where accepterRecord(record, confiance: confiance, codeEquipe: codeEquipe) {
-                if let (entiteID, date) = importerJoueur(from: record, context: context),
-                   !etatSync.estSupprimee(codeEquipe, entiteID: entiteID, dateModification: date) {
+            for record in joueurRecords
+            where accepterRecord(record, confiance: confiance, codeEquipe: codeEquipe)
+                && !recordSupprime(record, cleID: "joueurID", codeEquipe: codeEquipe) {
+                if let (entiteID, date) = importerJoueur(from: record, context: context) {
                     etatSync.poserFiligrane(codeEquipe, entiteID: entiteID, date: date)
                 }
             }
@@ -209,33 +217,27 @@ extension CloudKitSharingService {
                   !etatSync.estSupprimee(codeEquipe, entiteID: entiteID, dateModification: date) else { return }
             etatSync.poserFiligrane(codeEquipe, entiteID: entiteID, date: date)
         }
-        func supprimee(_ record: CKRecord, cleID: String) -> Bool {
-            guard let idStr = record.chaineSecurisee(cleID), let id = UUID(uuidString: idStr) else { return true }
-            let date = record["dateModification"] as? Date ?? .distantPast
-            return etatSync.estSupprimee(codeEquipe, entiteID: id, dateModification: date)
-        }
-
         let exerciceRecords = try await fetchRecords(type: RecordType.exercice, codeEquipe: codeEquipe)
         for record in exerciceRecords
-        where accepterRecord(record, confiance: confiance, codeEquipe: codeEquipe) && !supprimee(record, cleID: "exerciceID") {
+        where accepterRecord(record, confiance: confiance, codeEquipe: codeEquipe) && !recordSupprime(record, cleID: "exerciceID", codeEquipe: codeEquipe) {
             integrer(importerExercice(from: record, context: context))
         }
 
         let strategieRecords = try await fetchRecords(type: RecordType.strategie, codeEquipe: codeEquipe)
         for record in strategieRecords
-        where accepterRecord(record, confiance: confiance, codeEquipe: codeEquipe) && !supprimee(record, cleID: "strategieID") {
+        where accepterRecord(record, confiance: confiance, codeEquipe: codeEquipe) && !recordSupprime(record, cleID: "strategieID", codeEquipe: codeEquipe) {
             integrer(importerStrategie(from: record, context: context))
         }
 
         let scoutingRecords = try await fetchRecords(type: RecordType.scouting, codeEquipe: codeEquipe)
         for record in scoutingRecords
-        where accepterRecord(record, confiance: confiance, codeEquipe: codeEquipe) && !supprimee(record, cleID: "scoutingID") {
+        where accepterRecord(record, confiance: confiance, codeEquipe: codeEquipe) && !recordSupprime(record, cleID: "scoutingID", codeEquipe: codeEquipe) {
             integrer(importerScouting(from: record, context: context))
         }
 
         let biblioRecords = try await fetchRecords(type: RecordType.bibliotheque, codeEquipe: codeEquipe)
         for record in biblioRecords
-        where accepterRecord(record, confiance: confiance, codeEquipe: codeEquipe) && !supprimee(record, cleID: "exerciceID") {
+        where accepterRecord(record, confiance: confiance, codeEquipe: codeEquipe) && !recordSupprime(record, cleID: "exerciceID", codeEquipe: codeEquipe) {
             integrer(importerBibliotheque(from: record, context: context))
         }
     }
@@ -248,8 +250,13 @@ extension CloudKitSharingService {
     /// UtilisateurPartage revendique un couple (utilisateurID, codeInvitation)
     /// émis par la racine.
     func construireConfianceEquipe(codeEquipe: String) async throws -> ConfianceEquipe {
-        let equipeRecords = try await fetchRecords(type: RecordType.equipe, codeEquipe: codeEquipe)
-        let racine = equipeRecords.first?.creatorUserRecordID?.recordName
+        // E′ (contre-revue CRITIQUE) : la racine est le créateur du record dont
+        // le recordName est EXACTEMENT `equipe-<code>` (unique — sous ACL
+        // créateur-seul, le premier créateur le détient et personne ne peut
+        // l'écraser). Une requête sur le CHAMP codeEquipe est spoofable (un
+        // tiers crée un EquipePartagee avec un recordName arbitraire).
+        let ancre = try? await publicDB.record(for: CKRecord.ID(recordName: "equipe-\(codeEquipe)"))
+        let racine = ancre?.creatorUserRecordID?.recordName
         let utilisateurRecords = try await fetchRecords(type: RecordType.utilisateur, codeEquipe: codeEquipe)
         let lignes: [(createur: String, utilisateurID: String, codeInvitation: String)] =
             utilisateurRecords.compactMap { record in
@@ -268,6 +275,16 @@ extension CloudKitSharingService {
         guard let ecrivain = record.chaineSecurisee("ecrivainID"), !ecrivain.isEmpty else { return false }
         guard confiance.accepte(createur: record.creatorUserRecordID?.recordName) else { return false }
         return record.chaineSecurisee("codeEquipe") == codeEquipe
+    }
+
+    /// Un record entrant est-il neutralisé par un tombstone connu ? (pré-filtre
+    /// AVANT l'insert/merge — un import qui écrit puis vérifie ressuscite
+    /// l'entité localement le temps d'un cycle.) Un record sans ID valide est
+    /// traité comme supprimé (ignoré).
+    func recordSupprime(_ record: CKRecord, cleID: String, codeEquipe: String) -> Bool {
+        guard let idStr = record.chaineSecurisee(cleID), let id = UUID(uuidString: idStr) else { return true }
+        let date = record["dateModification"] as? Date ?? .distantPast
+        return etatSync.estSupprimee(codeEquipe, entiteID: id, dateModification: date)
     }
 
     // MARK: - Tombstones (E′ §4)

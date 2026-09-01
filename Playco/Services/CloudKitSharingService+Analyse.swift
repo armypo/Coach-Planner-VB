@@ -254,7 +254,10 @@ extension CloudKitSharingService {
         point.zoneDepart = Self.borner(record["zoneDepart"] as? Int ?? 0, 0...6)
         point.nousServionsAuMoment = (record["nousServionsAuMoment"] as? Int ?? 0) == 1
         point.serviceRenseigne = (record["serviceRenseigne"] as? Int ?? 0) == 1
-        point.horodatage = record["horodatage"] as? Date ?? .distantPast
+        // E′ : un horodatage FUTUR forgé maintiendrait le point > seuil à chaque
+        // sweep (boucle de republication) — plafonné à maintenant.
+        let horoBrut = record["horodatage"] as? Date ?? .distantPast
+        point.horodatage = min(horoBrut, Date())
         context.insert(point)
         idsExistants.insert(uuid)
     }
@@ -382,14 +385,18 @@ extension CloudKitSharingService {
     /// troncature de page reprend exactement où elle s'est arrêtée).
     func importerAnalyse(codeEquipe: String, confiance: ConfianceEquipe, context: ModelContext) async throws {
         let statsRecords = try await fetchRecords(type: RecordType.statsMatch, codeEquipe: codeEquipe)
-        for record in statsRecords where accepterRecord(record, confiance: confiance, codeEquipe: codeEquipe) {
+        for record in statsRecords
+        where accepterRecord(record, confiance: confiance, codeEquipe: codeEquipe)
+            && !recordSupprime(record, cleID: "statsID", codeEquipe: codeEquipe) {
             if let (entiteID, date) = importerStatsMatch(from: record, context: context) {
                 etatSync.poserFiligrane(codeEquipe, entiteID: entiteID, date: date)
             }
         }
 
         let formationRecords = try await fetchRecords(type: RecordType.formation, codeEquipe: codeEquipe)
-        for record in formationRecords where accepterRecord(record, confiance: confiance, codeEquipe: codeEquipe) {
+        for record in formationRecords
+        where accepterRecord(record, confiance: confiance, codeEquipe: codeEquipe)
+            && !recordSupprime(record, cleID: "formationID", codeEquipe: codeEquipe) {
             if let (entiteID, date) = importerFormation(from: record, context: context) {
                 etatSync.poserFiligrane(codeEquipe, entiteID: entiteID, date: date)
             }
@@ -408,7 +415,23 @@ extension CloudKitSharingService {
         var idsExistants = Set(((try? context.fetch(descIDs)) ?? []).map(\.id))
         var nouvelleBorne = borne
         for record in pointRecords where accepterRecord(record, confiance: confiance, codeEquipe: codeEquipe) {
+            // E′ (contre-revue CRITIQUE) : un point est neutralisé si sa séance
+            // a un tombstone de portée séance POSTÉRIEUR à son horodatage
+            // (match supprimé — les copies -w des autres écrivains ne le
+            // ressuscitent pas). Et on ne FILIGRANE le point que s'il est
+            // réellement inséré : le sweep ne republiera pas un point importé.
+            guard let seanceIDStr = record.chaineSecurisee("seanceID"),
+                  let seanceID = UUID(uuidString: seanceIDStr),
+                  let pointIDStr = record.chaineSecurisee("pointID"),
+                  let pointID = UUID(uuidString: pointIDStr) else { continue }
+            let horo = record["horodatage"] as? Date ?? .distantPast
+            if etatSync.estSupprimee(codeEquipe, entiteID: seanceID, dateModification: horo) { continue }
+
+            let avant = idsExistants.count
             importerPointMatch(from: record, idsExistants: &idsExistants, context: context)
+            if idsExistants.count > avant {
+                etatSync.poserFiligrane(codeEquipe, entiteID: pointID, date: horo)
+            }
             if let publieLe = record["publieLe"] as? Date, publieLe > nouvelleBorne {
                 nouvelleBorne = publieLe
             }

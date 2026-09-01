@@ -276,6 +276,8 @@ struct AjoutUtilisateurView: View {
     /// Publie le nouveau membre vers la Public DB CloudKit (asynchrone, ne bloque pas).
     private func publierMembre(_ utilisateur: Utilisateur) {
         let codeEquipePub = codeEquipe
+        // E′ §1 — le coach connecté est l'écrivain (records par écrivain).
+        sharingService.ecrivainID = authService.utilisateurConnecte?.id.uuidString
         Task {
             await sharingService.publierNouvelUtilisateur(utilisateur, joueur: nil, codeEquipe: codeEquipePub)
         }

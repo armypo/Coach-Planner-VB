@@ -57,6 +57,25 @@ struct SyncEPrimeConfianceTests {
         #expect(confiance.accepte(createur: "__defaultOwner__"))
     }
 
+    @Test("confiance TRANSITIVE (D6) : un assistant ajouté par un assistant déjà de confiance est accepté")
+    func confianceTransitive() {
+        // Racine émet le couple de B ; B (créateur de la ligne de C) émet le
+        // couple de C ; C revendique son couple → tous de confiance.
+        let confiance = CloudKitSharingService.construireConfiance(
+            racine: "CK-ROOT",
+            lignes: [
+                (createur: "CK-ROOT",  utilisateurID: "B", codeInvitation: "INVB"),
+                (createur: "CK-B",     utilisateurID: "B", codeInvitation: "INVB"), // B rejoint
+                (createur: "CK-B",     utilisateurID: "C", codeInvitation: "INVC"), // B ajoute C
+                (createur: "CK-C",     utilisateurID: "C", codeInvitation: "INVC"), // C rejoint
+                (createur: "CK-EVIL",  utilisateurID: "Z", codeInvitation: "INVZ"), // inconnu
+            ])
+        #expect(confiance.accepte(createur: "CK-ROOT"))
+        #expect(confiance.accepte(createur: "CK-B"))
+        #expect(confiance.accepte(createur: "CK-C"), "Chaîne racine→B→C")
+        #expect(!confiance.accepte(createur: "CK-EVIL"))
+    }
+
     @Test("une invitation vide n'inscrit personne dans la chaîne de confiance")
     func invitationVideRejetee() {
         let confiance = CloudKitSharingService.construireConfiance(

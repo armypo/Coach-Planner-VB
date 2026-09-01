@@ -36,6 +36,12 @@ final class EtatSyncEquipe {
     /// Cache mémoire par codeEquipe (relu du disque au premier accès).
     private var etats: [String: Etat] = [:]
 
+    /// Codes en écriture différée (un import pose des centaines de filigranes —
+    /// on coalesce en un seul write, `flush` à la fin de la sync). Les
+    /// tombstones et seuils restent en écriture immédiate (durabilité).
+    private var differes: Set<String> = []
+    private var salesDifferes: Set<String> = []
+
     private func urlFichier(_ codeEquipe: String) throws -> URL {
         let dossier = try FileManager.default.url(
             for: .applicationSupportDirectory, in: .userDomainMask,
@@ -61,13 +67,32 @@ final class EtatSyncEquipe {
         var courant = etat(codeEquipe)
         bloc(&courant)
         etats[codeEquipe] = courant
+        if differes.contains(codeEquipe) {
+            salesDifferes.insert(codeEquipe)   // écriture coalescée jusqu'au flush
+            return
+        }
+        ecrire(codeEquipe, courant)
+    }
+
+    private func ecrire(_ codeEquipe: String, _ etat: Etat) {
         do {
             let url = try urlFichier(codeEquipe)
-            let data = try JSONCoderCache.encoder.encode(courant)
+            let data = try JSONCoderCache.encoder.encode(etat)
             try data.write(to: url, options: .atomic)
         } catch {
             logger.error("EtatSyncEquipe: échec de persistance pour \(codeEquipe, privacy: .private): \(error.localizedDescription)")
         }
+    }
+
+    /// Ouvre une fenêtre d'écriture différée pour une sync (les filigranes ne
+    /// touchent plus le disque jusqu'au `flush`). Idempotent.
+    func debutLot(_ codeEquipe: String) { differes.insert(codeEquipe) }
+
+    /// Ferme la fenêtre et écrit une seule fois si nécessaire.
+    func flush(_ codeEquipe: String) {
+        differes.remove(codeEquipe)
+        guard salesDifferes.remove(codeEquipe) != nil else { return }
+        ecrire(codeEquipe, etat(codeEquipe))
     }
 
     // MARK: - Filigranes (anti-écho)

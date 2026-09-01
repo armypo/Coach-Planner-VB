@@ -109,22 +109,31 @@ final class CloudKitSharingService {
         lignes: [(createur: String, utilisateurID: String, codeInvitation: String)]
     ) -> ConfianceEquipe {
         guard let racine else { return ConfianceEquipe(racine: nil, membres: []) }
-        var membres: Set<String> = [racine]
-        // Couples émis par la RACINE (ou par moi si je suis la racine).
-        let couplesRacine = Set(
-            lignes
-                .filter { $0.createur == racine || $0.createur == ConfianceEquipe.proprietaireLocal }
-                .filter { !$0.codeInvitation.isEmpty }
-                .map { "\($0.utilisateurID)|\($0.codeInvitation)" }
-        )
-        // Un écrivain tiers est accepté si sa copie revendique un couple émis
-        // par la racine (jeton au porteur — même niveau de confiance que la
-        // jonction par code d'invitation, D5).
-        for ligne in lignes where ligne.createur != racine && ligne.createur != ConfianceEquipe.proprietaireLocal {
-            if couplesRacine.contains("\(ligne.utilisateurID)|\(ligne.codeInvitation)") {
-                membres.insert(ligne.createur)
+        // Fixpoint (D6 — un assistant peut en ajouter un autre) : la racine est
+        // de confiance ; un couple (utilisateurID, codeInvitation) émis par un
+        // membre DÉJÀ de confiance devient un couple valide ; un écrivain qui
+        // revendique un couple valide rejoint les membres. On itère jusqu'à
+        // stabilité. `proprietaireLocal` (mes propres records) = toujours membre.
+        func cle(_ l: (createur: String, utilisateurID: String, codeInvitation: String)) -> String {
+            "\(l.utilisateurID)|\(l.codeInvitation)"
+        }
+        var membres: Set<String> = [racine, ConfianceEquipe.proprietaireLocal]
+        var change = true
+        while change {
+            change = false
+            let couplesValides = Set(
+                lignes
+                    .filter { membres.contains($0.createur) && !$0.codeInvitation.isEmpty }
+                    .map(cle)
+            )
+            for ligne in lignes where !membres.contains(ligne.createur) {
+                if couplesValides.contains(cle(ligne)) {
+                    membres.insert(ligne.createur)
+                    change = true
+                }
             }
         }
+        membres.remove(ConfianceEquipe.proprietaireLocal)  // reste accepté via accepte()
         return ConfianceEquipe(racine: racine, membres: membres)
     }
 

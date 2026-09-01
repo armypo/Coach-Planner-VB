@@ -455,6 +455,9 @@ struct ConfigurationView: View {
         let equipeAPublier = equipe
         let etabAPublier = etablissement
         let codeAPublier = codeEquipe
+        // E′ §1 — identité d'écrivain du coach créateur (auto-login déjà fait
+        // ci-dessus) avant de publier les ancres d'équipe.
+        sharingService.ecrivainID = authService.utilisateurConnecte?.id.uuidString
         Task {
             // Récupérer tous les utilisateurs et joueurs de cette équipe
             let descripteurUsers = FetchDescriptor<Utilisateur>(

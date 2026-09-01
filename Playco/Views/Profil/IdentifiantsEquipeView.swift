@@ -138,6 +138,7 @@ struct IdentifiantsEquipeView: View {
         user.dateModification = Date()
         try? modelContext.save()
         let code = codeEquipeActif
+        sharingService.ecrivainID = authService.utilisateurConnecte?.id.uuidString
         Task { await sharingService.publierNouvelUtilisateur(user, joueur: nil, codeEquipe: code) }
         afficherNouveauMdp = NouveauMdpWrapper(nom: user.nomComplet, mdp: nouveauCode)
     }

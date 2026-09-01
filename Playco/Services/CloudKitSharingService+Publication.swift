@@ -319,7 +319,7 @@ extension CloudKitSharingService {
             _ = try await publicDB.save(record)
             if let prefixe = prefixeRecord {
                 let mien = CKRecord.ID(recordName: Self.nomRecord(prefixe, id: entiteID.uuidString, ecrivain: ecrivain))
-                try? await publicDB.deleteRecord(withID: mien)
+                _ = try? await publicDB.deleteRecord(withID: mien)
             }
         } catch {
             logger.warning("publierSuppression \(typeCible) \(entiteID.uuidString, privacy: .private): \(error.localizedDescription)")

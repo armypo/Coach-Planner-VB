@@ -169,7 +169,7 @@ struct ContentView: View {
         if plan.publie {
             await sharingService.publierMisesAJourCoach(
                 codeEquipe: code, context: modelContext,
-                estAdmin: user.role == .admin,
+                estAdmin: user.role != .assistantCoach,  // .admin ET .coach publient les ancres
                 modeMatchActif: syncService.modeMatchActif)
         }
     }

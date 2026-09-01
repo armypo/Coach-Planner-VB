@@ -98,17 +98,41 @@ extension CloudKitSharingService {
         return resultat
     }
 
+    /// Plafond de bytes INLINE cumulés par record (la limite CKRecord est ~1 Mo
+    /// tous champs confondus — trois binaires ≤ 500 Ko chacun dépasseraient).
+    /// Au-delà, on force le champ en CKAsset même sous le seuil unitaire.
+    static let plafondInlineTotal = 800_000
+
     /// Sauvegarde un record après application des champs binaires, puis nettoie
     /// les fichiers temporaires CKAsset. DRY entre les 4 publierX de préparation.
+    /// E′ (contre-revue) : garde de taille TOTALE — les plus gros binaires
+    /// basculent en CKAsset d'abord jusqu'à ce que l'inline cumulé tienne, sinon
+    /// un record de 3×500 Ko échouerait au save en PERMANENCE (seuil gelé).
     private func sauvegarderAvecBinaires(record: CKRecord,
                                          champs: [String: CKRecordValue],
                                          binaires: [String: Data?]) async throws {
         for (cle, valeur) in champs {
             record[cle] = valeur
         }
+        // Décider inline vs asset globalement : les binaires présents triés du
+        // plus gros au plus petit ; on garde inline tant que le cumul tient.
+        let presents = binaires.compactMap { (cle, data) -> (String, Data)? in
+            guard let data, !data.isEmpty else { return nil }
+            return (cle, data)
+        }.sorted { $0.1.count > $1.1.count }
+
         var temporaires: [URL] = []
-        for (cle, data) in binaires {
-            if let url = Self.appliquerChampBinaire(record, cle: cle, data: data) {
+        var cumulInline = 0
+        for (cle, data) in binaires where (data ?? Data()).isEmpty {
+            record[cle] = nil   // champ vide → efface la clé (propage l'effacement)
+        }
+        for (cle, data) in presents {
+            let tientInline = data.count <= Self.seuilAssetOctets
+                && cumulInline + data.count <= Self.plafondInlineTotal
+            if tientInline {
+                record[cle] = data as CKRecordValue
+                cumulInline += data.count
+            } else if let url = Self.ecrireAsset(record, cle: cle, data: data) {
                 temporaires.append(url)
             }
         }
@@ -117,6 +141,21 @@ extension CloudKitSharingService {
         }
         _ = try appliquerIdentiteEcrivain(record)
         _ = try await publicDB.save(record)
+    }
+
+    /// Écrit un champ en CKAsset (fichier temporaire à nettoyer après le save).
+    static func ecrireAsset(_ record: CKRecord, cle: String, data: Data) -> URL? {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ck-asset-\(UUID().uuidString).bin")
+        do {
+            try data.write(to: url)
+            record[cle] = CKAsset(fileURL: url)
+            return url
+        } catch {
+            logger.warning("ecrireAsset \(cle): écriture échouée, repli inline: \(error.localizedDescription)")
+            record[cle] = data as CKRecordValue
+            return nil
+        }
     }
 
     // MARK: - Exercices de séance
@@ -374,18 +413,12 @@ extension CloudKitSharingService {
         if let seanceIDStr = record.chaineSecurisee("seanceID") {
             rapport.seanceID = UUID(uuidString: seanceIDStr)
         }
-        if let forces = binaires["forcesData"] ?? nil {
-            rapport.forcesData = forces
-        }
-        if let faiblesses = binaires["faiblessesData"] ?? nil {
-            rapport.faiblessesData = faiblesses
-        }
-        if let strategies = binaires["strategiesData"] ?? nil {
-            rapport.strategiesData = strategies
-        }
-        if let zones = binaires["tendancesZonalesData"] ?? nil {
-            rapport.tendancesZonalesData = zones
-        }
+        // Effacement propagé (champs non optionnels → Data() vide), symétrie E′
+        // avec les exercices : un binaire retiré par un coach se propage.
+        rapport.forcesData = (binaires["forcesData"] ?? nil) ?? Data()
+        rapport.faiblessesData = (binaires["faiblessesData"] ?? nil) ?? Data()
+        rapport.strategiesData = (binaires["strategiesData"] ?? nil) ?? Data()
+        rapport.tendancesZonalesData = (binaires["tendancesZonalesData"] ?? nil) ?? Data()
     }
 
     // MARK: - Bibliothèque d'exercices des coachs
