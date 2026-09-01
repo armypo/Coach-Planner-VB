@@ -28,6 +28,10 @@ final class CloudKitSharingService {
     var estEnCoursDeRecuperation = false
     var erreur: String?
 
+    /// Posture A (E′ résidu) : l'ancre `equipe-<code>` est détenue par un autre
+    /// compte iCloud — la chaîne de confiance ne peut pas partir de ce coach.
+    var ancreUsurpee = false
+
     /// E′ — identité d'ÉCRIVAIN de cet appareil (`Utilisateur.id` du compte
     /// connecté, stable inter-appareils d'un même compte). Posée par ContentView
     /// avant toute sync et par la jonction. Aucune publication sans écrivain.

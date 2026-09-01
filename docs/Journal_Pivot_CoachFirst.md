@@ -102,6 +102,12 @@ Phasé E1→E4 (voir plan) : plomberie durcie, contenus de préparation, analyse
 - `c5a3cea` **round 2** : correctifs CLEANEMENT résolubles — racine par recordID (anti-spoof), tombstones respectés pour joueurs/stats/formations/points, points filigranés, horodatage plafonné, identité d'écrivain à tous les sites de publication, ancres publiables par .coach, garde de taille totale du record (CKAsset), IO différée d'EtatSyncEquipe, **confiance transitive** (D6 — assistant ajouté par assistant), symétrie d'effacement des binaires scouting. **320/320, 50 suites**.
 - **RÉSIDU documenté → décision fondateur requise** : [SyncEPrime_Residuel.md](./SyncEPrime_Residuel.md). Le cas coopératif est sain ; il reste un cluster ADVERSARIAL inhérent à la Public DB world-readable (le code d'invitation est un secret AU PORTEUR : qui a le code d'équipe peut usurper/altérer par LWW). Ne se corrige pas dans la Public DB (CKShare = migration Core Data). 3 postures : A accepter+durcir (reco PR), B rétrécir D6 (écriture assistant ciblée), C CKShare backlog.
 
+## 2026-09-01 — Posture A + C actée, durcissements, PR
+
+- **Décision fondateur : A + C.** Résidu adversarial accepté (documenté) ; CKShare au backlog du plan.
+- Durcissements posture A : détection de **squat de l'ancre** `equipe-<code>` (créateur ≠ moi après save, ou `permissionFailure` sous ACL créateur-seul) → signalé au coach (`ancreUsurpee` + message), jamais un échec de sweep répété ; **pas de régénération de code** pour un assistant déjà rattaché (UI + garde).
+- PR `pivot/coach-first` → `main` ouverte (voir lien dans le journal git / GitHub).
+
 ## Reste global
 
 - **Action humaine (Dashboard CloudKit, avant prod du miroir élargi)** : champs QUERYABLE des nouveaux record types E2/E3 (`codeEquipe` partout ; `seanceID` + `horodatage` sur `PointMatchPartage`) + rôle d'écriture créateur-seul sur les nouveaux types (même posture que `docs/Securite_AbonnementPublicDB.md`).

@@ -59,7 +59,11 @@
 
 Top 10 (ordre) : 1. `BoutonRetourAccueil` extrait (6 duplications) · 2. **confirmation suppression de match** (cascade destructive au swipe !) · 3. « Fermer » standardisé (~20 sites) · 4. tints sections alignés (brique Matchs posée en 2.4) · 5. icône « + » unique (~46 sites) · 6. empty states → `ContentUnavailableView` (~20 ad hoc) · 7. sidebars homogènes (listStyle + searchable) · 8. formulaires de création → `Form` · 9. kit stats généralisé (`TableauStats`, `FiltresStats` branché ou supprimé) · 10. campagne paddings/rayons (8 pires fichiers, trancher l'échelle 10/14). Règle d'or : retraits (B) avant polissage.
 
-## Chantier E — Parité de sync assistant (2-3+ sem, phasé) — D6
+## Chantier E — Parité de sync assistant — D6 ✅ E′ livré (2026-09-01), posture A + C
+
+> **Issue** : la livraison E initiale a été invalidée par revue adversariale (54 trouvailles) → refonte E′ (option C fix-forward, [Architecture_SyncEPrime.md](./Architecture_SyncEPrime.md)) + contre-revue round 2. **Posture fondateur A + C** : le résidu adversarial ([SyncEPrime_Residuel.md](./SyncEPrime_Residuel.md) — code d'invitation = secret au porteur dans une Public DB world-readable, menace bornée par « connaît le code d'équipe ») est ACCEPTÉ et documenté, avec ACL créateur-seul (action Dashboard) + 2 durcissements (détection de squat de l'ancre `equipe-<code>`, pas de régénération de code pour un assistant rattaché) ; **CKShare (migration Core Data) inscrit au backlog** comme correctif inviolable post-lancement. Ne pas relancer de ronde de durcissement Public DB : plafond atteint par construction.
+
+_(Plan d'origine ci-dessous, conservé pour trace.)_
 
 Cible : tous les coachs voient et modifient les mêmes données, sauf pendant le live (un seul preneur de stats, mode match, sync à la sortie). SwiftData `.automatic` ne traverse pas les Apple ID ; CKShare non supporté par SwiftData → **élargir le miroir Public DB record type par record type, en bidirectionnel** (merge `dateModification`, pattern en place).
 
@@ -68,6 +72,10 @@ Cible : tous les coachs voient et modifient les mêmes données, sauf pendant le
 - **E3** : analyse (StatsMatch, PointMatch, formations perso).
 - **E4** : écriture assistant (publication par les mêmes chemins) + règles de merge.
 - Invariants : aucun secret en Public DB, volumes surveillés (PencilKit lourd), DÉMO isolée.
+
+## Backlog (post-lancement)
+
+- **CKShare / base partagée CloudKit** — le seul correctif INVIOLABLE au résidu E′ (écriture contrôlée par le serveur, membres invités par partage signé). Exige une migration SwiftData → Core Data (`NSPersistentCloudKitContainer` + partage) : chantier dédié, à planifier avec le backend vidéo H2. Tant qu'il n'est pas fait, la posture A s'applique.
 
 ## Séquence
 

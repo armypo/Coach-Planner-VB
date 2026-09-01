@@ -109,13 +109,23 @@ struct IdentifiantsEquipeView: View {
                 .buttonStyle(.borderless)
             }
             HStack(spacing: 10) {
-                Button {
-                    regenererCodeInvitation(user: user)
-                } label: {
-                    Label("Régénérer le code", systemImage: "arrow.clockwise")
+                // Durcissement posture A (E′ résidu) : régénérer le code d'un
+                // assistant DÉJÀ rattaché casserait sa chaîne de confiance (ses
+                // records deviendraient inertes chez les autres coachs) — et il
+                // n'en a plus besoin. Régénération réservée aux lignes non réclamées.
+                if user?.appleUserID.isEmpty == false {
+                    Label("Rattaché — code désormais inutile", systemImage: "checkmark.seal")
                         .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Button {
+                        regenererCodeInvitation(user: user)
+                    } label: {
+                        Label("Régénérer le code", systemImage: "arrow.clockwise")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.bordered)
                 }
-                .buttonStyle(.bordered)
                 Spacer()
                 ShareLink(item: templatePartage(cred: cred, user: user)) {
                     Label("Partager", systemImage: "square.and.arrow.up")
@@ -132,7 +142,8 @@ struct IdentifiantsEquipeView: View {
     /// Génère un nouveau code d'invitation (ex: si l'ancien a fuité avant la jointure)
     /// et republie le mapping vers CloudKit public pour qu'il soit réclamable.
     private func regenererCodeInvitation(user: Utilisateur?) {
-        guard let user = user else { return }
+        // Défense en profondeur : jamais sur une ligne déjà rattachée (cf. UI).
+        guard let user = user, user.appleUserID.isEmpty else { return }
         let nouveauCode = Utilisateur.genererCodeUniqueInvitation(context: modelContext)
         user.codeInvitation = nouveauCode
         user.dateModification = Date()

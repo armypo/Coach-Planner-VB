@@ -279,17 +279,12 @@ xcodebuild test -scheme Playco -destination 'platform=iOS Simulator,name=iPad Pr
 ```
 Baseline : **310/310 tests, 47 suites** (2026-09-01, pivot chantiers A-E). Toolchain stable par défaut (`xcode-select`). Notes historiques : Xcode 27 beta via `DEVELOPER_DIR=~/Downloads/Xcode-beta.app/...` ; régression runtime simulateur iOS 27 beta (juil. 2026 : crashs SwiftData in-memory) → valider sur la toolchain stable.
 
-## État actuel — pivot coach-first (branche `pivot/coach-first`, 2026-08-29)
-- ✅ Build **0 erreur / 0 warning** ; **310/310 tests, 47 suites**
-- ✅ **App GRATUITE** : paywall StoreKit intégralement supprimé (D3) ; `Playco.storekit` et le framework retirés du projet
-- ✅ **Coach-first** : plus aucun compte ni surface athlète (D1-D6 actées) ; assistants = mêmes droits que le head coach ; messagerie retirée
-- ✅ Base = main v2.2 + boucle de nuit des 6-7 juil. (2.2.a restauration live, 2.2.b disponibilité/consentement/TelemetryDeck/MetricKit, 2.3 lien+QR [recentré assistants], 2.3.1 demi-terrain, 2.3.2 match éclair, 2.4 Mat Nuit vague 1, 2.6.2 PDF plan de pratique, SportPack phase 0) — merge intégral validé par revue diff-par-diff
-- ✅ Navigation coach-first (chantier C) : scouting dans Matchs, toolbar match 3 groupes, calendrier au Dock, formations nommées, présences visibles, exports au hub
-- ✅ Uniformisation vague 1 (chantier D) : BoutonRetourAccueil, confirmation suppression match, sidebars homogènes, créations en Form
-- ✅ **Chantier E — parité de sync assistant LIVRÉ** (E1→E4) : fetch-puis-modifier généralisé + disponibilité/attestation (E1), contenus de préparation avec dessins (E2), analyse box scores/points live/formations (E3), écriture assistant bidirectionnelle LWW par dateModification (E4). ⚠️ Action Dashboard CloudKit avant prod : champs QUERYABLE des nouveaux types (`codeEquipe` partout, `seanceID`+`horodatage` sur `PointMatchPartage`)
-- 🔜 D vague 1bis (avec Mat Nuit) : « Fermer » standardisé, empty states, kit stats généralisé, campagne paddings/rayons
-- 🔜 PR vers `main` différée (GitHub indisponible) puis rebase de `suivis/pr6` (démo) ; refresh des textes légaux ; action humaine : `TelemetryDeckAppID`
-- Docs de référence : `docs/Pivot_CoachFirst_Plan.md` (chantiers A-E) · `docs/Journal_Pivot_CoachFirst.md` (journal d'exécution) · Vision/Roadmap 3.0 = archives annotées pré-pivot
+## État actuel — pivot coach-first (branche `pivot/coach-first`, 2026-09-01)
+- ✅ Build **0 erreur / 0 warning** ; **320/320 tests, 50 suites**
+- ✅ **App GRATUITE** (D3) · **Coach-first** (D1-D6) · navigation (C) · uniformisation D vague 1 + 1bis partielle (Fermer, empty states, Forms)
+- ✅ **Chantier E → E′** : sync inter-coachs REFONDUE après revue adversariale (records par écrivain, confiance par créateur transitive, tombstones, filigranes anti-écho, PII minimale, mode match étanche) — `docs/Architecture_SyncEPrime.md`. **Posture A + C** : résidu adversarial accepté et documenté (`docs/SyncEPrime_Residuel.md`), CKShare au backlog. ⚠️ Action Dashboard CloudKit avant prod : ACL créateur-seul + champs QUERYABLE (`codeEquipe` partout, `ecrivainID`, `seanceID`/`publieLe` [sortable] sur `PointMatchPartage`, `SuppressionPartagee`)
+- 🔜 PR `pivot/coach-first` → `main` puis rebase de `suivis/pr6` (démo) ; D vague 1bis suite (kit stats, paddings) ; textes légaux ; action humaine `TelemetryDeckAppID`
+- Docs de référence : `docs/Pivot_CoachFirst_Plan.md` · `docs/Journal_Pivot_CoachFirst.md` · `docs/Revue_Chantier_E.md` · `docs/Architecture_SyncEPrime.md` · `docs/SyncEPrime_Residuel.md`
 
 ## Langue
 L'interface est entièrement en **français**. Noms de variables, commentaires et UI en français.

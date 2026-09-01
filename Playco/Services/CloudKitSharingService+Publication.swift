@@ -351,10 +351,40 @@ extension CloudKitSharingService {
 
     // MARK: - Publication détaillée (privé)
 
+    /// Publie l'ANCRE d'équipe `equipe-<code>` (mono-écrivain, racine de la
+    /// chaîne de confiance E′ §2). Durcissement posture A (SyncEPrime_Residuel)
+    /// : détecte un squat de l'ancre — créateur ≠ moi après save (ACL ouverte)
+    /// ou `permissionFailure` (ACL créateur-seul) — et le SIGNALE au coach au
+    /// lieu de faire échouer le sweep à chaque cycle (seuil gelé à vie).
     private func publierEquipe(_ equipe: Equipe) async throws {
         let recordID = CKRecord.ID(recordName: "equipe-\(equipe.codeEquipe)")
         let record = await recordPublicAJour(type: RecordType.equipe, recordID: recordID)
-        try await sauvegarder(champs: Self.champsPublicsEquipe(equipe), sur: record)
+        for (cle, valeur) in Self.champsPublicsEquipe(equipe) {
+            record[cle] = valeur
+        }
+        _ = try appliquerIdentiteEcrivain(record)
+        do {
+            let sauve = try await publicDB.save(record)
+            if let createur = sauve.creatorUserRecordID?.recordName,
+               createur != ConfianceEquipe.proprietaireLocal {
+                signalerAncreUsurpee(codeEquipe: equipe.codeEquipe)
+            } else {
+                ancreUsurpee = false
+            }
+        } catch let erreurCK as CKError where erreurCK.code == .permissionFailure {
+            signalerAncreUsurpee(codeEquipe: equipe.codeEquipe)
+        }
+    }
+
+    /// L'ancre `equipe-<code>` appartient à un AUTRE compte iCloud : les
+    /// assistants ne pourront jamais faire confiance à ce coach (racine ≠ lui).
+    /// Cause typique : équipe créée hors-ligne, code partagé avant la 1re
+    /// publication, ancre créée par un tiers entre-temps. Remède : nouvelle
+    /// équipe (nouveau code). Signalé, jamais silencieux.
+    private func signalerAncreUsurpee(codeEquipe: String) {
+        ancreUsurpee = true
+        logger.error("Ancre equipe-\(codeEquipe, privacy: .private) détenue par un autre compte iCloud — chaîne de confiance impossible")
+        erreur = "Le code d'équipe « \(codeEquipe) » est déjà réclamé dans le cloud par un autre compte. Vos assistants ne pourront pas synchroniser avec vous : créez une nouvelle équipe (nouveau code) et réinvitez-les."
     }
 
     /// Champs PUBLICS d'une équipe. Fonction pure testable (pattern
