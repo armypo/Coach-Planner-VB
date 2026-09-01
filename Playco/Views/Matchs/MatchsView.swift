@@ -385,6 +385,7 @@ struct MatchsView: View {
 
         // Soft delete du match
         match.estArchivee = true
+        match.dateModification = Date() // E2 — propager l'archivage au sweep
         do {
             try modelContext.save()
         } catch {

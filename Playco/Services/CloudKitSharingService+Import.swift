@@ -106,10 +106,13 @@ extension CloudKitSharingService {
             importerJoueur(from: record, context: context)
         }
 
-        // 7b. Importer les séances (incl. matchs type=.match — lecture seule athlète).
+        // 7b. Importer les séances (incl. matchs type=.match).
         let seanceRecords = try await fetchRecords(type: RecordType.seance, codeEquipe: codeEquipe)
         for record in seanceRecords { importerSeance(from: record, context: context) }
 
+        // 7c. E2 — contenus de préparation (APRÈS les séances : les exercices
+        // se rattachent à leur séance parente).
+        try await importerContenusPreparation(codeEquipe: codeEquipe, context: context)
 
         do {
             try context.save()
@@ -137,6 +140,9 @@ extension CloudKitSharingService {
             let seanceRecords = try await fetchRecords(type: RecordType.seance, codeEquipe: codeEquipe)
             for record in seanceRecords { importerSeance(from: record, context: context) }
 
+            // E2 — contenus de préparation (après les séances pour le rattachement).
+            try await importerContenusPreparation(codeEquipe: codeEquipe, context: context)
+
             do {
                 try context.save()
                 logger.info("Sync incrémentale terminée pour \(codeEquipe, privacy: .private)")
@@ -150,6 +156,24 @@ extension CloudKitSharingService {
     }
 
 
+
+    // MARK: - Import contenus de préparation (E2 — parité assistant D6)
+
+    /// Importe exercices de séance, stratégies, scoutings et bibliothèque.
+    /// Appelé APRÈS l'import des séances (rattachement des exercices).
+    func importerContenusPreparation(codeEquipe: String, context: ModelContext) async throws {
+        let exerciceRecords = try await fetchRecords(type: RecordType.exercice, codeEquipe: codeEquipe)
+        for record in exerciceRecords { importerExercice(from: record, context: context) }
+
+        let strategieRecords = try await fetchRecords(type: RecordType.strategie, codeEquipe: codeEquipe)
+        for record in strategieRecords { importerStrategie(from: record, context: context) }
+
+        let scoutingRecords = try await fetchRecords(type: RecordType.scouting, codeEquipe: codeEquipe)
+        for record in scoutingRecords { importerScouting(from: record, context: context) }
+
+        let biblioRecords = try await fetchRecords(type: RecordType.bibliotheque, codeEquipe: codeEquipe)
+        for record in biblioRecords { importerBibliotheque(from: record, context: context) }
+    }
 
     // MARK: - Import vers SwiftData
 

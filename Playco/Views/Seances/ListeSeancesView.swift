@@ -154,6 +154,7 @@ struct ListeSeancesView: View {
     private func supprimer(_ seance: Seance) {
         if seanceSelectionnee == seance { seanceSelectionnee = nil }
         seance.estArchivee = true
+        seance.dateModification = Date() // E2 — propager l'archivage au sweep
     }
 
     private func renommer(_ seance: Seance) {

@@ -14,6 +14,7 @@ struct BibliothequeView: View {
     @Environment(\.codeEquipeActif) private var codeEquipeActif
     @Query(sort: \ExerciceBibliotheque.nom) private var tousExercicesBD: [ExerciceBibliotheque]
     @Query(sort: \CategorieExercice.nom) private var toutesCategoriesPerso: [CategorieExercice]
+    @Query private var tousUtilisateurs: [Utilisateur]
 
     @State private var recherche = ""
     @State private var categorieSelectionnee: String? = nil
@@ -37,10 +38,19 @@ struct BibliothequeView: View {
     /// Si non-nil, on est en mode "import" et on appelle ce callback
     var onImporter: ((ExerciceBibliotheque) -> Void)? = nil
 
-    /// Exercices filtrés par coach connecté
+    /// Exercices visibles : les miens, les prédéfinis, et ceux des AUTRES
+    /// coachs de l'équipe active (E2 — parité assistant D6 : la bibliothèque
+    /// de l'équipe = les bibliothèques de ses coachs, importées via la sync).
     private var tousExercices: [ExerciceBibliotheque] {
         let codeCoach = authService.utilisateurConnecte?.id.uuidString ?? ""
-        return tousExercicesBD.filter { $0.codeCoach == codeCoach || $0.codeCoach.isEmpty }
+        let idsCoachsEquipe = Set(
+            tousUtilisateurs
+                .filter { $0.codeEcole == codeEquipeActif && $0.role != .etudiant }
+                .map { $0.id.uuidString }
+        )
+        return tousExercicesBD.filter {
+            $0.codeCoach == codeCoach || $0.codeCoach.isEmpty || idsCoachsEquipe.contains($0.codeCoach)
+        }
     }
 
     /// Catégories personnalisées de l'équipe

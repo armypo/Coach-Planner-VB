@@ -123,6 +123,9 @@ struct ExerciceDetailView: View {
         } message: {
             Text("L'exercice a été ajouté à votre bibliothèque.")
         }
+        .onChange(of: signatureContenu) { _, _ in
+            exercice.dateModification = Date()
+        }
     }
 
     private var titreAvecDuree: String {
@@ -132,4 +135,10 @@ struct ExerciceDetailView: View {
         return exercice.nom
     }
 
+    /// E2 — signature du contenu éditable : toute édition (terrain, notes, nom,
+    /// durée) bump `dateModification` pour le sweep de publication incrémental.
+    private var signatureContenu: String {
+        "\(exercice.nom)|\(exercice.notes)|\(exercice.duree)|" +
+        "\(exercice.dessinData?.hashValue ?? 0)|\(exercice.elementsData?.hashValue ?? 0)|\(exercice.etapesData?.hashValue ?? 0)"
+    }
 }

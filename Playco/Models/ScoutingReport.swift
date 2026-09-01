@@ -15,6 +15,9 @@ final class ScoutingReport {
     var codeEquipe: String = ""
     var estArchive: Bool = false
     var dateCreation: Date = Date()
+    /// E2 — sweep de publication incrémental (parité assistant D6).
+    /// Champ additif CloudKit-safe (défaut sur la déclaration).
+    var dateModification: Date = Date()
 
     /// Lien optionnel vers le match (`Seance` de type .match) que ce rapport prépare.
     /// UUID simple (pas de relation SwiftData) : CloudKit-safe, nil par défaut.

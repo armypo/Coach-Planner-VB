@@ -50,6 +50,11 @@ final class CloudKitSharingService {
         static let joueur = "JoueurPartage"
         static let etablissement = "EtablissementPartage"
         static let seance = "SeancePartagee"
+        // E2 — contenus de préparation (parité assistant D6)
+        static let exercice = "ExercicePartage"
+        static let strategie = "StrategiePartagee"
+        static let scouting = "ScoutingPartage"
+        static let bibliotheque = "BibliothequePartagee"
     }
 
     // MARK: - Erreurs

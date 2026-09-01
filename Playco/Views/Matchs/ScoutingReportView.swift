@@ -90,6 +90,19 @@ struct ScoutingReportView: View {
             sauvegardeTask?.cancel()
             persisterTout()
         }
+        // E2 — les champs à liaison DIRECTE sur le modèle (en-tête, tendances,
+        // notes) ne passent pas par persisterTout : signature dédiée pour le
+        // sweep de publication incrémental.
+        .onChange(of: signatureChampsDirects) { _, _ in
+            rapport.dateModification = Date()
+        }
+    }
+
+    /// E2 — signature des champs édités par liaison directe sur le modèle.
+    private var signatureChampsDirects: String {
+        "\(rapport.adversaire)|\(rapport.adversaireObserve)|\(rapport.systemJeu)|\(rapport.styleJeu)|" +
+        "\(rapport.notes)|\(rapport.tendanceService)|\(rapport.tendanceAttaque)|\(rapport.tendanceReception)|" +
+        "\(rapport.tendanceBloc)|\(rapport.dateMatch.timeIntervalSince1970)|\(rapport.seanceID?.uuidString ?? "")"
     }
 
     // MARK: - Repli / dépli
@@ -715,6 +728,8 @@ struct ScoutingReportView: View {
         rapport.faiblesses = faiblesses
         rapport.strategies = strategies
         rapport.tendancesZonales = tendancesZonales
+        // E2 — sweep de publication incrémental (parité assistant D6).
+        rapport.dateModification = Date()
         aDesModifications = false
     }
 }

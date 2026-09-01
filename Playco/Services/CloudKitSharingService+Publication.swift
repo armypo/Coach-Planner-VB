@@ -141,12 +141,42 @@ extension CloudKitSharingService {
             for j in (try? context.fetch(descJ)) ?? [] where j.dateModification > seuil {
                 try await publierJoueur(j)
             }
+            // E2 : les séances ARCHIVÉES se publient aussi (l'archivage bump
+            // dateModification et doit se propager aux autres coachs — D6).
             let descS = FetchDescriptor<Seance>(predicate: #Predicate { $0.codeEquipe == codeEquipe })
-            for s in (try? context.fetch(descS)) ?? [] where s.dateModification > seuil && !s.estArchivee {
+            let seances = (try? context.fetch(descS)) ?? []
+            for s in seances where s.dateModification > seuil {
                 try await publierSeance(s)
             }
             // Les matchs sont publiés en tant que Seance (type=.match) ci-dessus.
             // MatchCalendrier n'est plus partagé (déprécié/dormant).
+
+            // E2 — contenus de préparation (parité assistant D6).
+            for s in seances {
+                for exo in (s.exercices ?? []) where exo.dateModification > seuil {
+                    try await publierExercice(exo, seanceID: s.id, codeEquipe: codeEquipe)
+                }
+            }
+            let descStrat = FetchDescriptor<StrategieCollective>(predicate: #Predicate { $0.codeEquipe == codeEquipe })
+            for strat in (try? context.fetch(descStrat)) ?? [] where strat.dateModification > seuil {
+                try await publierStrategie(strat)
+            }
+            let descScout = FetchDescriptor<ScoutingReport>(predicate: #Predicate { $0.codeEquipe == codeEquipe })
+            for rapport in (try? context.fetch(descScout)) ?? [] where rapport.dateModification > seuil {
+                try await publierScouting(rapport)
+            }
+            // Bibliothèque : les items personnels des coachs de l'équipe
+            // (codeCoach = Utilisateur.id). Les prédéfinis ne se publient pas.
+            let idsCoachs = Set(
+                ((try? context.fetch(descU)) ?? [])
+                    .filter { $0.role != .etudiant }
+                    .map { $0.id.uuidString }
+            )
+            let descBiblio = FetchDescriptor<ExerciceBibliotheque>(predicate: #Predicate { $0.estPredefini == false })
+            for exo in (try? context.fetch(descBiblio)) ?? []
+            where exo.dateModification > seuil && idsCoachs.contains(exo.codeCoach) {
+                try await publierBibliotheque(exo, codeEquipe: codeEquipe)
+            }
             derniereSyncDate = Date()
         } catch {
             logger.error("publierMisesAJourCoach: \(error.localizedDescription)")

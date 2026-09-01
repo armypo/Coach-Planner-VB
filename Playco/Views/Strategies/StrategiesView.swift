@@ -131,6 +131,7 @@ struct StrategiesView: View {
                         for s in toDelete {
                             if strategieSelectionnee?.id == s.id { strategieSelectionnee = nil }
                             s.estArchivee = true
+                            s.dateModification = Date() // E2 — propager l'archivage au sweep
                         }
                     } : nil)
                 } header: {

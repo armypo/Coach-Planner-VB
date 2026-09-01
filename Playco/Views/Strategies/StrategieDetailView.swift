@@ -61,6 +61,11 @@ struct StrategieDetailView: View {
         .onChange(of: strategie.notes) { _, _ in
             strategie.dateModification = Date()
         }
+        // E2 — les éditions du TERRAIN (dessin, éléments, étapes) doivent aussi
+        // bump dateModification, sinon elles échappent au sweep de publication.
+        .onChange(of: signatureTerrain) { _, _ in
+            strategie.dateModification = Date()
+        }
         .alert("Renommer", isPresented: $afficherRenommer) {
             TextField("Nom", text: $nouveauNom)
             Button("OK") {
@@ -71,6 +76,11 @@ struct StrategieDetailView: View {
             }
             Button("Annuler", role: .cancel) {}
         }
+    }
+
+    /// E2 — signature du contenu terrain pour le sweep de publication.
+    private var signatureTerrain: String {
+        "\(strategie.dessinData?.hashValue ?? 0)|\(strategie.elementsData?.hashValue ?? 0)|\(strategie.etapesData?.hashValue ?? 0)"
     }
 
     // MARK: - Section description

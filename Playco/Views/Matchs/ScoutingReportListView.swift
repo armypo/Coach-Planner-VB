@@ -82,6 +82,7 @@ struct ScoutingReportListView: View {
                         .swipeActions(edge: .trailing) {
                             Button(role: .destructive) {
                                 rapport.estArchive = true
+                                rapport.dateModification = Date() // E2 — propager l'archivage au sweep
                                 try? modelContext.save()
                             } label: {
                                 Label("Supprimer", systemImage: "trash")
