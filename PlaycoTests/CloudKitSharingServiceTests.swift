@@ -268,4 +268,132 @@ struct CloudKitSharingSecuriteTests {
         let champs = CloudKitSharingService.champsPublicsUtilisateur(u, codeEquipe: "")
         #expect((champs["codeEquipe"] as? String) == "EQU-FALLBACK")
     }
+
+    @Test("champsPublicsJoueur ne contient AUCUN secret (champs legacy gelés)")
+    func aucunSecretJoueurPublie() {
+        let j = JoueurEquipe(nom: "Roy", prenom: "Alex", numero: 10, poste: .passeur)
+        j.motDePasseHash = "HASH_LEGACY"
+        j.sel = "SEL_LEGACY"
+
+        let champs = CloudKitSharingService.champsPublicsJoueur(j)
+
+        #expect(champs["motDePasseHash"] == nil)
+        #expect(champs["sel"] == nil)
+        #expect(champs["joueurID"] != nil)
+        #expect(champs["codeEquipe"] != nil)
+    }
+}
+
+// MARK: - Mappings publics E1 (fonctions pures, parité assistant D6)
+
+@Suite("CloudKitSharingService — Mappings publics (E1)")
+@MainActor
+struct CloudKitSharingMappingsTests {
+
+    @Test("champsPublicsJoueur publie disponibilité + attestation de consentement")
+    func joueurDisponibiliteEtAttestation() {
+        let j = JoueurEquipe(nom: "Roy", prenom: "Alex", numero: 10, poste: .passeur)
+        j.codeEquipe = "EQU1"
+        j.statutDisponibilite = .blesse
+        j.consentementParentalAtteste = true
+        j.dateAttestationConsentement = Date(timeIntervalSince1970: 1_700_000_000)
+        j.attesteParNom = "Coach Dionne"
+
+        let champs = CloudKitSharingService.champsPublicsJoueur(j)
+
+        #expect((champs["statutDisponibiliteRaw"] as? String) == "blesse")
+        #expect((champs["consentementParentalAtteste"] as? Int) == 1)
+        #expect((champs["dateAttestationConsentement"] as? Date) == Date(timeIntervalSince1970: 1_700_000_000))
+        #expect((champs["attesteParNom"] as? String) == "Coach Dionne")
+    }
+
+    @Test("champsPublicsJoueur : joueur disponible sans attestation → défauts CloudKit-safe")
+    func joueurDisponibiliteDefauts() {
+        let j = JoueurEquipe(nom: "Roy", prenom: "Alex", numero: 10, poste: .passeur)
+
+        let champs = CloudKitSharingService.champsPublicsJoueur(j)
+
+        #expect((champs["statutDisponibiliteRaw"] as? String) == "")
+        #expect((champs["consentementParentalAtteste"] as? Int) == 0)
+        #expect(champs["dateAttestationConsentement"] == nil)
+        #expect((champs["attesteParNom"] as? String) == "")
+    }
+
+    @Test("champsPublicsJoueur mappe le roster et les stats cumulées")
+    func joueurRosterEtStats() {
+        let j = JoueurEquipe(nom: "Roy", prenom: "Alex", numero: 10, poste: .passeur)
+        j.codeEquipe = "EQU1"
+        j.identifiant = "alex.roy"
+        j.aces = 12
+        j.attaquesReussies = 45
+        j.manchettes = 30
+        j.dateModification = Date(timeIntervalSince1970: 1_800_000_000)
+
+        let champs = CloudKitSharingService.champsPublicsJoueur(j)
+
+        #expect((champs["joueurID"] as? String) == j.id.uuidString)
+        #expect((champs["nom"] as? String) == "Roy")
+        #expect((champs["numero"] as? Int) == 10)
+        #expect((champs["codeEquipe"] as? String) == "EQU1")
+        #expect((champs["aces"] as? Int) == 12)
+        #expect((champs["attaquesReussies"] as? Int) == 45)
+        #expect((champs["manchettes"] as? Int) == 30)
+        #expect((champs["dateModification"] as? Date) == Date(timeIntervalSince1970: 1_800_000_000))
+    }
+
+    @Test("champsPublicsEquipe mappe les champs d'équipe avec dateModification")
+    func equipeMapping() {
+        let e = Equipe(nom: "Élans")
+        e.codeEquipe = "ELANS001"
+        e.categorieRaw = "Masculin"
+        e.divisionRaw = "Division 1"
+        e.saison = "2026-2027"
+        e.dateModification = Date(timeIntervalSince1970: 1_800_000_000)
+
+        let champs = CloudKitSharingService.champsPublicsEquipe(e)
+
+        #expect((champs["codeEquipe"] as? String) == "ELANS001")
+        #expect((champs["nom"] as? String) == "Élans")
+        #expect((champs["categorieRaw"] as? String) == "Masculin")
+        #expect((champs["divisionRaw"] as? String) == "Division 1")
+        #expect((champs["saison"] as? String) == "2026-2027")
+        #expect((champs["dateModification"] as? Date) == Date(timeIntervalSince1970: 1_800_000_000))
+    }
+
+    @Test("champsPublicsEtablissement mappe l'établissement sous le codeEquipe")
+    func etablissementMapping() {
+        let etab = Etablissement(nom: "Cégep Garneau", type: .cegep, ville: "Québec", province: "QC")
+
+        let champs = CloudKitSharingService.champsPublicsEtablissement(etab, codeEquipe: "EQU1")
+
+        #expect((champs["codeEquipe"] as? String) == "EQU1")
+        #expect((champs["nom"] as? String) == "Cégep Garneau")
+        #expect((champs["typeRaw"] as? String) == TypeEtablissement.cegep.rawValue)
+        #expect((champs["ville"] as? String) == "Québec")
+        #expect((champs["province"] as? String) == "QC")
+    }
+
+    @Test("champsPublicsSeance mappe les métadonnées de séance/match")
+    func seanceMapping() {
+        let s = Seance(nom: "Match vs Titans", date: Date(timeIntervalSince1970: 1_900_000_000), typeSeance: .match)
+        s.codeEquipe = "EQU1"
+        s.lieu = "Gymnase A"
+        s.adversaire = "Titans"
+        s.scoreEquipe = 3
+        s.scoreAdversaire = 1
+        s.estArchivee = false
+        s.dateModification = Date(timeIntervalSince1970: 1_800_000_000)
+
+        let champs = CloudKitSharingService.champsPublicsSeance(s)
+
+        #expect((champs["seanceID"] as? String) == s.id.uuidString)
+        #expect((champs["codeEquipe"] as? String) == "EQU1")
+        #expect((champs["nom"] as? String) == "Match vs Titans")
+        #expect((champs["typeSeanceRaw"] as? String) == TypeSeance.match.rawValue)
+        #expect((champs["adversaire"] as? String) == "Titans")
+        #expect((champs["scoreEquipe"] as? Int) == 3)
+        #expect((champs["scoreAdversaire"] as? Int) == 1)
+        #expect((champs["estArchivee"] as? Int) == 0)
+        #expect((champs["dateModification"] as? Date) == Date(timeIntervalSince1970: 1_800_000_000))
+    }
 }

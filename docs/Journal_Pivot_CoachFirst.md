@@ -35,9 +35,16 @@
 - `bed47f5` — BoutonRetourAccueil partagé (5 copies remplacées) ; **confirmation sur la suppression de match** (cascade destructive au swipe corrigée) ; sidebars homogènes (.sidebar + searchable Matchs/Entraînement) ; icône « + » unique ; création programme muscu alert → Form ; tints alignés palette mate ; FiltresStats (code mort) supprimé.
 - **Vague 1bis (à faire, avec Mat Nuit)** : « Fermer » standardisé (~20 sites), ~20 empty states ad hoc → ContentUnavailableView, kit stats généralisé, campagne paddings/rayons (8 pires fichiers), formulaires VStack custom → Form, purge .rounded/.hierarchical, échelle typo.
 
-## Chantier E — Parité de sync assistant (D6) — À VENIR
+## Chantier E — Parité de sync assistant (D6) — EN COURS
 
-Phasé E1→E4 (voir plan) : durcir les 4 `publierX` (fetch-puis-modifier), publier disponibilité/attestation, puis contenus de préparation, analyse, écriture assistant. Le plus gros chantier technique restant — session dédiée recommandée.
+Phasé E1→E4 (voir plan) : durcir les 4 `publierX` (fetch-puis-modifier), publier disponibilité/attestation, puis contenus de préparation, analyse, écriture assistant.
+
+### E1 — Plomberie durcie ✅ 2026-09-01
+
+- **feat(pivot-E1)** — fetch-puis-modifier généralisé aux 5 `publierX` : helper `recordPublicAJour(type:recordID:)` (recharge le record existant, sinon record neuf) + `sauvegarder(champs:sur:)` ; sans ça, tout save d'un record DÉJÀ publié échouait en `serverRecordChanged` (mises à jour de stats/scores/roster silencieusement perdues — seul `publierUtilisateur` était corrigé depuis la revue 2.3).
+- **Mappings extraits en fonctions pures testables** (pattern `champsPublicsUtilisateur`) : `champsPublicsEquipe`, `champsPublicsEtablissement`, `champsPublicsJoueur`, `champsPublicsSeance` — la construction des records est désormais couverte par les tests sans appel CloudKit.
+- **Périmètre `JoueurPartage` élargi (D6)** : publication + import de `statutDisponibiliteRaw` (validé contre l'enum à l'import — records publics non fiables), `consentementParentalAtteste`, `dateAttestationConsentement`, `attesteParNom`. Import via `appliquerDisponibilite` (branches update + création).
+- **Tests** : +10 (suite `CloudKitSharingMappingsTests` 6 — dont garde « champsPublicsJoueur ne publie JAMAIS motDePasseHash/sel legacy » ; imports disponibilité 3 dans `CloudKitPartageImportTests` ; garde secret joueur 1 dans la suite sécurité). **286/286, 44 suites** ; build 0/0.
 
 ## Reste global
 

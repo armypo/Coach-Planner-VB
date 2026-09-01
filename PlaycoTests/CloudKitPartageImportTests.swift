@@ -113,4 +113,73 @@ struct CloudKitPartageImportTests {
         #expect(j.manchettes == 30)
         #expect(j.matchsJoues == 8)
     }
+
+    // MARK: - Disponibilité & attestation (E1 — parité assistant D6)
+
+    @Test("Importer un joueur applique disponibilité + attestation")
+    func importerJoueurDisponibilite() throws {
+        let service = CloudKitSharingService()
+        let ctx = try contexte()
+        let id = UUID()
+        let record = CKRecord(recordType: "JoueurPartage")
+        record["joueurID"] = id.uuidString
+        record["nom"] = "Roy"
+        record["prenom"] = "Alex"
+        record["statutDisponibiliteRaw"] = "blesse"
+        record["consentementParentalAtteste"] = 1
+        record["dateAttestationConsentement"] = Date(timeIntervalSince1970: 1_700_000_000)
+        record["attesteParNom"] = "Coach Dionne"
+
+        service.importerJoueur(from: record, context: ctx)
+        try ctx.save()
+
+        let j = try #require(try ctx.fetch(FetchDescriptor<JoueurEquipe>()).first)
+        #expect(j.statutDisponibilite == .blesse)
+        #expect(j.consentementParentalAtteste)
+        #expect(j.dateAttestationConsentement == Date(timeIntervalSince1970: 1_700_000_000))
+        #expect(j.attesteParNom == "Coach Dionne")
+    }
+
+    @Test("Merge joueur : un remote plus récent met à jour la disponibilité")
+    func mergeJoueurDisponibilite() throws {
+        let service = CloudKitSharingService()
+        let ctx = try contexte()
+        let id = UUID()
+
+        let local = JoueurEquipe(nom: "Roy", prenom: "Alex", numero: 10, poste: .passeur)
+        local.id = id
+        local.statutDisponibilite = .malade
+        local.dateModification = Date(timeIntervalSince1970: 1_000_000_000)
+        ctx.insert(local)
+        try ctx.save()
+
+        let record = CKRecord(recordType: "JoueurPartage")
+        record["joueurID"] = id.uuidString
+        record["statutDisponibiliteRaw"] = "" // redevenu disponible côté remote
+        record["consentementParentalAtteste"] = 1
+        record["dateModification"] = Date(timeIntervalSince1970: 2_000_000_000)
+
+        service.importerJoueur(from: record, context: ctx)
+        try ctx.save()
+
+        #expect(local.statutDisponibilite == .disponible)
+        #expect(local.consentementParentalAtteste)
+    }
+
+    @Test("Un statut de disponibilité inconnu (record public corrompu) est rejeté")
+    func statutDisponibiliteInconnuRejete() throws {
+        let service = CloudKitSharingService()
+        let ctx = try contexte()
+        let id = UUID()
+        let record = CKRecord(recordType: "JoueurPartage")
+        record["joueurID"] = id.uuidString
+        record["nom"] = "Roy"
+        record["statutDisponibiliteRaw"] = "en_vacances" // hors enum
+
+        service.importerJoueur(from: record, context: ctx)
+        try ctx.save()
+
+        let j = try #require(try ctx.fetch(FetchDescriptor<JoueurEquipe>()).first)
+        #expect(j.statutDisponibiliteRaw.isEmpty, "un raw hors enum ne doit pas être persisté")
+    }
 }

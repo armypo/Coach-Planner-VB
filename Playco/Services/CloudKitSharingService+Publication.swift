@@ -154,35 +154,64 @@ extension CloudKitSharingService {
         }
     }
 
+    // MARK: - Fetch-puis-modifier (E1 — parité assistant)
+
+    /// Recharge le record existant de la Public DB (ou en crée un neuf s'il
+    /// n'existe pas encore). Revue 2.3 généralisée par E1 : un save de CKRecord
+    /// NEUF sur un record déjà publié échoue en `serverRecordChanged` — les
+    /// mises à jour (stats, scores, disponibilité…) n'atteignaient jamais la
+    /// Public DB après la première publication.
+    func recordPublicAJour(type: String, recordID: CKRecord.ID) async -> CKRecord {
+        (try? await publicDB.record(for: recordID))
+            ?? CKRecord(recordType: type, recordID: recordID)
+    }
+
+    /// Applique un dictionnaire de champs publics sur un record puis le sauvegarde.
+    private func sauvegarder(champs: [String: CKRecordValue], sur record: CKRecord) async throws {
+        for (cle, valeur) in champs {
+            record[cle] = valeur
+        }
+        _ = try await publicDB.save(record)
+    }
+
     // MARK: - Publication détaillée (privé)
 
     private func publierEquipe(_ equipe: Equipe) async throws {
         let recordID = CKRecord.ID(recordName: "equipe-\(equipe.codeEquipe)")
-        let record = CKRecord(recordType: RecordType.equipe, recordID: recordID)
+        let record = await recordPublicAJour(type: RecordType.equipe, recordID: recordID)
+        try await sauvegarder(champs: Self.champsPublicsEquipe(equipe), sur: record)
+    }
 
-        record["codeEquipe"] = equipe.codeEquipe as CKRecordValue
-        record["nom"] = equipe.nom as CKRecordValue
-        record["categorieRaw"] = equipe.categorieRaw as CKRecordValue
-        record["divisionRaw"] = equipe.divisionRaw as CKRecordValue
-        record["saison"] = equipe.saison as CKRecordValue
-        record["couleurPrincipalHex"] = equipe.couleurPrincipalHex as CKRecordValue
-        record["couleurSecondaireHex"] = equipe.couleurSecondaireHex as CKRecordValue
-        record["dateModification"] = equipe.dateModification as CKRecordValue
-
-        _ = try await publicDB.save(record)
+    /// Champs PUBLICS d'une équipe. Fonction pure testable (pattern
+    /// `champsPublicsUtilisateur`) — aucun secret, pas de PII sensible.
+    static func champsPublicsEquipe(_ equipe: Equipe) -> [String: CKRecordValue] {
+        [
+            "codeEquipe": equipe.codeEquipe as CKRecordValue,
+            "nom": equipe.nom as CKRecordValue,
+            "categorieRaw": equipe.categorieRaw as CKRecordValue,
+            "divisionRaw": equipe.divisionRaw as CKRecordValue,
+            "saison": equipe.saison as CKRecordValue,
+            "couleurPrincipalHex": equipe.couleurPrincipalHex as CKRecordValue,
+            "couleurSecondaireHex": equipe.couleurSecondaireHex as CKRecordValue,
+            "dateModification": equipe.dateModification as CKRecordValue
+        ]
     }
 
     private func publierEtablissement(_ etab: Etablissement, codeEquipe: String) async throws {
         let recordID = CKRecord.ID(recordName: "etab-\(codeEquipe)")
-        let record = CKRecord(recordType: RecordType.etablissement, recordID: recordID)
+        let record = await recordPublicAJour(type: RecordType.etablissement, recordID: recordID)
+        try await sauvegarder(champs: Self.champsPublicsEtablissement(etab, codeEquipe: codeEquipe), sur: record)
+    }
 
-        record["codeEquipe"] = codeEquipe as CKRecordValue
-        record["nom"] = etab.nom as CKRecordValue
-        record["typeRaw"] = etab.typeRaw as CKRecordValue
-        record["ville"] = etab.ville as CKRecordValue
-        record["province"] = etab.province as CKRecordValue
-
-        _ = try await publicDB.save(record)
+    /// Champs PUBLICS d'un établissement. Fonction pure testable.
+    static func champsPublicsEtablissement(_ etab: Etablissement, codeEquipe: String) -> [String: CKRecordValue] {
+        [
+            "codeEquipe": codeEquipe as CKRecordValue,
+            "nom": etab.nom as CKRecordValue,
+            "typeRaw": etab.typeRaw as CKRecordValue,
+            "ville": etab.ville as CKRecordValue,
+            "province": etab.province as CKRecordValue
+        ]
     }
 
     /// Construit le dictionnaire de champs PUBLICS d'un utilisateur (sans aucun
@@ -221,72 +250,86 @@ extension CloudKitSharingService {
     /// SÉCURITÉ : ne JAMAIS publier motDePasseHash/sel/iterations dans la base
     /// CloudKit PUBLIQUE — auth déléguée à Sign in with Apple (cf. `champsPublicsUtilisateur`).
     private func publierUtilisateur(_ utilisateur: Utilisateur, codeEquipe: String) async throws {
-        let recordID = CKRecord.ID(recordName: "user-\(utilisateur.id.uuidString)")
-        // Revue 2.3 (révocation fail-open) : FETCH-puis-MODIFIER — un save de
-        // record neuf sur un record existant échoue en serverRecordChanged et
-        // la régénération du code d'invitation n'atteignait jamais la Public DB
+        // Revue 2.3 (révocation fail-open) : fetch-puis-modifier — sans quoi la
+        // régénération du code d'invitation n'atteignait jamais la Public DB
         // (l'ancien QR photographié restait valide, le nouveau échouait).
-        let record = (try? await publicDB.record(for: recordID))
-            ?? CKRecord(recordType: RecordType.utilisateur, recordID: recordID)
-        for (cle, valeur) in Self.champsPublicsUtilisateur(utilisateur, codeEquipe: codeEquipe) {
-            record[cle] = valeur
-        }
-        _ = try await publicDB.save(record)
+        let recordID = CKRecord.ID(recordName: "user-\(utilisateur.id.uuidString)")
+        let record = await recordPublicAJour(type: RecordType.utilisateur, recordID: recordID)
+        try await sauvegarder(champs: Self.champsPublicsUtilisateur(utilisateur, codeEquipe: codeEquipe), sur: record)
     }
 
     private func publierJoueur(_ joueur: JoueurEquipe) async throws {
         let recordID = CKRecord.ID(recordName: "joueur-\(joueur.id.uuidString)")
-        let record = CKRecord(recordType: RecordType.joueur, recordID: recordID)
-
-        record["joueurID"] = joueur.id.uuidString as CKRecordValue
-        record["nom"] = joueur.nom as CKRecordValue
-        record["prenom"] = joueur.prenom as CKRecordValue
-        record["numero"] = joueur.numero as CKRecordValue
-        record["posteRaw"] = joueur.posteRaw as CKRecordValue
-        record["codeEquipe"] = joueur.codeEquipe as CKRecordValue
-        record["identifiant"] = joueur.identifiant as CKRecordValue
-
-        if let utilisateurID = joueur.utilisateurID {
-            record["utilisateurID"] = utilisateurID.uuidString as CKRecordValue
-        }
-        // Stats cumulées (lecture seule athlète). Pas de PII.
-        record["matchsJoues"] = joueur.matchsJoues as CKRecordValue
-        record["setsJoues"] = joueur.setsJoues as CKRecordValue
-        record["attaquesReussies"] = joueur.attaquesReussies as CKRecordValue
-        record["erreursAttaque"] = joueur.erreursAttaque as CKRecordValue
-        record["attaquesTotales"] = joueur.attaquesTotales as CKRecordValue
-        record["aces"] = joueur.aces as CKRecordValue
-        record["erreursService"] = joueur.erreursService as CKRecordValue
-        record["servicesTotaux"] = joueur.servicesTotaux as CKRecordValue
-        record["blocsSeuls"] = joueur.blocsSeuls as CKRecordValue
-        record["blocsAssistes"] = joueur.blocsAssistes as CKRecordValue
-        record["erreursBloc"] = joueur.erreursBloc as CKRecordValue
-        record["receptionsReussies"] = joueur.receptionsReussies as CKRecordValue
-        record["erreursReception"] = joueur.erreursReception as CKRecordValue
-        record["receptionsTotales"] = joueur.receptionsTotales as CKRecordValue
-        record["passesDecisives"] = joueur.passesDecisives as CKRecordValue
-        record["manchettes"] = joueur.manchettes as CKRecordValue
-        record["dateModification"] = joueur.dateModification as CKRecordValue
-
-        _ = try await publicDB.save(record)
+        let record = await recordPublicAJour(type: RecordType.joueur, recordID: recordID)
+        try await sauvegarder(champs: Self.champsPublicsJoueur(joueur), sur: record)
     }
 
-    /// Publie une séance (pratique ou match) en lecture seule pour les athlètes.
+    /// Champs PUBLICS d'un joueur (roster + stats cumulées + disponibilité).
+    /// Fonction pure testable. SÉCURITÉ : ne JAMAIS mapper les champs legacy
+    /// `motDePasseHash`/`sel` du @Model (gelés au schéma, jamais publiés).
+    static func champsPublicsJoueur(_ joueur: JoueurEquipe) -> [String: CKRecordValue] {
+        var champs: [String: CKRecordValue] = [
+            "joueurID": joueur.id.uuidString as CKRecordValue,
+            "nom": joueur.nom as CKRecordValue,
+            "prenom": joueur.prenom as CKRecordValue,
+            "numero": joueur.numero as CKRecordValue,
+            "posteRaw": joueur.posteRaw as CKRecordValue,
+            "codeEquipe": joueur.codeEquipe as CKRecordValue,
+            "identifiant": joueur.identifiant as CKRecordValue,
+            "dateModification": joueur.dateModification as CKRecordValue
+        ]
+        if let utilisateurID = joueur.utilisateurID {
+            champs["utilisateurID"] = utilisateurID.uuidString as CKRecordValue
+        }
+        // Stats cumulées. Pas de PII.
+        champs["matchsJoues"] = joueur.matchsJoues as CKRecordValue
+        champs["setsJoues"] = joueur.setsJoues as CKRecordValue
+        champs["attaquesReussies"] = joueur.attaquesReussies as CKRecordValue
+        champs["erreursAttaque"] = joueur.erreursAttaque as CKRecordValue
+        champs["attaquesTotales"] = joueur.attaquesTotales as CKRecordValue
+        champs["aces"] = joueur.aces as CKRecordValue
+        champs["erreursService"] = joueur.erreursService as CKRecordValue
+        champs["servicesTotaux"] = joueur.servicesTotaux as CKRecordValue
+        champs["blocsSeuls"] = joueur.blocsSeuls as CKRecordValue
+        champs["blocsAssistes"] = joueur.blocsAssistes as CKRecordValue
+        champs["erreursBloc"] = joueur.erreursBloc as CKRecordValue
+        champs["receptionsReussies"] = joueur.receptionsReussies as CKRecordValue
+        champs["erreursReception"] = joueur.erreursReception as CKRecordValue
+        champs["receptionsTotales"] = joueur.receptionsTotales as CKRecordValue
+        champs["passesDecisives"] = joueur.passesDecisives as CKRecordValue
+        champs["manchettes"] = joueur.manchettes as CKRecordValue
+        // Disponibilité + attestation de consentement (E1 — parité assistant D6).
+        champs["statutDisponibiliteRaw"] = joueur.statutDisponibiliteRaw as CKRecordValue
+        champs["consentementParentalAtteste"] = (joueur.consentementParentalAtteste ? 1 : 0) as CKRecordValue
+        champs["attesteParNom"] = joueur.attesteParNom as CKRecordValue
+        if let dateAttestation = joueur.dateAttestationConsentement {
+            champs["dateAttestationConsentement"] = dateAttestation as CKRecordValue
+        }
+        return champs
+    }
+
+    /// Publie une séance (pratique ou match) — parité entre coachs.
     func publierSeance(_ seance: Seance) async throws {
         let recordID = CKRecord.ID(recordName: "seance-\(seance.id.uuidString)")
-        let record = CKRecord(recordType: RecordType.seance, recordID: recordID)
-        record["seanceID"] = seance.id.uuidString as CKRecordValue
-        record["codeEquipe"] = seance.codeEquipe as CKRecordValue
-        record["nom"] = seance.nom as CKRecordValue
-        record["date"] = seance.date as CKRecordValue
-        record["typeSeanceRaw"] = seance.typeSeanceRaw as CKRecordValue
-        record["lieu"] = seance.lieu as CKRecordValue
-        record["adversaire"] = seance.adversaire as CKRecordValue
-        record["scoreEquipe"] = seance.scoreEquipe as CKRecordValue
-        record["scoreAdversaire"] = seance.scoreAdversaire as CKRecordValue
-        record["resultatRaw"] = seance.resultatRaw as CKRecordValue
-        record["estArchivee"] = (seance.estArchivee ? 1 : 0) as CKRecordValue
-        record["dateModification"] = seance.dateModification as CKRecordValue
-        _ = try await publicDB.save(record)
+        let record = await recordPublicAJour(type: RecordType.seance, recordID: recordID)
+        try await sauvegarder(champs: Self.champsPublicsSeance(seance), sur: record)
+    }
+
+    /// Champs PUBLICS d'une séance (métadonnées). Fonction pure testable.
+    static func champsPublicsSeance(_ seance: Seance) -> [String: CKRecordValue] {
+        [
+            "seanceID": seance.id.uuidString as CKRecordValue,
+            "codeEquipe": seance.codeEquipe as CKRecordValue,
+            "nom": seance.nom as CKRecordValue,
+            "date": seance.date as CKRecordValue,
+            "typeSeanceRaw": seance.typeSeanceRaw as CKRecordValue,
+            "lieu": seance.lieu as CKRecordValue,
+            "adversaire": seance.adversaire as CKRecordValue,
+            "scoreEquipe": seance.scoreEquipe as CKRecordValue,
+            "scoreAdversaire": seance.scoreAdversaire as CKRecordValue,
+            "resultatRaw": seance.resultatRaw as CKRecordValue,
+            "estArchivee": (seance.estArchivee ? 1 : 0) as CKRecordValue,
+            "dateModification": seance.dateModification as CKRecordValue
+        ]
     }
 }

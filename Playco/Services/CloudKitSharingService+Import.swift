@@ -273,6 +273,7 @@ extension CloudKitSharingService {
             existant.numero = record["numero"] as? Int ?? existant.numero
             existant.posteRaw = record.chaineSecurisee("posteRaw") ?? existant.posteRaw
             appliquerStats(record, sur: existant)
+            appliquerDisponibilite(record, sur: existant)
             existant.dateModification = remoteDateMod
             return
         }
@@ -291,9 +292,30 @@ extension CloudKitSharingService {
             joueur.utilisateurID = UUID(uuidString: utilisateurIDStr)
         }
         appliquerStats(record, sur: joueur)
+        appliquerDisponibilite(record, sur: joueur)
 
         context.insert(joueur)
     }
+
+    /// Applique disponibilité + attestation de consentement (E1 — parité D6).
+    /// Sanitisé : le statut est validé contre l'enum `StatutDisponibilite`
+    /// (les records publics sont des données externes non fiables).
+    private func appliquerDisponibilite(_ record: CKRecord, sur joueur: JoueurEquipe) {
+        if let statut = record.chaineSecurisee("statutDisponibiliteRaw"),
+           statut.isEmpty || StatutDisponibilite(rawValue: statut) != nil {
+            joueur.statutDisponibiliteRaw = statut
+        }
+        if let atteste = record["consentementParentalAtteste"] as? Int {
+            joueur.consentementParentalAtteste = atteste == 1
+        }
+        if let dateAttestation = record["dateAttestationConsentement"] as? Date {
+            joueur.dateAttestationConsentement = dateAttestation
+        }
+        if let nomAttestant = record.chaineSecurisee("attesteParNom") {
+            joueur.attesteParNom = nomAttestant
+        }
+    }
+
     /// DRY — partagé par les branches update + création de `importerJoueur`.
     private func appliquerStats(_ record: CKRecord, sur joueur: JoueurEquipe) {
         joueur.matchsJoues = record["matchsJoues"] as? Int ?? joueur.matchsJoues
