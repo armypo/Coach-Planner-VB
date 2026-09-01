@@ -80,6 +80,13 @@ Phasé E1→E4 (voir plan) : plomberie durcie, contenus de préparation, analyse
 - **Hors périmètre (notés)** : les lignes `Utilisateur` ne transitent qu'à l'import initial + publication (posture sécurité conservée — pas de rafraîchissement incrémental des comptes) ; le module Entraînement (ProgrammeMuscu/SeanceMuscu/TestPhysique) n'est pas dans le miroir (non listé au plan E) — suivi ultérieur si la parité muscu devient réclamée.
 - **Tests** : +3 (`CloudKitSharingPlanSyncTests` 2 — rôles bidirectionnels/lecture seule ; anti-boucle égalité joueur+séance 1). **310/310, 47 suites** ; build 0/0.
 
+## 2026-09-01 — Revue adversariale du chantier E ⚠️
+
+- Vérification indépendante de la livraison E : build 0/0 et **310/310 tests confirmés** — MAIS revue adversariale (5 lentilles × réfutation, 64 agents) : **54 trouvailles confirmées, 3 CRITIQUES, ~20 HAUTES** (spec complète : [Revue_Chantier_E.md](./Revue_Chantier_E.md)). Les tests passent car purs (mappings in-memory) — aucun n'exerce les ACL CloudKit, la concurrence multi-appareils ni les suppressions.
+- Problème architectural central : E4 fait écrire tous les coachs sur les MÊMES records Public DB, incompatible avec les ACL (créateur-seul) — sweeps assistants en échec permanent OU ouverture au tampering mondial. + résurrections (aucune suppression propagée), PII de mineurs world-readable (santé/attestation, E1), purge des fantômes destructrice, fenêtres du seuil global.
+- **Chantier E GELÉ en attente de décision fondateur** (kill-switch vs revert vs fix-forward). La PR vers main attend cette décision.
+- Pendant la revue : D vague 1bis avancée — `8cf1e08` (« Fermer » .cancellationAction ×14, 4 empty states pleine-zone en ContentUnavailableView) + `aea55a8` (3 formulaires de création en Form). 310/310 maintenus.
+
 ## Reste global
 
 - **Action humaine (Dashboard CloudKit, avant prod du miroir élargi)** : champs QUERYABLE des nouveaux record types E2/E3 (`codeEquipe` partout ; `seanceID` + `horodatage` sur `PointMatchPartage`) + rôle d'écriture créateur-seul sur les nouveaux types (même posture que `docs/Securite_AbonnementPublicDB.md`).
