@@ -96,6 +96,12 @@ Phasé E1→E4 (voir plan) : plomberie durcie, contenus de préparation, analyse
 - **Contre-revue adversariale ciblée en cours** (4 axes) — corrections à suivre avant de déclarer E′ complet.
 - ⚠️ Dashboard CloudKit (action humaine, mise à jour) : + type `SuppressionPartagee` (`codeEquipe` QUERYABLE) ; + `publieLe` QUERYABLE/SORTABLE sur `PointMatchPartage`.
 
+## 2026-09-01 — E′ contre-revue & correctifs round 2
+
+- Contre-revue adversariale ciblée (4 axes) de la refonte E′ → 45 trouvailles brutes (beaucoup en doublon inter-axes), **~11 bugs concrets distincts** + 1 cluster fondamental.
+- `c5a3cea` **round 2** : correctifs CLEANEMENT résolubles — racine par recordID (anti-spoof), tombstones respectés pour joueurs/stats/formations/points, points filigranés, horodatage plafonné, identité d'écrivain à tous les sites de publication, ancres publiables par .coach, garde de taille totale du record (CKAsset), IO différée d'EtatSyncEquipe, **confiance transitive** (D6 — assistant ajouté par assistant), symétrie d'effacement des binaires scouting. **320/320, 50 suites**.
+- **RÉSIDU documenté → décision fondateur requise** : [SyncEPrime_Residuel.md](./SyncEPrime_Residuel.md). Le cas coopératif est sain ; il reste un cluster ADVERSARIAL inhérent à la Public DB world-readable (le code d'invitation est un secret AU PORTEUR : qui a le code d'équipe peut usurper/altérer par LWW). Ne se corrige pas dans la Public DB (CKShare = migration Core Data). 3 postures : A accepter+durcir (reco PR), B rétrécir D6 (écriture assistant ciblée), C CKShare backlog.
+
 ## Reste global
 
 - **Action humaine (Dashboard CloudKit, avant prod du miroir élargi)** : champs QUERYABLE des nouveaux record types E2/E3 (`codeEquipe` partout ; `seanceID` + `horodatage` sur `PointMatchPartage`) + rôle d'écriture créateur-seul sur les nouveaux types (même posture que `docs/Securite_AbonnementPublicDB.md`).
