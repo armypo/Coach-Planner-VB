@@ -143,17 +143,20 @@ struct ContentView: View {
         }
     }
 
-    /// Synchronise les données partagées selon le rôle : les consommateurs
-    /// (athlète/assistant) importent depuis la Public DB, le coach publie ses
-    /// mises à jour. Idempotent, sûr hors-ligne.
+    /// Synchronise les données partagées selon le rôle (E4 — parité D6) :
+    /// tous les coachs (head + assistants) IMPORTENT puis PUBLIENT par les
+    /// mêmes chemins — dernier écrivain gagne par `dateModification` (l'import
+    /// d'abord tire les modifications distantes, la publication pousse ce qui
+    /// reste plus récent localement). Idempotent, sûr hors-ligne.
     private func synchroniserDonneesPartagees() async {
         guard let user = authService.utilisateurConnecte else { return }
         let code = codeEquipeActif
         guard !code.isEmpty else { return }
-        switch user.role {
-        case .etudiant, .assistantCoach:
+        let plan = CloudKitSharingService.planSync(role: user.role)
+        if plan.importe {
             await sharingService.syncDepuisPublic(codeEquipe: code, context: modelContext)
-        case .coach, .admin:
+        }
+        if plan.publie {
             // D6 mode déconnecté : pendant un match live, le sweep ne publie
             // pas les stats/points in-game (un seul preneur de stats).
             await sharingService.publierMisesAJourCoach(

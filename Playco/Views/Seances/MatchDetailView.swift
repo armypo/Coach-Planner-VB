@@ -383,10 +383,11 @@ struct MatchDetailView: View {
             try modelContext.save()
             confirmeFinalisation = true
             logger.info("Match finalisé: \(seance.nom) — \(joueursIDs.count) joueurs")
-            // E3 (D6) : publier immédiatement l'analyse du match finalisé
+            // E3/E4 (D6) : publier immédiatement l'analyse du match finalisé
             // (box scores + points + statsEntrees) — le sweep sert de filet.
-            let role = authService.utilisateurConnecte?.role
-            if role == .admin || role == .coach {
+            // Tout rôle coach publie (assistant = head coach).
+            if let role = authService.utilisateurConnecte?.role,
+               CloudKitSharingService.planSync(role: role).publie {
                 let seanceFinalisee = seance
                 let contexte = modelContext
                 Task { await sharingService.publierAnalyseMatch(seance: seanceFinalisee, context: contexte) }

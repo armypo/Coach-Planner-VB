@@ -124,6 +124,11 @@ extension CloudKitSharingService {
             throw SharingError.sauvegardeEchouee
         }
 
+        // E4 — baseline de publication : après un import initial complet, tout
+        // le contenu local vient du remote — le premier sweep de publication de
+        // cet appareil ne doit pas re-téléverser l'équipe entière.
+        derniereSyncDate = Date()
+
         logger.info("Équipe \(codeEquipe, privacy: .private) importée: \(joueurRecords.count) joueurs (comptes non répliqués)")
     }
 

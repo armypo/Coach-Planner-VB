@@ -284,6 +284,28 @@ struct CloudKitSharingSecuriteTests {
     }
 }
 
+// MARK: - Plan de sync par rôle (E4 — parité D6)
+
+@Suite("CloudKitSharingService — planSync (E4)")
+struct CloudKitSharingPlanSyncTests {
+
+    @Test("tous les rôles coach importent ET publient (assistant = head coach)")
+    func rolesCoachBidirectionnels() {
+        for role in [RoleUtilisateur.admin, .coach, .assistantCoach] {
+            let plan = CloudKitSharingService.planSync(role: role)
+            #expect(plan.importe, "\(role.rawValue) doit importer")
+            #expect(plan.publie, "\(role.rawValue) doit publier")
+        }
+    }
+
+    @Test(".etudiant (legacy) importe seulement — jamais d'écriture publique")
+    func etudiantLectureSeule() {
+        let plan = CloudKitSharingService.planSync(role: .etudiant)
+        #expect(plan.importe)
+        #expect(!plan.publie)
+    }
+}
+
 // MARK: - Mappings publics E1 (fonctions pures, parité assistant D6)
 
 @Suite("CloudKitSharingService — Mappings publics (E1)")

@@ -61,6 +61,21 @@ final class CloudKitSharingService {
         static let formation = "FormationPartagee"
     }
 
+    // MARK: - Plan de synchronisation par rôle (E4 — parité D6)
+
+    /// Qui importe / qui publie. D6 : assistant = head coach — TOUS les rôles
+    /// coach importent PUIS publient par les mêmes chemins (dernier écrivain
+    /// gagne par `dateModification`). `.etudiant` (legacy, lecture seule)
+    /// importe seulement. Fonction pure testable.
+    static func planSync(role: RoleUtilisateur) -> (importe: Bool, publie: Bool) {
+        switch role {
+        case .etudiant:
+            return (importe: true, publie: false)
+        case .admin, .coach, .assistantCoach:
+            return (importe: true, publie: true)
+        }
+    }
+
     // MARK: - Erreurs
 
     enum SharingError: LocalizedError {

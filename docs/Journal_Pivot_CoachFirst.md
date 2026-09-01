@@ -35,9 +35,9 @@
 - `bed47f5` — BoutonRetourAccueil partagé (5 copies remplacées) ; **confirmation sur la suppression de match** (cascade destructive au swipe corrigée) ; sidebars homogènes (.sidebar + searchable Matchs/Entraînement) ; icône « + » unique ; création programme muscu alert → Form ; tints alignés palette mate ; FiltresStats (code mort) supprimé.
 - **Vague 1bis (à faire, avec Mat Nuit)** : « Fermer » standardisé (~20 sites), ~20 empty states ad hoc → ContentUnavailableView, kit stats généralisé, campagne paddings/rayons (8 pires fichiers), formulaires VStack custom → Form, purge .rounded/.hierarchical, échelle typo.
 
-## Chantier E — Parité de sync assistant (D6) — EN COURS
+## Chantier E — Parité de sync assistant (D6) ✅ 2026-09-01
 
-Phasé E1→E4 (voir plan) : durcir les 4 `publierX` (fetch-puis-modifier), publier disponibilité/attestation, puis contenus de préparation, analyse, écriture assistant.
+Phasé E1→E4 (voir plan) : plomberie durcie, contenus de préparation, analyse, écriture assistant — livrés en 4 commits (un par phase, chacun build 0/0 + tests verts). **Action humaine à la première mise en production du miroir élargi : passer les nouveaux champs en QUERYABLE dans le Dashboard CloudKit** (voir E3 — `seanceID`/`horodatage` sur `PointMatchPartage`, `codeEquipe` sur les 7 nouveaux types).
 
 ### E1 — Plomberie durcie ✅ 2026-09-01
 
@@ -68,8 +68,21 @@ Phasé E1→E4 (voir plan) : durcir les 4 `publierX` (fetch-puis-modifier), publ
 - **Limites connues (documentées)** : un fantôme déjà importé par l'assistant avant sa purge remote reste local (rare : annulation APRÈS une publication ; réconciliation par diff = E4+) ; les StatsMatch/PointMatch d'un match supprimé côté coach restent en Public DB (le match archivé se propage et les masque).
 - **Tests** : +8 (`CloudKitPartageAnalyseTests` 7 — lots, mappings stats/points, immuabilité + rejet type inconnu, formations dédup par clé ; `FinalisationMatchTests` +1 — bumps E3). **307/307, 46 suites** ; build 0/0.
 
+### E4 — Écriture assistant ✅ 2026-09-01
+
+- **feat(pivot-E4)** — `CloudKitSharingService.planSync(role:)` (fonction pure) : TOUS les rôles coach (`.admin`/`.coach`/`.assistantCoach`) **importent PUIS publient** par les MÊMES chemins (`syncDepuisPublic` → `publierMisesAJourCoach`) ; `.etudiant` (legacy) reste lecture seule. `ContentView.synchroniserDonneesPartagees` refondu sur ce plan — le head coach IMPORTE désormais aussi (il reçoit les modifications de ses assistants). Gates de sortie de live (`MatchLiveSplitView`/`MatchDetailView`) étendus : le preneur de stats publie l'analyse quel que soit son rôle coach.
+- **Règles de merge (documentées, D6 « dernier écrivain gagne »)** :
+  1. **LWW par `dateModification`**, comparaison STRICTE (`remote > local`) — l'égalité est un no-op, ce qui neutralise le réimport de ses propres publications (anti-boucle, testé).
+  2. **Import avant publication** dans chaque cycle : on tire le remote d'abord, on ne pousse que ce qui reste plus récent localement.
+  3. **Baseline** : `derniereSyncDate = Date()` après l'import initial complet (`recupererEtImporterEquipe`) — le premier sweep d'un appareil qui vient d'importer ne re-téléverse pas l'équipe entière.
+  4. **PointMatch immuables** : pas de LWW — création seule à l'import ; les fantômes (annulations) sont purgés par le preneur de stats à la sortie du live.
+  5. **Horloges locales** : le LWW dépend des horloges d'appareils (skew possible) — assumé pré-lancement, à revisiter si litiges réels (horodatage serveur CloudKit).
+- **Hors périmètre (notés)** : les lignes `Utilisateur` ne transitent qu'à l'import initial + publication (posture sécurité conservée — pas de rafraîchissement incrémental des comptes) ; le module Entraînement (ProgrammeMuscu/SeanceMuscu/TestPhysique) n'est pas dans le miroir (non listé au plan E) — suivi ultérieur si la parité muscu devient réclamée.
+- **Tests** : +3 (`CloudKitSharingPlanSyncTests` 2 — rôles bidirectionnels/lecture seule ; anti-boucle égalité joueur+séance 1). **310/310, 47 suites** ; build 0/0.
+
 ## Reste global
 
+- **Action humaine (Dashboard CloudKit, avant prod du miroir élargi)** : champs QUERYABLE des nouveaux record types E2/E3 (`codeEquipe` partout ; `seanceID` + `horodatage` sur `PointMatchPartage`) + rôle d'écriture créateur-seul sur les nouveaux types (même posture que `docs/Securite_AbonnementPublicDB.md`).
 - Rebase de `suivis/pr6` (démo) après le retour de la branche sur `main` (PR différée — GitHub indisponible le 2026-08-29).
 - Refresh complet de `CLAUDE.md` (sections paywall/messagerie/athlète périmées) — ligne d'historique ajoutée en attendant.
 - Textes légaux externes (placeholders) à écrire sans athlètes ni abonnements ; reformulation complète attestation → collecte/vidéo.

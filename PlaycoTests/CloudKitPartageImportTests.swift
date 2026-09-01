@@ -166,6 +166,49 @@ struct CloudKitPartageImportTests {
         #expect(local.consentementParentalAtteste)
     }
 
+    // MARK: - Anti-boucle E4 (réimport de sa propre publication)
+
+    @Test("Anti-boucle : un remote de dateModification ÉGALE est un no-op")
+    func antiBoucleEgaliteNoOp() throws {
+        let service = CloudKitSharingService()
+        let ctx = try contexte()
+        let id = UUID()
+        let meme = Date(timeIntervalSince1970: 1_500_000_000)
+
+        // Simule sa propre publication réimportée : même id, même horodatage.
+        let local = JoueurEquipe(nom: "Roy", prenom: "Alex", numero: 10, poste: .passeur)
+        local.id = id
+        local.aces = 5
+        local.dateModification = meme
+        ctx.insert(local)
+        try ctx.save()
+
+        let record = CKRecord(recordType: "JoueurPartage")
+        record["joueurID"] = id.uuidString
+        record["aces"] = 999
+        record["dateModification"] = meme
+
+        service.importerJoueur(from: record, context: ctx)
+
+        #expect(local.aces == 5, "un écho de sa propre publication ne doit rien changer")
+
+        // Même garantie côté séance.
+        let seanceID = UUID()
+        let seanceLocale = Seance(nom: "Ma séance", date: Date())
+        seanceLocale.id = seanceID
+        seanceLocale.dateModification = meme
+        ctx.insert(seanceLocale)
+        try ctx.save()
+
+        let recordSeance = CKRecord(recordType: "SeancePartagee")
+        recordSeance["seanceID"] = seanceID.uuidString
+        recordSeance["nom"] = "Écho remote"
+        recordSeance["dateModification"] = meme
+
+        service.importerSeance(from: recordSeance, context: ctx)
+        #expect(seanceLocale.nom == "Ma séance")
+    }
+
     @Test("Un statut de disponibilité inconnu (record public corrompu) est rejeté")
     func statutDisponibiliteInconnuRejete() throws {
         let service = CloudKitSharingService()
