@@ -87,6 +87,15 @@ Phasé E1→E4 (voir plan) : plomberie durcie, contenus de préparation, analyse
 - **Chantier E GELÉ en attente de décision fondateur** (kill-switch vs revert vs fix-forward). La PR vers main attend cette décision.
 - Pendant la revue : D vague 1bis avancée — `8cf1e08` (« Fermer » .cancellationAction ×14, 4 empty states pleine-zone en ContentUnavailableView) + `aea55a8` (3 formulaires de création en Form). 310/310 maintenus.
 
+## 2026-09-01 — E′ : refonte de la sync (fix-forward, option C) ✅ noyau livré
+
+- Décision fondateur : **option C** — corriger l'architecture avant la PR. Design figé : [Architecture_SyncEPrime.md](./Architecture_SyncEPrime.md) (7 sections), spec des problèmes : [Revue_Chantier_E.md](./Revue_Chantier_E.md).
+- `bfc739f` **feat(pivot-E′)** — records PAR ÉCRIVAIN (`-w{ecrivainID}`, ancres equipe/etab mono-écrivain `.admin`) ; **chaîne de confiance par créateur** (`creatorUserRecordID` infalsifiable, racine = créateur de `equipe-<code>`, membres via couples invitation émis par la racine) ; **`EtatSyncEquipe`** (seuil par équipe capturé en début de sweep, avancé sur cycle complet seulement ; filigranes anti-écho ; borne `publieLe` des points) ; **tombstones `SuppressionPartagee`** publiés par les 6 cascades de suppression dure, appliqués en premier à l'import ; **binaires tri-état** (un échec CKAsset ne détruit plus jamais un dessin local) ; **mode match étanche** (aucune sync pendant le live, kill compris ; purge des fantômes restreinte à ses records) ; **PII minimale** (booléen `estDisponible` seul — motif santé + attestation parentale ne quittent plus l'appareil ; statut générique `.indisponible` à l'import) ; `#if DEMO` généralisé ; clamps + dédup StatsMatch par clé fonctionnelle.
+- Les 3 CRITIQUES de la revue sont adressées (ACL multi-écrivains, résurrections de match, purge destructrice du live) + les familles HAUTES (écho, fenêtres de seuil, binaires, spoofing, PII).
+- **Vérification** : build 0/0 ; **319/319 tests, 50 suites** (+9 SyncEPrimeTests : confiance, filigranes, tombstones, bornes, statut générique ; tests disponibilité/attestation réécrits en gardes PII inverses).
+- **Contre-revue adversariale ciblée en cours** (4 axes) — corrections à suivre avant de déclarer E′ complet.
+- ⚠️ Dashboard CloudKit (action humaine, mise à jour) : + type `SuppressionPartagee` (`codeEquipe` QUERYABLE) ; + `publieLe` QUERYABLE/SORTABLE sur `PointMatchPartage`.
+
 ## Reste global
 
 - **Action humaine (Dashboard CloudKit, avant prod du miroir élargi)** : champs QUERYABLE des nouveaux record types E2/E3 (`codeEquipe` partout ; `seanceID` + `horodatage` sur `PointMatchPartage`) + rôle d'écriture créateur-seul sur les nouveaux types (même posture que `docs/Securite_AbonnementPublicDB.md`).
