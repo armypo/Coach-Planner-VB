@@ -58,19 +58,12 @@ struct BoxScoreView: View {
                 }
 
                 if statsMatch.isEmpty {
-                    VStack(spacing: 12) {
-                        Image(systemName: "tablecells")
-                            .font(.system(size: 40))
-                            .foregroundStyle(.tertiary)
-                        Text("Aucune statistique enregistrée")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                        Text("Entrez les stats depuis la section Séances")
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
+                    ContentUnavailableView {
+                        Label("Aucune statistique enregistrée", systemImage: "tablecells")
+                    } description: {
+                        Text("Le box score apparaîtra après la finalisation du match.")
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 40)
+                    .padding(.vertical, LiquidGlassKit.espaceLG)
                 } else {
                     if nbReceptionsNoteesMatch > 0 {
                         CarteMetrique(
@@ -89,7 +82,7 @@ struct BoxScoreView: View {
         .navigationTitle("Feuille de match")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItem(placement: .cancellationAction) {
                 Button("Fermer") { dismiss() }
             }
         }

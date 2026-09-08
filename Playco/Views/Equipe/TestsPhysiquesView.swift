@@ -52,8 +52,9 @@ struct TestsPhysiquesView: View {
         return dernier.valeur - avantDernier.valeur
     }
 
-    private var estCoach: Bool {
-        authService.utilisateurConnecte?.role.peutGererEquipe ?? false
+    /// D6 (pivot coach-first) : tous les coachs connectés ont les mêmes droits.
+    private var peutModifier: Bool {
+        authService.utilisateurConnecte != nil
     }
 
     var body: some View {
@@ -75,7 +76,7 @@ struct TestsPhysiquesView: View {
         .navigationTitle("Tests physiques")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if estCoach {
+            if peutModifier {
                 ToolbarItem(placement: .primaryAction) {
                     Button { afficherAjout = true } label: {
                         Image(systemName: "plus")

@@ -8,18 +8,12 @@ import SwiftData
 /// Vue profil / paramètres — adaptée selon le rôle (Coach, Élève, Admin)
 struct ProfilView: View {
     @Environment(AuthService.self) private var authService
-    @Environment(AbonnementService.self) private var abonnementService
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @Environment(\.codeEquipeActif) private var codeEquipeActif
 
     @Query private var equipes: [Equipe]
     @Query private var profils: [ProfilCoach]
-
-    private var estCoach: Bool {
-        let role = authService.utilisateurConnecte?.role
-        return role == .coach || role == .admin
-    }
 
     var body: some View {
         NavigationStack {
@@ -29,22 +23,17 @@ struct ProfilView: View {
                         // En-tête profil
                         carteProfilHeader(utilisateur)
 
-                        if estCoach {
-                            // Mon abonnement (Pro / Club / essai / expiré)
-                            sectionAbonnement
+                        // D6 : assistant = head coach, mêmes droits — les
+                        // sections coach sont visibles pour tout le staff.
 
-                            // Code d'équipe
-                            sectionCodeEquipe
+                        // Code d'équipe
+                        sectionCodeEquipe
 
-                            // Visibilité athlètes
-                            sectionVisibilite
+                        // Organisation (gestion membres)
+                        sectionOrganisation
 
-                            // Organisation (gestion membres)
-                            sectionOrganisation
-
-                            // Gestion équipes (coach seulement)
-                            sectionEquipes
-                        }
+                        // Gestion équipes
+                        sectionEquipes
 
                         // Mode bord de terrain
                         sectionBordDeTerrain
@@ -68,7 +57,7 @@ struct ProfilView: View {
             .navigationTitle("Paramètres")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button("Fermer") { dismiss() }
                 }
             }
@@ -79,7 +68,7 @@ struct ProfilView: View {
 
     private func carteProfilHeader(_ utilisateur: Utilisateur) -> some View {
         VStack(spacing: 16) {
-            AvatarEditableView(utilisateur: utilisateur, taille: 90, editable: estCoach)
+            AvatarEditableView(utilisateur: utilisateur, taille: 90, editable: true)
 
             Text(utilisateur.nomComplet)
                 .font(.title2.weight(.bold))
@@ -145,43 +134,10 @@ struct ProfilView: View {
         .glassCard()
     }
 
-    // MARK: - Visibilité athlètes
-
-    private var sectionVisibilite: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label("Visibilité", systemImage: "eye.slash")
-                .font(.headline)
-                .foregroundStyle(PaletteMat.violet)
-
-            if let profil = profils.first {
-                Toggle(isOn: Binding(
-                    get: { profil.masquerPratiquesAthletes },
-                    set: {
-                        profil.masquerPratiquesAthletes = $0
-                        try? modelContext.save()
-                    }
-                )) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Masquer les pratiques aux athlètes")
-                            .font(.subheadline.weight(.medium))
-                        Text("Les athlètes ne verront pas le contenu des séances (exercices, terrain, notes).")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .tint(PaletteMat.violet)
-            }
-        }
-        .padding(20)
-        .glassCard()
-    }
-
     // MARK: - Organisation (gérer membres)
 
     @State private var afficherTutoriel = false
-    @State private var afficherAjoutEleve = false
     @State private var afficherAjoutAssistant = false
-    @State private var afficherGestionStaff = false
     @State private var afficherJournalSync = false
     @State private var afficherIdentifiantsEquipe = false
 
@@ -195,21 +151,11 @@ struct ProfilView: View {
                 .foregroundStyle(PaletteMat.orange)
 
             VStack(spacing: 10) {
-                boutonAction(icone: "person.badge.plus", titre: "Créer un profil d'athlète",
-                             couleur: PaletteMat.orange) {
-                    afficherAjoutEleve = true
-                }
-                .bloqueSiNonClub(source: "creation_athlete")
-                // Jointure SIWA réservée athlète/assistant : on propose un assistant
-                // (mêmes permissions qu'un coach) — un membre « Coach » ne pourrait
-                // jamais se connecter (roleJonctionAutorise rejette .coach).
+                // Jointure SIWA réservée aux assistants (mêmes droits qu'un coach) —
+                // les joueurs du roster sont des données pures (pivot coach-first).
                 boutonAction(icone: "figure.volleyball", titre: "Ajouter un assistant",
                              couleur: PaletteMat.bleu) {
                     afficherAjoutAssistant = true
-                }
-                boutonAction(icone: "lock.shield", titre: "Permissions du staff",
-                             couleur: PaletteMat.vert) {
-                    afficherGestionStaff = true
                 }
                 boutonAction(icone: "key.fill", titre: "Identifiants de l'équipe",
                              couleur: PaletteMat.violet) {
@@ -223,28 +169,15 @@ struct ProfilView: View {
             NavigationStack {
                 IdentifiantsEquipeView()
                     .toolbar {
-                        ToolbarItem(placement: .topBarTrailing) {
+                        ToolbarItem(placement: .cancellationAction) {
                             Button("Fermer") { afficherIdentifiantsEquipe = false }
                         }
                     }
             }
             .environment(authService)
         }
-        .sheet(isPresented: $afficherAjoutEleve) {
-            AjoutUtilisateurView(codeEquipe: codeEquipe, roleParDefaut: .etudiant)
-        }
         .sheet(isPresented: $afficherAjoutAssistant) {
-            AjoutUtilisateurView(codeEquipe: codeEquipe, roleParDefaut: .assistantCoach)
-        }
-        .sheet(isPresented: $afficherGestionStaff) {
-            NavigationStack {
-                GestionStaffView()
-                    .toolbar {
-                        ToolbarItem(placement: .topBarTrailing) {
-                            Button("Fermer") { afficherGestionStaff = false }
-                        }
-                    }
-            }
+            AjoutUtilisateurView(codeEquipe: codeEquipe)
         }
     }
 
@@ -343,6 +276,11 @@ struct ProfilView: View {
     private func supprimerEquipe(_ equipe: Equipe) {
         let code = equipe.codeEquipe
 
+        // IDs des joueurs de l'équipe — capturés AVANT leur suppression (les
+        // entités Presence/Evaluation/TestPhysique sont clés par joueurID).
+        let descJoueursIDs = FetchDescriptor<JoueurEquipe>(predicate: #Predicate { $0.codeEquipe == code })
+        let joueursIDs = ((try? modelContext.fetch(descJoueursIDs)) ?? []).map(\.id)
+
         // Supprimer toutes les entités liées par codeEquipe. Prédicats concrets
         // par type (#Predicate ne se génère pas sur un protocole) — évite de
         // fetch TOUTE la table (PointMatch/ActionRallye grossissent à chaque point).
@@ -362,6 +300,26 @@ struct ProfilView: View {
         supprimerEntites(FetchDescriptor<ObjectifJoueur>(predicate: #Predicate { $0.codeEquipe == code }))
         supprimerEntites(FetchDescriptor<ActionRallye>(predicate: #Predicate { $0.codeEquipe == code }))
         supprimerEntites(FetchDescriptor<CategorieExercice>(predicate: #Predicate { $0.codeEquipe == code }))
+        supprimerEntites(FetchDescriptor<PhaseSaison>(predicate: #Predicate { $0.codeEquipe == code }))
+        supprimerEntites(FetchDescriptor<CredentialAthlete>(predicate: #Predicate { $0.codeEquipe == code }))
+
+        // Presence / Evaluation / TestPhysique n'ont PAS de codeEquipe (angle
+        // mort historique) : purge par joueurID (IDs capturés en tête de
+        // cascade, avant la suppression des JoueurEquipe).
+        if !joueursIDs.isEmpty {
+            supprimerEntites(FetchDescriptor<Presence>(predicate: #Predicate { joueursIDs.contains($0.joueurID) }))
+            supprimerEntites(FetchDescriptor<Evaluation>(predicate: #Predicate { joueursIDs.contains($0.joueurID) }))
+            supprimerEntites(FetchDescriptor<TestPhysique>(predicate: #Predicate { joueursIDs.contains($0.joueurID) }))
+        }
+
+        // Comptes membres de l'équipe (assistants + athlètes legacy) — jamais
+        // le compte connecté. `Abonnement` n'est PAS supprimé (donnée par
+        // utilisateur, trace d'achat — pas une donnée d'équipe).
+        let idConnecte = authService.utilisateurConnecte?.id
+        let descUsers = FetchDescriptor<Utilisateur>(predicate: #Predicate { $0.codeEquipe == code })
+        for user in (try? modelContext.fetch(descUsers)) ?? [] where user.id != idConnecte {
+            modelContext.delete(user)
+        }
 
         // Les AssistantCoach, CreneauRecurrent, MatchCalendrier sont en cascade via la relation Equipe
         // Supprimer l'équipe elle-même
@@ -606,32 +564,3 @@ extension Notification.Name {
     static let allerChoixInitial = Notification.Name("allerChoixInitial")
 }
 
-// MARK: - Section abonnement (paywall v2.0)
-
-extension ProfilView {
-    var sectionAbonnement: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label("Mon abonnement", systemImage: "creditcard.fill")
-                .font(.headline)
-                .foregroundStyle(PaletteMat.orange)
-
-            HStack {
-                BadgeStatut(statut: abonnementService.statut)
-                Spacer()
-                NavigationLink {
-                    GestionAbonnementView()
-                } label: {
-                    HStack(spacing: 6) {
-                        Text("Gérer")
-                            .font(.subheadline.weight(.medium))
-                        Image(systemName: "chevron.right")
-                            .font(.caption2)
-                    }
-                    .foregroundStyle(PaletteMat.orange)
-                }
-            }
-        }
-        .padding(20)
-        .glassCard()
-    }
-}

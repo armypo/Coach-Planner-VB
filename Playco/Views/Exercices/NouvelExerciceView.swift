@@ -13,40 +13,23 @@ struct NouvelExerciceView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                // Champ de saisie
-                VStack(alignment: .leading, spacing: 16) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("NOM DE L'EXERCICE")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .tracking(0.5)
-                        TextField("ex : Service en flottant", text: $nom)
-                            .font(.title3)
-                            .padding(14)
-                            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
-                            .focused($focused)
-                            .autocorrectionDisabled()
-                            .submitLabel(.done)
-                            .onSubmit { valider() }
-                    }
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("TYPE DE TERRAIN")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .tracking(0.5)
-                        Picker("Terrain", selection: $typeTerrain) {
-                            ForEach(TypeTerrain.allCases, id: \.self) { t in
-                                Label(t.label, systemImage: t.icone).tag(t)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                    }
+            // D vague 1bis : création en Form — pattern unique des sheets.
+            Form {
+                Section("Exercice") {
+                    TextField("ex : Service en flottant", text: $nom)
+                        .focused($focused)
+                        .autocorrectionDisabled()
+                        .submitLabel(.done)
+                        .onSubmit { valider() }
                 }
-                .padding(LiquidGlassKit.espaceLG)
-
-                Spacer()
+                Section("Type de terrain") {
+                    Picker("Terrain", selection: $typeTerrain) {
+                        ForEach(TypeTerrain.allCases, id: \.self) { t in
+                            Label(t.label, systemImage: t.icone).tag(t)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                }
             }
             .navigationTitle("Nouvel exercice")
             .navigationBarTitleDisplayMode(.inline)

@@ -22,8 +22,10 @@ struct RejoindreEquipeTests {
         return ModelContext(try ModelContainer(for: schema, configurations: [config]))
     }
 
+    /// Ligne de STAFF non réclamée (pivot coach-first : seuls les assistants
+    /// rejoignent — la jonction .etudiant est testée comme rejetée ailleurs).
     private func membreRoster(codeEquipe: String, codeInvitation: String, context: ModelContext) -> Utilisateur {
-        let u = Utilisateur(identifiant: "rost.er", motDePasseHash: "", prenom: "Ros", nom: "Ter", role: .etudiant)
+        let u = Utilisateur(identifiant: "rost.er", motDePasseHash: "", prenom: "Ros", nom: "Ter", role: .assistantCoach)
         u.codeEquipe = codeEquipe
         u.codeInvitation = codeInvitation
         u.appleUserID = ""   // ligne non réclamée
@@ -160,9 +162,9 @@ struct CredentialRecapTests {
     @Test("Porte le code d'équipe et le code d'invitation (plus de mot de passe)")
     func porteLesCodes() {
         let r = CredentialRecap(nomComplet: "Jo Hueur", identifiant: "jo.hueur",
-                                codeEquipe: "EQU1", codeInvitation: "ABC123", role: "Athlète")
+                                codeEquipe: "EQU1", codeInvitation: "ABC123", role: "Assistant")
         #expect(r.codeEquipe == "EQU1")
         #expect(r.codeInvitation == "ABC123")
-        #expect(r.role == "Athlète")
+        #expect(r.role == "Assistant")
     }
 }

@@ -19,30 +19,19 @@ struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(AuthService.self) private var authService
     @Environment(AppleSignInService.self) private var appleSignInService
-    @Environment(AbonnementService.self) private var abonnementService
-    @Environment(StoreKitService.self) private var storeKitService
     @Environment(CloudKitSharingService.self) private var sharingService
     @Environment(CloudKitSyncService.self) private var syncService
     @Environment(\.scenePhase) private var scenePhase
     @State private var sectionActive: SectionApp?
     @State private var afficherProfil: Bool = false
-    @State private var afficherMessages: Bool = false
     @State private var afficherRecherche: Bool = false
+    @State private var afficherCalendrier: Bool = false
     @State private var equipeSelectionnee: Equipe?
     @State private var selectionEquipeFaite = false
     @State private var afficherToastDesactivation = false
     @State private var toastTask: Task<Void, Never>?
 
     @Query private var equipes: [Equipe]
-    @Query(sort: \MessageEquipe.dateEnvoi) private var tousMessages: [MessageEquipe]
-
-    /// Messages non lus pour l'utilisateur courant
-    private var nbMessagesNonLus: Int {
-        guard let uid = authService.utilisateurConnecte?.id else { return 0 }
-        let code = codeEquipeActif
-        guard !code.isEmpty else { return 0 }
-        return tousMessages.filter { $0.codeEquipe == code && !$0.estLuPar(uid) }.count
-    }
 
     // Query pour détecter si une séance est prévue aujourd'hui
     @Query(filter: #Predicate<Seance> { $0.estArchivee == false },
@@ -89,15 +78,6 @@ struct ContentView: View {
                     }
             }
         }
-        .safeAreaInset(edge: .top) {
-            // Bannière paywall : visible uniquement pour les coachs en essai/grace/expiré
-            if authService.estConnecte,
-               let user = authService.utilisateurConnecte,
-               user.role == .coach || user.role == .admin {
-                BanniereAbonnementView()
-                    .animation(LiquidGlassKit.springDefaut, value: abonnementService.statut)
-            }
-        }
         .animation(.spring(response: 0.45, dampingFraction: 0.85), value: authService.estConnecte)
         .animation(.spring(response: 0.45, dampingFraction: 0.85), value: selectionEquipeFaite)
         .onChange(of: authService.estConnecte) {
@@ -126,13 +106,6 @@ struct ContentView: View {
                 if let appleID = authService.utilisateurConnecte?.appleUserID, !appleID.isEmpty,
                    await appleSignInService.estRevoque(appleUserID: appleID) {
                     authService.deconnexion()
-                }
-                // Coach : re-évaluer le statut d'abonnement (renouvellement/refund Apple).
-                if let user = authService.utilisateurConnecte,
-                   user.role == .coach || user.role == .admin {
-                    await abonnementService.rafraichir(
-                        utilisateur: user, context: modelContext, storeKit: storeKitService
-                    )
                 }
                 // Données partagées : athlète/assistant importent, coach publie.
                 await synchroniserDonneesPartagees()
@@ -170,24 +143,34 @@ struct ContentView: View {
         }
     }
 
-    /// Synchronise les données partagées selon le rôle : les consommateurs
-    /// (athlète/assistant) importent depuis la Public DB, le coach publie ses
-    /// mises à jour. Idempotent, sûr hors-ligne.
+    /// Synchronise les données partagées selon le rôle (E4 — parité D6) :
+    /// tous les coachs (head + assistants) IMPORTENT puis PUBLIENT par les
+    /// mêmes chemins — dernier écrivain gagne par `dateModification` (l'import
+    /// d'abord tire les modifications distantes, la publication pousse ce qui
+    /// reste plus récent localement). Idempotent, sûr hors-ligne.
     private func synchroniserDonneesPartagees() async {
         guard let user = authService.utilisateurConnecte else { return }
         let code = codeEquipeActif
         guard !code.isEmpty else { return }
-        switch user.role {
-        case .etudiant, .assistantCoach:
+        // E′ §6 — mode déconnecté RÉEL : pendant un match live (y compris après
+        // un kill, tant que le marqueur de reprise est vivant), AUCUNE sync —
+        // ni import (résurrection de points annulés, pollution de l'état du
+        // preneur de stats) ni publication. Le seuil n'avançant pas, le sweep
+        // de sortie de live rattrape tout.
+        guard !syncService.modeMatchActif, MatchLiveRestauration.seanceEnCours() == nil else { return }
+
+        // E′ §1 — identité d'écrivain de ce compte (records par écrivain).
+        sharingService.ecrivainID = user.id.uuidString
+
+        let plan = CloudKitSharingService.planSync(role: user.role)
+        if plan.importe {
             await sharingService.syncDepuisPublic(codeEquipe: code, context: modelContext)
-            // Statut d'abonnement de l'équipe (informationnel, lecture seule) pour
-            // afficher le plan du coach. Ne débloque AUCUNE fonctionnalité. Chargé
-            // pour l'athlète uniquement (seul rôle qui l'affiche, cf. MonProfilAthleteView).
-            if user.role == .etudiant {
-                await abonnementService.chargerStatutEquipe(codeEquipe: code)
-            }
-        case .coach, .admin:
-            await sharingService.publierMisesAJourCoach(codeEquipe: code, context: modelContext)
+        }
+        if plan.publie {
+            await sharingService.publierMisesAJourCoach(
+                codeEquipe: code, context: modelContext,
+                estAdmin: user.role != .assistantCoach,  // .admin ET .coach publient les ancres
+                modeMatchActif: syncService.modeMatchActif)
         }
     }
 
@@ -233,10 +216,9 @@ struct ContentView: View {
                     Spacer()
                     DockBarView(
                         sectionActive: $sectionActive,
-                        badgeMessages: nbMessagesNonLus > 0,
                         badgeSeanceAujourdhui: seanceAujourdhui,
-                        onMessages: {
-                            afficherMessages = true
+                        onCalendrier: {
+                            afficherCalendrier = true
                         },
                         onProfil: {
                             afficherProfil = true
@@ -259,8 +241,10 @@ struct ContentView: View {
         .sheet(isPresented: $afficherProfil) {
             vueProfil
         }
-        .sheet(isPresented: $afficherMessages) {
-            vueMessages
+        .sheet(isPresented: $afficherCalendrier) {
+            NavigationStack {
+                CalendrierView()
+            }
         }
         .sheet(isPresented: $afficherRecherche) {
             RechercheGlobaleView { section in
@@ -279,19 +263,10 @@ struct ContentView: View {
         case .strategies:
             StrategiesView { withAnimation { sectionActive = nil } }
         case .equipe:
-            if authService.utilisateurConnecte?.role == .etudiant {
-                MonProfilAthleteView { withAnimation { sectionActive = nil } }
-            } else {
-                EquipeView { withAnimation { sectionActive = nil } }
-            }
+            EquipeView { withAnimation { sectionActive = nil } }
         case .entrainement:
             EntrainementView { withAnimation { sectionActive = nil } }
         }
-    }
-
-    /// Sheet messages — messagerie inter-équipe
-    private var vueMessages: some View {
-        MessagerieView()
     }
 
     /// Sheet profil — adapté selon le rôle

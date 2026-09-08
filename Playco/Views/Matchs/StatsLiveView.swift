@@ -34,21 +34,6 @@ struct StatsLiveView: View {
     @Environment(\.modeBordDeTerrain) private var courtside
     @Environment(AuthService.self) private var authService
     @Query private var toutesActionsRallye: [ActionRallye]
-    @Query private var toutesPermissions: [StaffPermissions]
-
-    /// L'utilisateur connecté a-t-il la permission de saisir des stats ?
-    private var lectureSeule: Bool {
-        guard let user = authService.utilisateurConnecte else { return true }
-        // Coach et admin ont tous les droits
-        if user.role == .admin || user.role == .coach { return false }
-        // Sinon, chercher les permissions du staff
-        if let perms = toutesPermissions.first(where: { $0.assistantID == user.id && $0.codeEquipe == codeEquipeActif }) {
-            return !perms.peutGererStats
-        }
-        // Athlètes sans permissions staff → lecture seule
-        return true
-    }
-
     @State private var statSelectionnee: TypeActionPoint?
     @State private var afficherPickerJoueur = false
     @State private var joueurReceptionEnCours: JoueurSurTerrain?
@@ -72,21 +57,6 @@ struct StatsLiveView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Badge lecture seule
-            if lectureSeule {
-                HStack(spacing: 6) {
-                    Image(systemName: "lock.fill")
-                        .font(.system(size: 10))
-                    Text("LECTURE SEULE")
-                        .font(.system(size: 10, weight: .bold))
-                        .tracking(0.5)
-                }
-                .foregroundStyle(.white)
-                .padding(.horizontal, LiquidGlassKit.espaceSM + 4)
-                .padding(.vertical, LiquidGlassKit.espaceXS)
-                .background(PaletteMat.negatif.gradient, in: Capsule())
-                .padding(.vertical, LiquidGlassKit.espaceXS)
-            }
 
             // Tableau de score
             tableauScore
@@ -108,8 +78,6 @@ struct StatsLiveView: View {
                 VStack(alignment: .leading, spacing: LiquidGlassKit.espaceLG) {
                     // Bouton point adversaire rapide
                     boutonPointAdversaire
-                        .disabled(lectureSeule)
-                        .opacity(lectureSeule ? 0.5 : 1)
 
                     if courtside {
                         // Mode courtside : stats réduites (6 boutons essentiels)
@@ -160,8 +128,6 @@ struct StatsLiveView: View {
                 }
                 .padding(LiquidGlassKit.espaceMD)
             }
-            .disabled(lectureSeule)
-            .opacity(lectureSeule ? 0.6 : 1)
         }
         .sheet(isPresented: $viewModel.afficherSelecteurZone) {
             if let point = viewModel.pointEnAttenteZone {

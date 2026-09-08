@@ -21,6 +21,10 @@ final class Exercice: TerrainContent {
     /// P3-01 — Soft delete : archivé au lieu de supprimé
     var estArchive: Bool = false
 
+    /// E2 — sweep de publication incrémental (parité assistant D6).
+    /// Champ additif CloudKit-safe (défaut sur la déclaration).
+    var dateModification: Date = Date()
+
     /// P2-05 — Accesseur enum type-safe pour typeTerrain
     var terrain: TypeTerrain {
         get { TypeTerrain(rawValue: typeTerrain) ?? .indoor }

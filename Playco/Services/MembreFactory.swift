@@ -7,12 +7,13 @@
 import Foundation
 import SwiftData
 
-/// Crée les entités d'un membre d'équipe (Utilisateur + CredentialAthlete
+/// Crée les entités d'un membre du STAFF (Utilisateur + CredentialAthlete
 /// marqueur) SANS aucun secret : la connexion se fait exclusivement par
 /// Sign in with Apple + code d'invitation (rattachement via `rejoindreEquipe`).
 ///
-/// Utilisé par le wizard de configuration (assistants + joueurs) et par
-/// AjoutUtilisateurView — remplace les trois copies divergentes de cette logique.
+/// Depuis le pivot coach-first, seuls les assistants coachs passent par cette
+/// factory — les joueurs du roster sont des données pures (JoueurEquipe), sans
+/// compte. Utilisée par le wizard de configuration et AjoutUtilisateurView.
 @MainActor
 enum MembreFactory {
 
@@ -25,7 +26,6 @@ enum MembreFactory {
     }
 
     /// - Parameters:
-    ///   - joueur: `JoueurEquipe` à lier (athlètes) — reçoit `identifiant` + `utilisateurID`.
     ///   - identifiantSouhaite: identifiant choisi manuellement. L'UNICITÉ doit être
     ///     validée par l'appelant ; si nil/vide, un identifiant unique est auto-généré.
     ///   - exclusions: identifiants déjà réservés en mémoire dans la même session
@@ -36,7 +36,6 @@ enum MembreFactory {
         nom: String,
         role: RoleUtilisateur,
         codeEquipe: String,
-        joueur: JoueurEquipe? = nil,
         identifiantSouhaite: String? = nil,
         context: ModelContext,
         exclusions: inout Set<String>
@@ -62,22 +61,12 @@ enum MembreFactory {
         )
         utilisateur.codeInvitation = Utilisateur.genererCodeUniqueInvitation(context: context)
         utilisateur.codeEquipe = codeEquipe
-        if let joueur {
-            utilisateur.joueurEquipeID = joueur.id
-            utilisateur.numero = joueur.numero
-            utilisateur.posteRaw = joueur.poste.rawValue
-        }
         context.insert(utilisateur)
-
-        if let joueur {
-            joueur.identifiant = identifiant
-            joueur.utilisateurID = utilisateur.id
-        }
 
         // CredentialAthlete = marqueur de membre (aucun mot de passe).
         let cred = CredentialAthlete(
             utilisateurID: utilisateur.id,
-            joueurEquipeID: joueur?.id,
+            joueurEquipeID: nil,
             identifiant: identifiant,
             codeEquipe: codeEquipe
         )
@@ -101,23 +90,18 @@ enum MembreFactory {
         nom: String,
         role: RoleUtilisateur,
         codeEquipe: String,
-        joueur: JoueurEquipe? = nil,
         identifiantSouhaite: String? = nil,
         context: ModelContext
     ) -> Membre {
         var exclusions = Set<String>()
         return creerMembre(
             prenom: prenom, nom: nom, role: role, codeEquipe: codeEquipe,
-            joueur: joueur, identifiantSouhaite: identifiantSouhaite,
+            identifiantSouhaite: identifiantSouhaite,
             context: context, exclusions: &exclusions
         )
     }
 
     private static func libelleRole(_ role: RoleUtilisateur) -> String {
-        switch role {
-        case .etudiant: return "Athlète"
-        case .assistantCoach: return "Assistant"
-        default: return "Coach"
-        }
+        role == .assistantCoach ? "Assistant" : "Coach"
     }
 }

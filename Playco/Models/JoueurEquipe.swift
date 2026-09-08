@@ -56,6 +56,9 @@ final class JoueurEquipe {
     var posteRaw: String = PosteJoueur.recepteur.rawValue  // PosteJoueur.rawValue
     var dateNaissance: Date? = nil
     var taille: Int = 0       // cm
+    /// Poids en kg (pivot coach-first : vivait sur l'Utilisateur athlète lié,
+    /// désormais porté par la donnée joueur — champ additif CloudKit-safe).
+    var poidsKg: Double = 0
     var notes: String = ""
     @Attribute(.externalStorage) var photoData: Data? = nil
     var estActif: Bool = true
@@ -269,25 +272,37 @@ enum StatutDisponibilite: String, CaseIterable, Identifiable {
     case blesse
     case malade
     case suspendu
+    /// E′ (PII minimale) : statut générique posé à l'IMPORT quand un autre coach
+    /// signale un joueur indisponible — le MOTIF (santé) ne transite jamais par
+    /// la Public DB. Jamais proposé dans le Picker coach (cf. `casSelectionnables`).
+    case indisponible = "Indisponible"
 
     var id: String { rawValue }
 
     var libelle: String {
         switch self {
-        case .disponible: return "Disponible"
-        case .blesse:     return "Blessé"
-        case .malade:     return "Malade"
-        case .suspendu:   return "Suspendu"
+        case .disponible:   return "Disponible"
+        case .blesse:       return "Blessé"
+        case .malade:       return "Malade"
+        case .suspendu:     return "Suspendu"
+        case .indisponible: return "Indisponible"
         }
     }
 
     var couleur: Color {
         switch self {
-        case .disponible: return .green
-        case .blesse:     return .red
-        case .malade:     return .orange
-        case .suspendu:   return .gray
+        case .disponible:   return .green
+        case .blesse:       return .red
+        case .malade:       return .orange
+        case .suspendu:     return .gray
+        case .indisponible: return .gray
         }
+    }
+
+    /// Cas proposés au COACH dans le Picker de la fiche joueur — `.indisponible`
+    /// (statut générique posé par l'import E′) n'est jamais choisi à la main.
+    static var casSelectionnables: [StatutDisponibilite] {
+        allCases.filter { $0 != .indisponible }
     }
 }
 

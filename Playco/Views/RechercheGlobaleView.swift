@@ -206,7 +206,7 @@ struct RechercheGlobaleView: View {
             .navigationBarTitleDisplayMode(.inline)
             .searchable(text: $recherche, prompt: "Joueurs, séances, stratégies…")
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button("Fermer") { dismiss() }
                 }
                 ToolbarItem(placement: .topBarLeading) {

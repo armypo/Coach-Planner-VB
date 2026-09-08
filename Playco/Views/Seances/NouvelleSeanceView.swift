@@ -13,41 +13,19 @@ struct NouvelleSeanceView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                VStack(alignment: .leading, spacing: 16) {
-                    // Nom
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("NOM DE LA SÉANCE")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .tracking(0.5)
-                        TextField("ex : Entraînement lundi matin", text: $nom)
-                            .font(.title3)
-                            .padding(14)
-                            .background(Color(.secondarySystemBackground),
-                                        in: RoundedRectangle(cornerRadius: 12))
-                            .focused($focused)
-                            .autocorrectionDisabled()
-                            .submitLabel(.done)
-                            .onSubmit { valider() }
-                    }
-
-                    // Date
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("DATE DE LA SÉANCE")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .tracking(0.5)
-                        DatePicker("", selection: $date, displayedComponents: [.date, .hourAndMinute])
-                            .datePickerStyle(.compact)
-                            .labelsHidden()
-                            .environment(\.locale, Locale(identifier: "fr_FR"))
-                            .tint(.orange)
-                    }
+            // D vague 1bis : création en Form — le pattern unique des sheets
+            // de création (modèle : NouvelleStrategieView).
+            Form {
+                Section("Séance") {
+                    TextField("ex : Entraînement lundi matin", text: $nom)
+                        .focused($focused)
+                        .autocorrectionDisabled()
+                        .submitLabel(.done)
+                        .onSubmit { valider() }
+                    DatePicker("Date", selection: $date, displayedComponents: [.date, .hourAndMinute])
+                        .environment(\.locale, Locale(identifier: "fr_FR"))
+                        .tint(PaletteMat.orange)
                 }
-                .padding(LiquidGlassKit.espaceLG)
-
-                Spacer()
             }
             .navigationTitle("Nouvelle séance")
             .navigationBarTitleDisplayMode(.inline)

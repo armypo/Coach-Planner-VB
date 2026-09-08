@@ -1,17 +1,17 @@
 # Playco — Contexte Claude Code
 
 ## Résumé du projet
-Application iOS/iPadOS de coaching volleyball en **Swift/SwiftUI**, ciblant iPad Air avec Apple Pencil 2e gen. **5 sections principales** : Séances (pratiques/exercices), Matchs (résultats/box score/stats), Stratégies (systèmes de jeu), Équipe (joueurs/statistiques/tableau de bord), Entraînement (musculation/charges). Terrain de volleyball dessinable (PencilKit + éléments vectoriels overlay). Bibliothèque d'exercices. Calendrier unifié. Exercices multi-étapes. Formations personnalisables. Système d'authentification multi-rôles (coach/athlète). Multi-équipes. Messagerie inter-équipe. Sync CloudKit.
+Application iOS/iPadOS de coaching volleyball en **Swift/SwiftUI**, ciblant iPad Air avec Apple Pencil 2e gen. **GRATUITE et coach-first depuis le pivot 2026-08-26** : les seuls utilisateurs sont le staff (head coach + assistants, mêmes droits — D6) ; les athlètes sont des DONNÉES du roster (aucun compte, aucune surface). **5 sections** : Séances (pratiques/exercices), Matchs (scouting/live/box score/stats), Stratégies (systèmes de jeu/formations), Équipe (roster/hub statistiques), Entraînement (musculation/charges). Terrain de volleyball dessinable (PencilKit + éléments vectoriels overlay), multi-étapes, demi-terrain. Bibliothèque d'exercices. Calendrier unifié au Dock. Match éclair. PDF plan de pratique. Sync CloudKit (privée multi-appareils + miroir Public DB BIDIRECTIONNEL entre coachs — parité complète livrée par le chantier E : roster/disponibilité, séances+exercices avec dessins, stratégies, scouting, bibliothèque, box scores, points live, formations).
 
 ## Stack technique
-- **Swift 5.9+ / SwiftUI** — NavigationSplitView (sidebar + detail avec NavigationStack)
-- **SwiftData + CloudKit** — persistance locale + sync inter-appareil (ModelConfiguration cloudKitDatabase: .automatic)
-- **PencilKit** — PKCanvasView via UIViewRepresentable pour dessin libre
-- **Canvas API** — rendu du terrain de volleyball (indoor parquet + beach sable)
-- **CryptoKit** — SHA256 hash des mots de passe avec sel
+- **Swift 5.9+ / SwiftUI** — NavigationSplitView (sidebar + detail avec NavigationStack), nuit par défaut (`.preferredColorScheme(.dark)` à la racine)
+- **SwiftData + CloudKit** — persistance locale + sync inter-appareil (ModelConfiguration cloudKitDatabase: .automatic, fallbacks local puis mémoire)
+- **PencilKit** — PKCanvasView via UIViewRepresentable (`overrideUserInterfaceStyle = .light` : fidélité des dessins sur fond nuit)
+- **Canvas API** — rendu du terrain (indoor parquet, beach sable, demi-terrain 9×9)
+- **AuthenticationServices** — Sign in with Apple, UNIQUE méthode de connexion (aucun mot de passe nulle part)
 - **EventKit** — sync calendrier Apple (CalendarSyncService)
 - **Combine** — auto-save debounce 3s (TerrainEditeurViewModel)
-- **Aucune dépendance externe**
+- **TelemetryDeck 2.14.1** (SPM, épinglée — seule dépendance externe) — analytics de rétention, no-op sous DEMO ; **MetricKit** — crash/hang natifs, rien ne quitte l'appareil
 
 ## Architecture de navigation
 
@@ -19,11 +19,9 @@ Application iOS/iPadOS de coaching volleyball en **Swift/SwiftUI**, ciblant iPad
 ```
 PlaycoApp
 ├── SplashScreenView → animation d'entrée
-├── ChoixInitialView → "Créer mon équipe" OU "Rejoindre une équipe"
-│   ├── ConfigurationView (wizard 6 étapes) → crée coach + équipe
-│   └── RejoindreEquipeView → connexion avec code équipe + identifiants
-├── LoginView → connexion (identifiant + mot de passe)
-│   └── Bouton "Créer ou rejoindre une équipe" → retour ChoixInitialView
+├── ChoixInitialView → « Créer mon équipe » / « Se connecter » (Coach · Assistant) / « Rejoindre avec un code » (Assistant)
+│   ├── ConfigurationView (wizard 6 étapes) → crée coach + équipe (+ roster sans comptes, assistants avec codes)
+│   └── LoginView → SIWA + sheet « Rejoindre mon équipe » (code équipe + code d'invitation — ASSISTANTS seulement)
 ├── SelectionEquipeView → si multi-équipes
 └── ContentView (routeur principal)
 ```
@@ -31,251 +29,204 @@ PlaycoApp
 ### Écran d'accueil → 5 sections
 ```
 ContentView (routeur)
-├── AccueilView (5 cartes : Séances / Matchs / Stratégies / Équipe / Entraînement)
-├── PratiquesView → NavigationSplitView (séances pratiques + exercices)
-├── MatchsView → NavigationSplitView (matchs + terrain/notes/stats)
-├── StrategiesView → NavigationSplitView (stratégies collectives)
-├── EquipeView / MonProfilAthleteView → NavigationSplitView (joueurs + tableau de bord)
-└── EntrainementView → NavigationSplitView (musculation + programmes)
+├── AccueilView (5 cartes : Séances / Matchs / Stratégies / Équipe / Entraînement — fond MatNuit uni)
+├── PratiquesView → NavigationSplitView (séances + exercices ; bottomBar : Bibliothèque · Planification)
+├── MatchsView → NavigationSplitView (sidebar : Préparation/scouting + à venir/résultats ; toolbar match en 3 groupes)
+├── StrategiesView → NavigationSplitView (sidebar : Formations + stratégies par catégorie)
+├── EquipeView → NavigationSplitView (hub Statistiques 6 entrées + roster par poste)
+└── EntrainementView → NavigationSplitView (programmes ; sélecteur de joueur avant séance live)
 ```
-+ **DockBarView** flottant en bas (Messages + Profil)
++ **DockBarView** flottant en bas, sur l'accueil : **Recherche · Calendrier · Profil** (persistance dans les sections = coquille 2.5a)
 
 - `SectionApp` enum : `.pratiques`, `.matchs`, `.strategies`, `.equipe`, `.entrainement`
-- Transitions spring animées entre accueil et sections (.spring response: 0.4, dampingFraction: 0.85)
-- Chaque section a un bouton « ← Accueil » (topBarLeading)
+- Transitions spring animées ; chaque section a un `BoutonRetourAccueil` partagé (topBarLeading, teinté par section)
 
 ## Architecture des fichiers
 
 ### Point d'entrée
 | Fichier | Description |
 |---------|-------------|
-| `PlaycoApp.swift` | @main, ModelContainer CloudKit (30 modèles), fallback local + fallback mémoire, écrans : splash → choix initial → config/rejoindre → login → sélection équipe → app |
+| `PlaycoApp.swift` | @main, ModelContainer CloudKit (30 modèles, fallback local + mémoire → `EcranErreurBaseView`), écrans splash → choixInitial → config/login → app, nuit par défaut, révocation SIWA au lancement, `MigrationRoles` one-shot, MetricKit + `app_launched` unique, `onOpenURL` lien d'invitation (racine, hors DEMO) |
 
 ### Modèles (`Models/`) — 30 @Model
 | Fichier | Description |
 |---------|-------------|
-| `Seance.swift` | @Model : id, nom, date, exercices (cascade, **optionnel**), estArchivee, typeSeanceRaw (pratique/match), adversaire, lieu, scoreEquipe, scoreAdversaire, notesMatch, statsEntrees, codeEquipe, pagesMatch, rotationsHistoriqueData, rotationsHistoriqueAdvData, nousServonsEnPremier |
-| `Exercice.swift` | @Model : id, nom, notes, dessinData, elementsData, ordre, duree, etapesData, typeTerrain, seance, estArchive |
-| `ExerciceBibliotheque.swift` | @Model : id, nom, categorie, descriptionExo, notes, dessinData, elementsData, estPredefini, estFavori, duree, etapesData, notesCoach, typeTerrain, dateCreation, codeCoach |
-| `ElementTerrain.swift` | Codable struct : types joueur/ballon/fleche/trajectoire/rotation, coordonnées normalisées 0-1, Bézier, couleur RGB. **+ TypeTerrain** enum. **+ EtapeExercice** struct |
-| `JoueurEquipe.swift` | @Model : stats volleyball NCAA/FIVB (kills, aces, blocs, réception, passes, manchettes), identifiant, motDePasseHash, sel, codeEquipe, utilisateurID. **+ PosteJoueur** enum |
-| `StrategieCollective.swift` | @Model : id, nom, categorieRaw, description, notes, dessinData, elementsData, etapesData, typeTerrain, estArchivee, codeEquipe. **+ CategorieStrategie** enum |
-| `FormationTypes.swift` | FormationMode enum, FormationType enum (indoor 5-1/4-2/6-2, beach) |
+| `Seance.swift` | @Model : id, nom, date, exercices (cascade, **optionnel**), estArchivee, typeSeanceRaw (pratique/match), adversaire, lieu, scores, notesMatch, statsEntrees, codeEquipe, pagesMatch, rotations historique (nous+adv), nousServonsEnPremier, sets JSON (cache @Transient), partants/liberoID, `dateModification` (sweep sync), `matchCalendrierID` (dormant). + `Seance+Duplication.swift` (copie AVEC codeEquipe) |
+| `Exercice.swift` | @Model : id, nom, notes, dessinData, elementsData, ordre, duree, etapesData, typeTerrain, seance, estArchive, dateModification (E2 — sweep de publication) |
+| `ExerciceBibliotheque.swift` | @Model : bibliothèque d'exercices (catégorie, favori, notesCoach, typeTerrain, codeCoach, dateModification E2). + `ExerciceBibliothequeExport.swift` (import/export JSON, pas un @Model) |
+| `ElementTerrain.swift` | Codable struct : joueur/ballon/flèche/trajectoire/rotation, coordonnées normalisées 0-1, Bézier. + **TypeTerrain** enum (indoor/beach/**demiTerrain** 2.3.1 — rawValues = contrat de persistance, legacy `?? .indoor`) + **EtapeExercice** |
+| `JoueurEquipe.swift` | @Model **donnée pure du roster** (aucun compte) : identité, numéro, poste, stats NCAA/FIVB cumulées, taille, **poidsKg** (pivot — ex-miroir Utilisateur), dateNaissance, photoData, codeEquipe, `dateModification`, **statutDisponibiliteRaw** (blessé/malade/suspendu — grise compo/muscu) + **consentement parental** (atteste/date/attesteParNom — base légale collecte/vidéo). Champs legacy gelés : identifiant, motDePasseHash, sel, utilisateurID. + **PosteJoueur** enum |
+| `StrategieCollective.swift` | @Model : nom, categorieRaw, description, dessin/éléments/étapes, typeTerrain, estArchivee, codeEquipe. + **CategorieStrategie** |
+| `FormationTypes.swift` | FormationMode, FormationType (5-1/4-2/6-2, beach), couleurPourLabel (jetons par poste) |
 | `FormationPersonnalisee.swift` | @Model : formationType, rotation, mode, positionsJSON, codeEquipe |
-| `Utilisateur.swift` | @Model : identifiant, motDePasseHash, sel, prenom, nom, roleRaw (etudiant/coach/admin), codeEcole, codeInvitation, photoData, stats volleyball, données physiques, joueurEquipeID. **+ genererIdentifiantUnique()** |
-| `StatsMatch.swift` | @Model : seanceID, joueurID, codeEquipe, kills, aces, blocs, réception, passes, manchettes, setsJoues |
-| `Presence.swift` | @Model : joueurID, seanceID, estPresent, dateMarquee |
-| `Evaluation.swift` | @Model : joueurID, seanceID, note, commentaire, dateEvaluation |
-| `Etablissement.swift` | @Model : nom, type, ville, province, logo. **Relations inverses** : profils, equipes |
-| `ProfilCoach.swift` | @Model : prenom, nom, courriel, telephone, sportRaw, roleRaw, photo, configurationCompletee, etablissement, masquerPratiquesAthletes |
-| `Equipe.swift` | @Model : nom, categorieRaw, divisionRaw, saison, couleurs hex, codeEquipe, dateFinSaison, etablissement. **Relations inverses** : assistants, creneaux, matchsCalendrier |
-| `AssistantCoach.swift` | @Model : prenom, nom, courriel, roleAssistant (assistant/préparateur/analyste/physio), identifiant, motDePasseHash, sel, codeEquipe |
-| `ProgrammeMuscu.swift` | @Model : nom, description, exercices, joueursAssignes, estArchive, codeEquipe. **+ ExerciceMuscu** @Model |
-| `SeanceMuscu.swift` | @Model : joueurID, programmeID, exercices JSON, estTerminee, codeEquipe |
-| `TestPhysique.swift` | @Model : joueurID, typeTest, valeur, date |
-| `CreneauRecurrent.swift` | @Model : jourSemaine, heureDebut, dureeMinutes, lieu, equipe |
-| `MatchCalendrier.swift` | @Model : date, adversaire, lieu, estDomicile, equipe |
-| `MessageEquipe.swift` | @Model : contenu, dateEnvoi, expediteurID, expediteurNom, expediteurRoleRaw, codeEquipe, lecteurIDs, estConversationPrivee, destinataireID |
-| `PointMatch.swift` | @Model : id, seanceID, set, scoreEquipeAuMoment, scoreAdversaireAuMoment, joueurID, typeActionRaw, rotationAuMoment, rotationAdvAuMoment, codeEquipe, horodatage. **+ TypeActionPoint** enum (kill, ace, bloc, erreurAdv, erreurNous, killAdversaire, aceAdversaire, blocAdversaire, erreurAttaqueAdversaire, erreurServiceAdversaire, etc.), computed estPointPourNous, estStatAdversaire |
-| `ScoutingReport.swift` | @Model : adversaire, date, systemeDeJeu, styleDeJeu, joueurs adverses (JSON), forces, faiblesses, tendances, stratégies recommandées, notes, codeEquipe, estArchive |
-| `ObjectifJoueur.swift` | @Model : id, joueurID, codeEquipe, titre, categorieRaw, cible, unite, dateCreation, estAtteint, notes. **+ CategorieObjectif** enum (attaque/service/bloc/réception/jeu/physique) |
-| `Abonnement.swift` | @Model : id, userID, productID (StoreKit), tier (pro/club), periode (monthly/yearly), dateAchat, dateExpiration, estActif. Lié au paywall StoreKit 2 |
-| `ActionRallye.swift` | @Model : seanceID, joueurID, codeEquipe, typeActionRaw (manchette/passe/réception/dig/tentativeAttaque/serviceEnJeu), set, horodatage. Stats non-marquantes du rallye |
-| `CategorieExercice.swift` | @Model : nom, codeEquipe, ordre, couleurHex. Permet aux coachs de créer leurs propres catégories d'exercices |
-| `CredentialAthlete.swift` | @Model (modèle privé Keychain-backed) : id, joueurID, hashMotDePasse, sel. Identifiants athlète scopés équipe |
-| `PhaseSaison.swift` | @Model : nom, dateDebut, dateFin, codeEquipe, ordre. Découpage saison (pré-saison / saison régulière / playoffs) pour filtrer Analytics |
-| `StaffPermissions.swift` | @Model : 7 booleans (peutGererStats, peutModifierSeances, etc.), assistantID, codeEquipe. Permissions granulaires par assistant |
-| `MatchLiveModels.swift` | Structs (PAS @Model) : `JoueurSurTerrain`, `SetScore`, `Substitution`, `ConfigMatch`, `DonneesHeatmap`. Utilisés par `MatchLiveViewModel` |
-| `ExerciceBibliothequeExport.swift` | Helpers JSON pour import/export de la bibliothèque exercices (pas un @Model) |
-| `EvenementSync.swift` | Struct Codable (PAS @Model) : id, date, type (import/export/setup/erreur/connexion/pause/reprise), message, estErreur. **+ JournalSyncStorage** (UserDefaults buffer circulaire 50 entrées) |
+| `Utilisateur.swift` | @Model **compte STAFF** (coach `.admin`, assistant `.assistantCoach`) : identifiant (affichage), prenom/nom, roleRaw, codeEcole/codeEquipe, **appleUserID** (SIWA), **codeInvitation** (jonction assistant), photoData, estActif, dateModification. `genererIdentifiantUnique()`, `genererCodeUniqueInvitation()`. Champs gelés au schéma : hash/sel/iterations, miroirs athlète (données physiques, stats, joueurEquipeID) — plus jamais écrits |
+| `StatsMatch.swift` | @Model : stats par joueur par match (source du cumul carrière via resynchroniserCumul), dateModification (E3 — sweep de publication) |
+| `Presence.swift` / `Evaluation.swift` / `TestPhysique.swift` | @Model clés par joueurID/seanceID — ⚠️ SANS codeEquipe (angle mort connu ; la cascade d'équipe les purge par joueurID) |
+| `Etablissement.swift` / `ProfilCoach.swift` / `Equipe.swift` / `AssistantCoach.swift` | Organisation. `Equipe` : couleurs, codeEquipe, dateFinSaison, `sportID` (« volleyball », phase 0 SportPack), tierAbonnementRaw (gelé). `ProfilCoach.masquerPratiquesAthletes` gelé. `AssistantCoach` : rôle staff descriptif (assistant/préparateur/analyste/physio) |
+| `ProgrammeMuscu.swift` (+ExerciceMuscu) / `SeanceMuscu.swift` | Musculation : programmes + joueurs assignés ; séances exécutées **au nom d'un joueur choisi par le coach** (D2) |
+| `CreneauRecurrent.swift` / `MatchCalendrier.swift` | Créneaux du wizard → séances générées ; MatchCalendrier **dormant** (le wizard crée des Seance) |
+| `MessageEquipe.swift` | @Model **GELÉ** (D1 : messagerie retirée de l'UI) — conservé au schéma + cascade |
+| `PointMatch.swift` | @Model stats live point-par-point : scores/rotations (nous+adv) au moment, typeActionRaw (+ 5 actions adversaire), zone/zoneDepart, nousServionsAuMoment/serviceRenseigne, codeEquipe. + **TypeActionPoint** |
+| `ScoutingReport.swift` | @Model : adversaire, seanceID (lien match), joueurs adverses JSON (JAMAIS publiés en Public DB), forces/faiblesses, tendances zonales (menace 0-3), stratégies recommandées, codeEquipe, dateModification (E2) |
+| `ObjectifJoueur.swift` | @Model : objectifs fixés par le coach par joueur, progression auto. + **CategorieObjectif** |
+| `Abonnement.swift` | @Model **GELÉ** (D3 : paywall supprimé) — conservé au schéma (+ enums Tier/TypeAbonnement) ; volontairement HORS cascade d'équipe |
+| `ActionRallye.swift` / `CategorieExercice.swift` / `PhaseSaison.swift` | Stats non-marquantes du rallye ; catégories d'exercices perso ; phases de saison (filtre Analytics) |
+| `CredentialAthlete.swift` | @Model **marqueur de membre du STAFF** (nom historique) : utilisateurID, identifiant, codeEquipe, joueurEquipeID toujours nil pour les nouveaux |
+| `StaffPermissions.swift` | @Model **GELÉ** (D6 : mêmes droits pour tout le staff) — conservé au schéma, plus jamais lu/écrit |
+| `MatchLiveModels.swift` / `EvenementSync.swift` | Structs (PAS @Model) : JoueurSurTerrain/SetScore/Substitution/ConfigMatch/DonneesHeatmap ; journal sync (buffer 50 UserDefaults) |
 
 ### Services (`Services/`)
 | Fichier | Description |
 |---------|-------------|
-| `AuthService.swift` | @Observable **SIWA strict (v2.1)** : connexionApple(appleUserID:) → .connecte/.compteInconnu/.echec, restaurerSession(), deconnexion(), verifierEtatSession(). AUCUN mot de passe (PasswordPolicy/LockoutManager/KeyDerivation SUPPRIMÉS — champs hash conservés vides dans les @Model pour le schéma CloudKit) |
-| `MembreFactory.swift` | @MainActor enum : creerMembre(prenom:nom:role:codeEquipe:joueur:identifiantSouhaite:context:exclusions:) — création unifiée Utilisateur + CredentialAthlete SANS secret (codeInvitation généré). Utilisé par wizard, AjoutUtilisateurView, NouveauJoueurView |
-| `CloudKitSharingService.swift` | Coquille (état, RecordType, SharingError avec .reseauIndisponible, extension CKRecord.chaineSecurisee — sanitisation des records publics). Découpé en : `+Publication.swift` (côté coach), `+Import.swift` (côté athlète, fetchRecords paginé par curseur), `+Jointure.swift` (rejoindreEquipe/reclamerMembreLocal SIWA) |
-| `CalendarSyncService.swift` | Sync EventKit : ajouterAuCalendrier(), demanderPermission() |
-| `CloudKitSyncService.swift` | @Observable : statut sync (inactif/sync/syncPausee/erreur), vérification compte iCloud, NWPathMonitor connectivité réseau, journal sync (EvenementSync buffer 50 UserDefaults), mode match (pause/reprise sync), compteur modifications, indicateur visuel SyncIndicateurView |
-| `PDFExportService.swift` | Enum statique : genererPDFMatch(seance:joueurs:statsMatch:) — résumé PDF match (score par set, box score, stats), format Letter UIGraphicsPDFRenderer |
-| `CSVExportService.swift` | Enum statique : exporterStatsJoueurs(), exporterStatsParMatch(), exporterResultatsMatchs() — CSV séparateur point-virgule, compatible Excel/Numbers |
+| `AuthService.swift` | @Observable **SIWA strict** : connexionApple(appleUserID:) → .connecte/.compteInconnu/.echec, restaurerSession(), deconnexion(), verifierEtatSession(). AUCUN mot de passe |
+| `AppleSignInService.swift` / `SessionManager.swift` / `KeychainService.swift` | SIWA (révocation lancement + foreground), session Keychain |
+| `MembreFactory.swift` | @MainActor : création unifiée d'un membre du **STAFF** (Utilisateur + CredentialAthlete marqueur, codeInvitation, AUCUN secret). Plus de paramètre `joueur:` (pivot) — le roster est créé à part |
+| `MigrationRoles.swift` | One-shot hérité v2.0 : reclasse les anciens `.coach` assistants → `.assistantCoach` (flag UserDefaults `playco_abo_migration_roles_done`) |
+| `CloudKitSharingService.swift` | Coquille (état, RecordType [10 types], SharingError, `CKRecord.chaineSecurisee`, `planSync(role:)` E4 — tous les coachs importent PUIS publient, `.etudiant` lecture seule). Extensions : `+Publication` (sweep incrémental `publierMisesAJourCoach` par dateModification ; les 5 `publierX` en FETCH-PUIS-MODIFIER via `recordPublicAJour` — E1), `+Import` (fetch paginé par curseur + variante à prédicat, `syncDepuisPublic`, orchestrateurs), `+Preparation` (E2 : exercices/stratégies/scouting/bibliothèque — binaires inline ≤ 500 Ko sinon CKAsset), `+Analyse` (E3 : StatsMatch, PointMatch par lots de 400, formations ; `publierAnalyseMatch` à la sortie du live), `+Jointure` (`rejoindreEquipe`/`reclamerMembreLocal` — **`roleJonctionAutorise` = `.assistantCoach` SEUL**) |
+| `CloudKitSyncService.swift` | @Observable : statut sync privée, compte iCloud, NWPathMonitor, journal (EvenementSync batché), **mode match** (pause pendant le live — un seul preneur de stats, D6), compteur modifs |
+| `FileReplicationUtilisateur.swift` | Actor : file de re-publication Public DB (backoff, abandon à 10, Keychain) |
+| `AnalyticsService.swift` | TelemetryDeck : init paresseuse par clé plist `TelemetryDeckAppID` (vide = logger-only), no-op DEMO, filtrage PII clés+valeurs, événements produit (match_live_demarre = baseline GO/NO-GO vidéo). Plus d'événements paywall |
+| `MetricKitService.swift` | Crash/hang/cpu natifs → Logger (nonisolated), idempotent, zéro donnée sortante |
+| `AgregateurStatsMatch.swift` | Agrégation unique PointMatch/ActionRallye → compteurs ; `finaliserStats` ; `resynchroniserCumul` idempotent |
+| `CalendarSyncService.swift` / `PDFExportService.swift` / `CSVExportService.swift` | EventKit ; PDF résumé match + plan de match scouting + **plan de pratique une page** (2.6.2, régénéré à chaque partage) ; CSV point-virgule |
+
 ### Helpers (`Helpers/`)
 | Fichier | Description |
 |---------|-------------|
-| `Extensions.swift` | Color(hex:), DateFormattersCache (.formatFrancais, .formatCourt, .formatHeure, .formatJourSemaine, .formatMoisAnnee, .formatYMD), JSONCoderCache |
-| `ThemeCouleurRole.swift` | **Design System Liquid Glass v2** : PaletteMat (orange/bleu/vert/violet), GlassCard (highlight gradient + double shadow + teinte optionnelle), GlassSection (gradient + shadow), GlassChip, GlassButtonStyle (scale+opacity spring), couleurRole environment key |
-| `FiltreEquipe.swift` | Protocole `FiltreParEquipe` + `.filtreEquipe()` — 12+ conformances (Seance, JoueurEquipe, StrategieCollective, PointMatch, etc.) |
-| `EquipeContext.swift` | EnvironmentKey `codeEquipeActif` pour filtrage données par équipe |
-| `PermissionsRole.swift` | `PermissionModifier` + `.siAutorise()` — masque UI selon le rôle |
-| `BibliothequeDefauts.swift` | CategorieBibliotheque (8 catégories), peuplerSiVide() |
-| `DiagrammesBibliotheque.swift` | Diagrammes pré-dessinés pour exercices par défaut |
-| `LiquidGlassKit.swift` | Constantes Design System centralisées : rayons (12/16/22/28pt), espacement (système 4pt : XS 4/SM 8/MD 16/LG 24/XL 32/XXL 40), animations spring (défaut/rebond/douce), bordures glass, ombres (subtile/douce/moyenne), opacités, constantes courtside (bouton 60/grille 120/score 72/police 18) |
-| `ModesBordTerrainContext.swift` | EnvironmentKey `modeBordDeTerrain` + `themeHautContraste` (même pattern que EquipeContext.swift) |
-| `ExercicesMusculationDefauts.swift` | Exercices musculation par défaut |
+| `ThemeCouleurRole.swift` | **Design System Mat Nuit (2.4)** : enum `MatNuit` (fond #0D0D0F, 3 encres, 5 tons d'espace neutres terre/brique/ardoise/sauge/lavande, sémantiques live/deltas, plafond verre 12 %, tokens bordure/reflet/ombre) — contrat WCAG exécutable (`MatNuitTests`). `PaletteMat` = alias vers les tons MatNuit (hex vifs morts). GlassCard/GlassSection/GlassChip (verre sombre 3.0, courtside préservé via env), GlassButtonStyle, couleurRole |
+| `LiquidGlassKit.swift` | Constantes : rayons (12/16/22/28), espacement 4pt (XS→XXL), springs (défaut/rebond/douce), ombres, opacités, courtside |
+| `FiltreEquipe.swift` | Protocole `FiltreParEquipe` + `.filtreEquipe()` — 12+ conformances |
+| `EquipeContext.swift` / `ModesBordTerrainContext.swift` | EnvironmentKeys `codeEquipeActif`, `modeBordDeTerrain` + `themeHautContraste` |
+| `MetriquesVolley.swift` | Formules stats D1 (fractions 0-1), sideout %/point scoring % avec contexte de service, note réception 0-3, runs, glossaire ; `FormatMetriques` (« .350 », « 85,0 % ») |
+| `CartesStatsHelpers.swift` / `TableauStats.swift` | Kit UI stats : CarteMetrique, EnTeteSection, TypographieStats, LegendeStatsSheet, TableauStats (FiltresStats supprimé — code mort) |
+| `FabriqueMatch.swift` | Match éclair (2 champs) + `derniereComposition` (compo héritée à la création, validée effectif actif+disponible) |
+| `LienInvitation.swift` | Lien universel `https://playco.app/join/{codeEquipe}/{codeInvitation}` (analyse STRICTE https/ASCII) + QR CoreImage + rejeu avant login — sert la jonction ASSISTANT (dormant tant que domaine/AASA absents) |
+| `MatchLiveRestauration.swift` | Marqueur UserDefaults expirable 6 h — reprise du match live après kill (2.2.a) |
+| `Extensions.swift` / `AppConstants.swift` / `PlaycoUTTypes.swift` | Color(hex:), DateFormattersCache, JSONCoderCache ; URLs légales (placeholders) ; UTTypes export |
+| `BibliothequeDefauts.swift` / `DiagrammesBibliotheque.swift` / `ExercicesMusculationDefauts.swift` | Contenus par défaut |
 
 ### ViewModels (`ViewModels/`)
 | Fichier | Description |
 |---------|-------------|
-| `TerrainEditeurViewModel.swift` | @Observable : undo/redo (pile 15), formations, étapes, auto-save debounce 3s Combine, deinit cleanup |
-| `PaywallViewModel.swift` | @Observable @MainActor : machine d'états `initial/chargement/pret/erreur`, produits filtrés par période, sélection produit, éligibilité essai, `acheter()`/`restaurer()` avec gestion erreur fine (rien-à-restaurer vs réseau), retry idempotent via `chargerSiNecessaire()`, `ctaLabel` dynamique sécurisé contre B2 |
+| `TerrainEditeurViewModel.swift` | @Observable : undo/redo **par étape** (clé UUID stable, 15/étape, budget global 60 snapshots), formations, duplication d'étape « Continuer », auto-save debounce 3s |
+| `MatchLiveViewModel.swift` | Match live : scores/rotations nous+adv, sideout, subs/TM, `restaurerSetActuel()` (reprend au set le plus avancé, fetch borné) |
 
 ### Vues principales (`Views/`)
 | Fichier | Description |
 |---------|-------------|
-| `ContentView.swift` | Routeur : SectionApp enum, DockBarView overlay, transitions spring, environment couleurRole + codeEquipeActif |
-| `AccueilView.swift` | 5 cartes tinted glass (GlassButtonStyle), double RadialGradient fond, @State cachés + .filtreEquipe(), icons .symbolRenderingMode(.hierarchical), typo .rounded |
-| `PratiquesView.swift` | NavigationSplitView séances pratiques uniquement (matchs séparés) |
-| `SplashScreenView.swift` | Animation entrée avec gradient + ProgressView |
+| `ContentView.swift` | Routeur : SectionApp, DockBar (Recherche · Calendrier · Profil), sync partagée role-aware (assistants importent / coach publie), révocation SIWA foreground, toast désactivation. Plus AUCUNE branche athlète |
+| `AccueilView.swift` | 5 cartes tinted glass, fond `MatNuit.fond` uni, caches @State + .filtreEquipe() |
+| `PratiquesView.swift` / `SplashScreenView.swift` / `RechercheGlobaleView.swift` / `EcranErreurBaseView.swift` | Séances ; splash ; recherche globale (ouvre la section — deep-link différé 2.5a) ; écran d'erreur container |
 
 ### Authentification (`Views/Auth/`)
 | Fichier | Description |
 |---------|-------------|
-| `ChoixInitialView.swift` | Premier lancement : "Créer mon équipe", "Se connecter" ou "Rejoindre une équipe" |
-| `LoginView.swift` | **SIWA-only** : bouton Sign in with Apple + sheet « Rejoindre mon équipe » (code équipe + code d'invitation) si Apple ID inconnu, lien « Créer ou rejoindre une équipe ». Plus aucun formulaire identifiant/mot de passe |
-| `SelectionEquipeView.swift` | Sélection d'équipe si accès multi-équipes, callback onSelection(Equipe) |
+| `ChoixInitialView.swift` | 3 cartes : Créer mon équipe / Se connecter (Coach · Assistant) / Rejoindre avec un code (Assistant) |
+| `LoginView.swift` | **SIWA-only** + sheet « Rejoindre mon équipe » (code équipe + code d'invitation, confirmation anti-phishing « Rejoindre « X » ? ») — ASSISTANTS seulement |
+| `SelectionEquipeView.swift` | Multi-équipes (agnostique au rôle) |
 
 ### Configuration / Onboarding (`Views/Configuration/`)
 | Fichier | Description |
 |---------|-------------|
-| `ConfigurationView.swift` | Wizard 6 étapes : établissement → sport → profil coach → équipe → membres → calendrier. Finalisation : persist SwiftData + génère séances récurrentes + auto-login |
-| `ConfigEtablissementView.swift` | Étape 1 : nom, type, ville, province |
-| `ConfigSportView.swift` | Étape 2 : indoor / beach / les deux |
-| `ConfigProfilCoachView.swift` | Étape 3 : prénom, nom, courriel, rôle, identifiant + mot de passe |
-| `ConfigEquipeView.swift` | Étape 4 : nom, catégorie, division, saison, couleurs, date fin saison |
-| `ConfigMembresView.swift` | Étape 5 : assistants (rôle sélectionnable) + joueurs avec identifiants auto-générés |
-| `ConfigCalendrierView.swift` | Étape 6 (optionnelle) : créneaux récurrents + matchs |
-| `ConfigHelpers.swift` | Composants réutilisables : titreEtape(), champTexte() |
+| `ConfigurationView.swift` | Wizard 6 étapes : établissement → sport → coach (SIWA, anti-doublon) → équipe → membres → calendrier. Finalisation : persist + séances récurrentes + auto-login (plus de paywall de bienvenue) |
+| `ConfigMembresView.swift` | Étape 5 : joueurs = ROSTER PUR (nom/numéro/poste, aucun identifiant) ; assistants avec identifiant auto + code d'invitation à la fin |
+| `IdentifiantsRecapSheet.swift` | Récap des codes d'invitation (assistants), templates de partage |
+| autres `Config*.swift` | Étapes 1-4/6 + helpers |
 
 ### Matchs (`Views/Matchs/`)
 | Fichier | Description |
 |---------|-------------|
-| `MatchsView.swift` | Section dédiée : sidebar (à venir / résultats), NouvelMatchSheet, suppression cascade (reverse stats joueurs + delete StatsMatch), tint rouge |
-| `ScoutingReportView.swift` | Éditeur scouting report : joueurs adverses, forces/faiblesses, tendances, stratégies recommandées, notes |
-| `ScoutingReportListView.swift` | Liste des scouting reports par équipe, création/suppression |
-| `HeatmapTerrainView.swift` | Heatmap zones 1-6 par catégorie (attaque/réception/service/bloc), vue par joueur ou équipe, barres de distribution |
-| `StatsParRotationView.swift` | Analyse performances par rotation 1-6 (PointMatch), graphiques efficacité + points pour/contre, meilleure/pire rotation, tableau détaillé, filtre par match |
-| `CompositionMatchView.swift` | Sélection du 6 de départ + rotation, joueurs groupés par poste, sélection max 6 |
-| `SetsScoreView.swift` | Saisie score par set (1 à 5 sets), ajout/suppression sets, struct SetScore |
-| `StatsLiveView.swift` | Saisie point-par-point temps réel, PointMatch @Model, score/rotation auto, undo dernier point |
-| `ExportMatchPDFView.swift` | Aperçu + partage PDF résumé match via PDFExportService, ShareLink |
-| `SelecteurZoneView.swift` | Mini demi-terrain 6 zones tapables pour assigner une zone à un point (optionnel) |
-| `MatchLiveSplitView.swift` | Mode split-screen iPad : Dashboard live (gauche) + Stats live saisie (droite), TabView iPhone, mode match auto (pause/reprise sync), capsule SYNC PAUSÉE |
-| `PaveNumeriqueRapideView.swift` | Pavé numérique courtside : grille joueurs (#numéro) → 4 actions rapides (Kill/Ace/Bloc/Erreur), overlay flottant, toggle "#" |
-| `RotationLiveView.swift` | Terrain visuel positions 1-6 avec joueurs, boutons rotation R1-R6, historique rotations par set, onglet Nous/Adversaire (Picker segmenté), mini-terrain adversaire rouge, boutons R1-R6 adversaire, historique rotations adversaire |
+| `MatchsView.swift` | Sidebar : section **Préparation** (rapports de scouting) + à venir/résultats, searchable ; toolbar : + / match éclair (bolt) ; **suppression de match CONFIRMÉE** (cascade destructive) ; tint MatNuit.brique |
+| `MatchDetailView.swift` (dans Seances/) | Terrain match + toolbar en **3 groupes-menus** : Préparer (Composition + Scouting) · En direct (Mode live + Dashboard) · Après (Score/Finaliser/Analyse/Export) |
+| `ScoutingReportListView.swift` / `ScoutingReportView.swift` / `ScoutingLectureView.swift` / `PlanMatchPanneau.swift` / `MiniTerrainZonesMenace.swift` / `CarteJoueurAdverseEditable.swift` | Scouting complet : liste, éditeur (tendances zonales), lecture une page + PDF plan de match, panneau live |
+| `MatchLiveSplitView.swift` | Mode live split iPad (Dashboard ∥ StatsLive), mode match (pause sync), marqueur de reprise 2.2.a |
+| `StatsLiveView.swift` / `DashboardMatchLiveView.swift` / `RotationLiveView.swift` / `SubstitutionsView.swift` / `FormationMatchLiveView.swift` / `PaveNumeriqueRapideView.swift` / `SelecteurZoneView.swift` | Saisie point-par-point (courtside), dashboard, rotations nous/adv, subs, pavé rapide, zones |
+| `AnalyseMatchSheet.swift` / `FilDuMatchView.swift` / `SetsScoreView.swift` / `CompositionMatchView.swift` / `ExportMatchPDFView.swift` | Analyse pré-filtrée (BoxScore/Rotations/Heatmap/Fil), worm chart, score par set, 6 de départ (compo persistante, indisponibles grisés), export PDF |
+| `HeatmapTerrainView.swift` | Contient HeatmapTerrainView ET HeatmapEquipeView (3 modes) — accès canonique : hub Équipe |
+| `StatsParRotationView.swift` | Sideout %/6 cartes-terrain — accès canonique : hub Équipe |
 
 ### Séances (`Views/Seances/`)
 | Fichier | Description |
 |---------|-------------|
-| `ListeSeancesView.swift` | Pratiques uniquement (matchs filtrés), .filtreEquipe() |
-| `NouvelleSeanceView.swift` | Sheet création séance (nom + date) |
-| `CalendrierView.swift` | Calendrier mensuel unifié (séances + matchs), sync Apple Calendar |
-| `MatchDetailView.swift` | Terrain vierge + notes + pages pour matchs |
-| `SaisieStatsMatchView.swift` | Box score : saisie stats par joueur, sync cumulatif |
-| `PresencesView.swift` | Gestion présences par séance |
-| `EvaluationView.swift` | Évaluation joueurs par séance |
+| `ListeSeancesView.swift` | Pratiques (.sidebar + searchable), présences via carte/contextMenu, soft delete |
+| `CalendrierView.swift` | Calendrier unifié — accès RACINE (Dock), sync Apple Calendar, lien Planification |
+| `PlanificationSaisonView.swift` / `PhaseSaisonDetailView.swift` | Phases de saison (filtre Analytics) |
+| `PresencesView.swift` / `NouvelleSeanceView.swift` | Présences par séance ; création |
+
+### Exercices (`Views/Exercices/`)
+| Fichier | Description |
+|---------|-------------|
+| `ListeExercicesView.swift` | Exercices d'une séance ; toolbar : **Présences** (C7) + **Plan de pratique** PDF (2.6.2) + création (bibliothèque/vide) |
+| `ExerciceDetailView.swift` / `NouvelExerciceView.swift` | TerrainEditeurView (étapes, présentation AirPlay) |
 
 ### Équipe (`Views/Equipe/`)
 | Fichier | Description |
 |---------|-------------|
-| `EquipeView.swift` | NavigationSplitView, @State cachés + .filtreEquipe() + .onChange(of: codeEquipeActif), tint vert |
-| `NouveauJoueurView.swift` | Création joueur + Utilisateur lié, identifiant auto-généré (prenom.nom + suffixe si doublon) |
-| `JoueurDetailView.swift` | Stats NCAA/FIVB par catégorie, présences, suivi muscu, tests physiques |
-| `TableauBordView.swift` | Dashboard : StatsEquipeCache (reduce cachés en @State), GlassCard sur chiffreCle, .contentTransition(.numericText()), matchs + stats globales |
-| `SuiviMusculationView.swift` | Graphiques évolution charges |
-| `TestsPhysiquesView.swift` | Tests physiques + graphiques évolution |
-| `MonProfilAthleteView.swift` | Vue athlète : stats personnelles, équipes |
-| `EvolutionJoueurView.swift` | Graphiques Swift Charts : évolution stats par catégorie (attaque/service/bloc/réception/jeu), tendance hausse/baisse/stable, historique détaillé |
-| `ComparaisonView.swift` | Comparaison joueur vs moyenne équipe, barres de progression, stats par catégorie |
-| `AnalyticsSaisonView.swift` | Analytics saison : résultats cumulatifs V/D, efficacité attaque, séries, classements, Swift Charts |
-| `ObjectifsJoueurView.swift` | Objectifs individuels par joueur : progression automatique, suggestions, NouvelObjectifView sheet |
-| `ExportStatsView.swift` | Export CSV stats (joueurs/matchs/résultats), ShareLink, CSVFile Transferable |
-| `PalmaresRecordsView.swift` | Palmarès et records saison : records individuels (kills, aces, blocs, hitting %, points, passes par match) et records d'équipe (points, aces, blocs, écart score, hitting % par match) |
-
-### Profil & Aide (`Views/Profil/`)
-| Fichier | Description |
-|---------|-------------|
-| `ProfilView.swift` | Paramètres coach : code équipe, visibilité, organisation, équipes, iCloud, tutoriel, déconnexion |
-| `TutorielView.swift` | Tutoriel paginé 12 pages couvrant toutes les fonctionnalités : accueil, séances, matchs, terrain, stratégies, équipe, analytics, entraînement, messagerie, calendrier, export. @AppStorage pour premier lancement |
-| `JournalSyncView.swift` | Journal de synchronisation : liste événements sync (import/export/erreur/pause/reprise), couleurs par type, bouton effacer |
-
-### Profil & Messages (`Views/Profil/`, `Views/Messages/`, `Views/DockBar/`)
-| Fichier | Description |
-|---------|-------------|
-| `ProfilView.swift` | Paramètres coach : code équipe, modifier organisation, créer nouvelle équipe, lier établissement, déconnexion. Notifications `.changerEquipe` et `.allerChoixInitial` |
-| `AjoutUtilisateurView.swift` | Ajout utilisateur avec identifiant auto-généré |
-| `ModifierUtilisateurView.swift` | Modification info élève par le coach : prénom, nom, identifiant, mot de passe, données physiques (taille pieds/pouces, poids, allonge, saut), numéro, poste, date naissance, stats, PhotosPicker |
-| `AvatarEditableView.swift` | Avatar réutilisable : photo ou initiales, PhotosPicker si éditable, cercle coloré par rôle |
-| `MessagerieView.swift` | Messagerie inter-équipe : conversations d'équipe + privées, badges non-lus |
-| `DockBarView.swift` | Dock flottant : Messages + Profil, badges, spring animation (dampingFraction: 0.7) |
+| `EquipeView.swift` | Sidebar : hub **Statistiques** (Mon équipe / Analytics / Rotations / Heatmap / Palmarès / **Exports CSV**) + roster par poste + Inactifs |
+| `JoueurDetailView.swift` | Fiche joueur : disponibilité + consentement parental (coach), résumé, présences, muscu, Picker Stats/Évolution/Comparaison (Objectifs incorporés). Plus de section identifiants |
+| `NouveauJoueurView.swift` | **Formulaire JoueurEquipe pur** (donnée, sans compte) |
+| `EditionJoueurView.swift` | Édition du joueur (poids sur `JoueurEquipe.poidsKg` — plus de miroir Utilisateur) |
+| `TableauBordView.swift` / `AnalyticsSaisonView.swift` / `BoxScoreView.swift` / `EvolutionJoueurView.swift` / `ComparaisonView.swift` / `PalmaresRecordsView.swift` / `ObjectifsJoueurView.swift` / `ExportStatsView.swift` | Hub statistiques (kit CarteMetrique/TableauStats) |
+| `SuiviMusculationView.swift` / `TestsPhysiquesView.swift` / `JoueurSuiviMuscuSection.swift` | Suivi charges (alimenté par la saisie coach D2) + tests physiques |
 
 ### Stratégies (`Views/Strategies/`)
 | Fichier | Description |
 |---------|-------------|
-| `StrategiesView.swift` | Section stratégies : NavigationSplitView, liste par catégorie, création/suppression, tint bleu |
-| `StrategieDetailView.swift` | Détail stratégie : terrain éditable + notes, chargement formations et joueurs |
-| `FormationsView.swift` | Gestion formations personnalisées : sélection type (5-1/4-2/6-2/beach), rotation, mode (base/attaque/défense), FormationPersonnalisee CRUD |
+| `StrategiesView.swift` | Sidebar : entrée **Formations** nommée + stratégies par catégorie ; le scouting a déménagé dans Matchs (C1) |
+| `StrategieDetailView.swift` / `FormationsView.swift` | Terrain éditable ; formations 5-1/4-2/6-2/beach + perso |
 
 ### Bibliothèque (`Views/Bibliotheque/`)
-| Fichier | Description |
-|---------|-------------|
-| `BibliothequeView.swift` | Bibliothèque d'exercices : recherche, filtre par catégorie, favoris, mode import vers séance, création/édition/suppression |
-| `BibliothequeDetailView.swift` | Détail exercice bibliothèque : terrain éditable + notes + notes coach, PencilKit |
+| `BibliothequeView` / `BibliothequeDetailView` / `BibliothequeSubViews` | Recherche, catégories perso, favoris, import vers séance, export JSON |
 
 ### Entraînement / Musculation (`Views/Entrainement/`)
 | Fichier | Description |
 |---------|-------------|
-| `EntrainementView.swift` | Section musculation : programmes, séances live, .filtreEquipe() |
-| `SeanceLiveView.swift` | Mode live musculation : chrono, exercices, séries, repos |
-| `ProgrammeDetailView.swift` | Détail programme : exercices, joueurs assignés |
-| `BibliothequeMusculationView.swift` | Bibliothèque exercices musculation : recherche, filtre par CategorieMuscu, CRUD exercices, permissions rôle |
+| `EntrainementView.swift` | Programmes (.sidebar + searchable, création en Form) ; **sélecteur « Pour quel joueur ? »** avant la séance live (D2 — assignés puis roster, indisponibles désactivés, option sans joueur) |
+| `SeanceLiveView.swift` / `ProgrammeDetailView.swift` / `BibliothequeMusculationView.swift` | Mode live (chrono/séries/repos, SeanceMuscu au nom du joueur choisi), détail programme, bibliothèque muscu |
 
-### Terrain & dessin (`Views/Terrain/`)
+### Profil (`Views/Profil/`)
 | Fichier | Description |
 |---------|-------------|
-| `TerrainVolleyView.swift` | Canvas terrain 18m×9m (ratio 2:1), indoor parquet + beach sable |
-| `CanvasDessinView.swift` | PKCanvasView + ModeDessin enum + CanvasController (weak var) |
-| `BarreOutilsDessin.swift` | Toolbar complète : outils, formations, roster, couleurs, undo/redo |
-| `OverlayDessinView.swift` | Overlay : drag, suppression, Bézier, verrouillage |
-| `TerrainEditeurView.swift` | Composant partagé : terrain + canvas + overlay + toolbar + étapes + autosave |
-| `TerrainMiniatureView.swift` | Miniature terrain pour listes |
+| `ProfilView.swift` | Paramètres — visibles par TOUT le staff (D6, plus de distinction estCoach) : code équipe, Organisation (Ajouter un assistant, Identifiants de l'équipe), équipes (suppression = cascade complète : 14 entités + PhaseSaison/CredentialAthlete/comptes membres/Presence-Evaluation-TestPhysique par joueurID), bord de terrain, iCloud (JournalSync), tutoriel, légal, déconnexion |
+| `AjoutUtilisateurView.swift` | **Assistant-only** : prénom/nom/identifiant → MembreFactory → récap code d'invitation + publication Public DB |
+| `IdentifiantsEquipeView.swift` | Codes d'invitation des ASSISTANTS (copie/partage/régénération — republication fetch-puis-modifier) |
+| `TutorielView.swift` | 11 pages (page messagerie retirée) |
+| `AvatarEditableView.swift` / `ProfilSubViews.swift` / `JournalSyncView.swift` | Avatar (plus d'écriture croisée vers le joueur), NouvelleEquipeSheet, journal sync |
+
+### Terrain & dessin (`Views/Terrain/`)
+| `TerrainVolleyView` (18×9 + demi-terrain 9×9) / `CanvasDessinView` / `BarreOutilsDessin` / `OverlayDessinView` / `TerrainEditeurView` / `TerrainMiniatureView` / `PanneauFormationsView` / `PresentationTerrainView` | Terrain complet : dessin PencilKit + overlay vectoriel, formations 2 taps, étapes + duplication « Continuer », présentation AirPlay |
+
+### DockBar (`Views/DockBar/`)
+| `DockBarView` (Recherche · Calendrier · Profil, badge séance du jour) / `BoutonRetourAccueil` (composant partagé des 5 sections) |
 
 ## Conventions & patterns critiques
 
-### Authentification — SIWA STRICT (v2.1)
-- **Sign in with Apple est l'UNIQUE méthode de connexion.** Aucun identifiant+mot de passe nulle part dans l'UI. Les comptes legacy par mot de passe ne peuvent plus se connecter (décision assumée, pré-lancement).
-- **Coach (wizard étape 3)** : bouton SIWA dans `ConfigProfilCoachView` → `appleUserID` capturé + pré-remplissage prénom/nom/courriel Apple ; finalisation crée (ou RÉUTILISE si même Apple ID — anti-doublon multi-équipes) l'Utilisateur coach sans hash + auto-login `connexionApple`.
-- **Athlète/assistant** : créés via `MembreFactory` (wizard, AjoutUtilisateurView, NouveauJoueurView) — identifiant auto + `codeInvitation`, AUCUN mot de passe. Jonction : LoginView → SIWA → « Rejoindre mon équipe » (code équipe + code d'invitation) → `rejoindreEquipe`/`reclamerMembreLocal` rattache l'appleUserID.
-- **Code d'invitation** : affiché dans IdentifiantsRecapSheet (wizard), IdentifiantsEquipeView (profil) et la fiche joueur (JoueurDetailView — remplace l'ancien reset de mot de passe).
-- **Identifiant auto-généré** : `Utilisateur.genererIdentifiantUnique(prenom:nom:context:exclusions:)` — username d'affichage uniquement (plus de connexion par identifiant), minuscules.
-- **Champs hash conservés au schéma** : `motDePasseHash/sel/iterations/motDePasseClair` restent dans les @Model (suppression = migration CloudKit destructive) mais ne sont JAMAIS écrits ni lus.
-- **Révocation SIWA** : vérifiée au lancement (PlaycoApp) + retour foreground (ContentView) → déconnexion forcée.
-- **Rôles** : `.admin` (coach créateur), `.coach` (assistant), `.etudiant` (athlète)
-- **Permissions** : `PermissionsRole.swift` — `.siAutorise()` masque les éléments selon le rôle
+### Authentification & rôles — SIWA strict, coach-first (pivot 2026-08)
+- **Sign in with Apple est l'UNIQUE méthode de connexion.** Aucun mot de passe nulle part (ni UI ni stockage).
+- **Deux rôles actifs** : `.admin` (head coach, créé par le wizard) et `.assistantCoach` (créé par MembreFactory, rejoint par code d'invitation). **Mêmes droits partout (D6)** — la seule garde résiduelle est « session valide » (`authService.utilisateurConnecte != nil`).
+- **`.etudiant` n'est plus jamais créé ni connecté** (le cas d'enum reste décodable — données legacy). **`.coach` est un rôle résiduel** : il ne peut pas rejoindre une équipe (c'est aussi le rôle du coach DÉMO sur `suivis/pr6`).
+- **Jonction** : `roleJonctionAutorise` accepte `.assistantCoach` SEUL ; `rejoindreEquipe` → import équipe + `reclamerMembreLocal` (rattache l'appleUserID par code d'invitation) ; test de régression « jonction .etudiant REJETÉE » dans MultiUtilisateurTests.
+- **PermissionsRole/StaffPermissions/estCoach n'existent plus dans l'UI** — ne pas réintroduire de gardes par rôle.
+- **Révocation SIWA** vérifiée au lancement (PlaycoApp) + retour foreground (ContentView).
 
 ### Multi-équipes & scoping données
-- **`codeEquipeActif`** : EnvironmentKey injecté par ContentView, utilisé par toutes les vues
-- **`FiltreParEquipe`** : protocole + `.filtreEquipe()` — remplace TOUT filtre manuel `$0.codeEquipe == codeEquipeActif || $0.codeEquipe.isEmpty`
-- **Changement d'équipe** : Notification `.changerEquipe` → ContentView reset → SelectionEquipeView
-- **Navigation vers config** : Notification `.allerChoixInitial` → PlaycoApp → ChoixInitialView
+- **`codeEquipeActif`** : EnvironmentKey injecté par ContentView.
+- **`.filtreEquipe()`** : remplace TOUT filtre manuel par codeEquipe.
+- ⚠️ `Presence`/`Evaluation`/`TestPhysique` n'ont PAS de codeEquipe (angle mort historique) — clés joueurID/seanceID ; la cascade de suppression d'équipe les purge par joueurID capturés AVANT la suppression du roster.
+- **Changement d'équipe** : Notification `.changerEquipe` ; navigation config : `.allerChoixInitial`.
 
-### Design System Liquid Glass v2
-- **PaletteMat** : orange `#E8734A`, bleu `#4A8AF4`, vert `#34C785`, violet `#9B7AE8`
-- **LiquidGlassKit** : constantes centralisées — rayons (petit 12/moyen 16/grand 22/XL 28), espacement système 4pt (XS 4→XXL 40), 3 springs (défaut 0.35/0.85, rebond 0.25/0.7, douce 0.45/0.9), ombres (subtile/douce/moyenne), opacités
-- **GlassCard** : ultraThinMaterial + highlight gradient (blanc 0.12→transparent topLeading→bottomTrailing) + double shadow (tight 3px + soft 12px) + teinte optionnelle + bordure blanc 0.25
-- **GlassSection** : thinMaterial + gradient subtil + shadow légère
-- **GlassButtonStyle** : scale 0.97 + opacity 0.85 au press avec spring (response: 0.25, dampingFraction: 0.7)
-- **Transitions** : `.spring(response: 0.4, dampingFraction: 0.85)` partout (pas de .easeInOut)
-- **TOUJOURS utiliser `LiquidGlassKit`** pour les constantes (rayons, espacements, animations) — NE PAS écrire de magic numbers
+### Design System — Mat Nuit (2.4 vague 1)
+- **La nuit est LE mode** : `.preferredColorScheme(.dark)` à la racine, UN seul écrivain, aucun toggle.
+- **`MatNuit`** (ThemeCouleurRole.swift) : fond #0D0D0F, encres (AAA/secondaire/décorative), 5 tons d'espace neutres (terre Séances, brique Matchs, ardoise Stratégies, sauge Équipe, lavande Entraînement), sémantiques (live, deltas), plafond verre 12 %, tokens bordure/reflet/ombre. **Contrat WCAG exécutable : `MatNuitTests`** — toute nouvelle couleur passe par un token testé.
+- **`PaletteMat`** = alias vers les tons MatNuit (les hex vifs v2 sont morts) ; `MatNuit.brique` pour Matchs (pas de PaletteMat.rouge).
+- **Kit verre sombre 3.0** : GlassCard/GlassSection/GlassChip — teinte ≤ 12 %, bordure 9 %, reflet, ombre nuit ; **courtside préservé** (env `modeBordDeTerrain` annule bordure/reflet/ombre).
+- **PencilKit** : `overrideUserInterfaceStyle = .light` sur tout PKCanvasView (fidélité des dessins existants).
+- **TOUJOURS `LiquidGlassKit`** pour rayons/espacements/springs — pas de magic numbers. Reste de la vague 1bis : échelle typo, purge .rounded/.hierarchical, empty states maison, unification des deux noirs.
+- Uniformisation (chantier D vague 1) : `BoutonRetourAccueil` partagé, sidebars `.sidebar` + searchable, icône de création `plus` unique, créations en `Form`, suppression destructive TOUJOURS confirmée (confirmationDialog — modèle : suppression de match).
 
 ### Performance — Caching
-- **Computed properties lourdes** → `@State` + `.onAppear` + `.onChange(of:)` (AccueilView, EquipeView, TableauBordView)
-- **StatsEquipeCache** : struct avec tous les reduce pré-calculés, mis à jour dans `.onChange(of: joueurs)`
-- **`.contentTransition(.numericText())`** sur tous les compteurs/stats pour animation fluide
-- **`.filtreEquipe()`** : une seule fois, résultat caché en @State
-
-### DateFormatters & JSONCoderCache
-- **NE JAMAIS créer un DateFormatter dans un computed property ou body** — utiliser `DateFormattersCache`
-- **NE JAMAIS créer JSONDecoder()/JSONEncoder()** — utiliser `JSONCoderCache.decoder`/`.encoder`
+- Computed lourdes → `@State` + `.onAppear`/`.onChange` ; `StatsEquipeCache` ; `.contentTransition(.numericText())` ; `.filtreEquipe()` une seule fois, caché.
+- **DateFormattersCache** et **JSONCoderCache** obligatoires (jamais d'instanciation directe).
 
 ### ⚠️ Pièges connus (NE PAS répéter)
 1. **CanvasController.canvasView** doit être `weak var`, JAMAIS `@Published`
@@ -299,100 +250,41 @@ ContentView (routeur)
 19. **LiquidGlassKit** : TOUJOURS utiliser les constantes (rayons, espacements, animations) — NE PAS écrire de magic numbers
 20. **PointMatch** : suppression cascade match doit aussi supprimer les PointMatch associés (filter par seanceID)
 21. **PhotosPicker** : import PhotosUI, utiliser `@State photoItem: PhotosPickerItem?` + `.onChange(of: photoItem)` pour charger l'image
-22. **Paywall StoreKit** : NE JAMAIS pré-sélectionner un produit dans `onAppear` si `storeKit.produits.isEmpty` (bouton apparaîtra disabled sans feedback visuel — bug B6). Le `PaywallViewModel` doit gérer explicitement les états `chargement`/`erreur`/`pret`. CTA label : utiliser `TextesPaywall.ctaAchatPrefixe + p.displayPrice` (NE PLUS utiliser `ctaAchatDirect` supprimé en v2.0.1 — il contenait un suffixe traînant `· ` qui causait le tronquage B2 quand `displayPrice` était vide).
-23. **Abonnement.codeEquipe** : depuis v2.0.1, le modèle `Abonnement` stocke `codeEquipe` (string vide par défaut pour migration CloudKit safe). Renseigné automatiquement dans `persisterDansSwiftData` depuis la première `Equipe` locale. Clé de fallback CloudKit Public DB pour reconnexion sur Apple ID différent (Phase 1.5 G2 staged pour PR ultérieure : actor `CloudKitPublicSyncAbonnement` non implémenté en v2.0.1).
-24. **Stats — source unique des formules** : toute formule statistique vit dans `Helpers/MetriquesVolley.swift` (fractions 0-1, D1) et tout formatage dans `FormatMetriques` (hitting en convention volleyball « .350 » via `.hittingVolley`, pourcentages français « 85,0 % » via `.pourcentage`). ⚠️ PIÈGE d'échelles hérité : `JoueurEquipe.efficaciteReception`/`efficaciteAttaque` et `StatsJoueur.hittingPct` (dashboard live) sont en 0-100 ; `pourcentageAttaque`/`StatsMatch.hittingPct` en 0-1 — NE JAMAIS re-multiplier par 100 (bug B1). L'agrégation PointMatch/ActionRallye → compteurs passe par `Services/AgregateurStatsMatch.swift` (JAMAIS de switch local) ; le cumul carrière = Σ StatsMatch via `resynchroniserCumul` (idempotent — JAMAIS d'addition `+=` au cumul, bug B2) ; la finalisation passe par `finaliserStats` (unit les StatsMatch créés dans l'appel). Contexte de service : `PointMatch.nousServionsAuMoment`/`serviceRenseigne` (posés dans `enregistrerStat` AVANT `gererSideout`) ; legacy reconstruit par `MetriquesVolley.reconstruireService`. Kit UI stats : `CarteMetrique`/`EnTeteSection`/`TableauStats`/`FiltresStats`/`LegendeStatsSheet` — pas de cartes ad hoc. D6 : aucun émoji, aucun SF Symbol décoratif.
+22. **SUPPRIMÉ (pivot coach-first, D3)** : le paywall StoreKit n'existe plus — ne réintroduire AUCUN code StoreKit/gate sans décision fondateur. Numéro conservé pour l'intégrité des références historiques.
+23. **Abonnement/tierAbonnementRaw GELÉS** : `Abonnement` @Model + `Equipe.tierAbonnementRaw` restent au schéma CloudKit (suppression = migration destructive) mais ne sont plus jamais écrits ni lus. `Abonnement` est volontairement HORS de la cascade de suppression d'équipe (trace d'achat par utilisateur).
+24. **Stats — source unique des formules** : toute formule statistique vit dans `Helpers/MetriquesVolley.swift` (fractions 0-1, D1) et tout formatage dans `FormatMetriques` (hitting en convention volleyball « .350 » via `.hittingVolley`, pourcentages français « 85,0 % » via `.pourcentage`). ⚠️ PIÈGE d'échelles hérité : `JoueurEquipe.efficaciteReception`/`efficaciteAttaque` et `StatsJoueur.hittingPct` (dashboard live) sont en 0-100 ; `pourcentageAttaque`/`StatsMatch.hittingPct` en 0-1 — NE JAMAIS re-multiplier par 100 (bug B1). L'agrégation PointMatch/ActionRallye → compteurs passe par `Services/AgregateurStatsMatch.swift` (JAMAIS de switch local) ; le cumul carrière = Σ StatsMatch via `resynchroniserCumul` (idempotent — JAMAIS d'addition `+=` au cumul, bug B2) ; la finalisation passe par `finaliserStats` (unit les StatsMatch créés dans l'appel). Contexte de service : `PointMatch.nousServionsAuMoment`/`serviceRenseigne` (posés dans `enregistrerStat` AVANT `gererSideout`) ; legacy reconstruit par `MetriquesVolley.reconstruireService`. Kit UI stats : `CarteMetrique`/`EnTeteSection`/`TableauStats`/`LegendeStatsSheet` (FiltresStats supprimé — code mort) — pas de cartes ad hoc. D6 : aucun émoji, aucun SF Symbol décoratif.
 25. **Tests SwiftData** : les `ModelConfiguration` de test DOIVENT passer `cloudKitDatabase: .none` (sinon le mirroring CloudKit s'attache aux stores in-memory et crashe « No eligible connection available » quand le daemon comptes du simulateur est froid). Schéma = fermeture transitive des relations (pattern `MatchLiveViewModelTests`).
-26. **CloudKit Public DB — JAMAIS de credentials** : `CloudKitSharingService` publie un miroir d'équipe dans la **Public DB world-readable**. NE JAMAIS y écrire `motDePasseHash`/`sel`/`iterations` (ni aucun secret) — cf. `champsPublicsUtilisateur` + garde de régression dans `CloudKitSharingServiceTests`. Depuis v2.0.1 l'authentification est **Sign in with Apple** : la jonction multi-Apple-ID (`rejoindreEquipe`/`reclamerMembreLocal`, déclenchée depuis `LoginView`) rattache l'`appleUserID` à une ligne de roster via le **code d'invitation** (aucun mot de passe transmis ; `CredentialAthlete.motDePasseClair` toujours vide). Durcissement Dashboard (Security Roles creator-write + scrub des hash existants) = **action humaine** documentée dans `docs/Securite_AbonnementPublicDB.md`.
+26. **CloudKit Public DB — JAMAIS de credentials ni PII sensible** : `CloudKitSharingService` publie un miroir d'équipe dans la **Public DB world-readable**. NE JAMAIS y écrire de secret — cf. `champsPublicsUtilisateur` + gardes de régression dans `CloudKitSharingServiceTests`/`CloudKitPartagePreparationTests` (étendues aux types E2/E3 : hash legacy `JoueurEquipe` jamais mappés, **`joueursData` du scouting JAMAIS publié ni importé** [PII de joueurs adverses], `estFavori` local). Étendre la garde à CHAQUE nouveau record type. La jonction multi-Apple-ID (`rejoindreEquipe`/`reclamerMembreLocal`) rattache l'`appleUserID` d'un ASSISTANT via le code d'invitation. Durcissement Dashboard (Security Roles) = action humaine (`docs/Securite_AbonnementPublicDB.md`).
+27. **CKRecord existants — FETCH-PUIS-MODIFIER obligatoire** : créer un `CKRecord` neuf pour un recordID existant échoue en silence (`serverRecordChanged`) — la mise à jour n'atteint JAMAIS la Public DB (bug révocation de code, revue 2.3). Généralisé (E1) : TOUT `publierX` passe par `recordPublicAJour(type:recordID:)` (fetch-puis-modifier) — exception : `PointMatchPartage` (immuable, lots `modifyRecords` savePolicy `.allKeys`).
+28. **Mode déconnecté du live (D6)** : pendant un match live, UN SEUL preneur de stats — le mode match pause la sync ; toute publication des données du live (PointMatch…) se déclenche à la SORTIE du live, jamais pendant.
 
 ### Système de matchs
-- **Section dédiée MatchsView** — séparée des séances
-- **Score** : scoreEquipe + scoreAdversaire → `.resultat` computed (victoire/défaite/nul)
-- **Score par set** : SetsScoreView — 1 à 5 sets, struct SetScore, sets stockés en JSON sur Seance
-- **Composition** : CompositionMatchView — 6 de départ par poste + rotation
-- **Stats live** : StatsLiveView — saisie point-par-point temps réel, PointMatch @Model, rotation auto
-- **Box Score** : SaisieStatsMatchView — stats par joueur sync avec cumulatif JoueurEquipe
-- **Export PDF** : ExportMatchPDFView + PDFExportService — résumé match + box score en PDF partageable
-- **Suppression cascade** : reverse stats joueurs + delete StatsMatch + delete PointMatch + soft delete match
-- **Pages terrain** : pagesMatch JSON pour notes/diagrammes multi-pages
-- **Scouting** : ScoutingReport + plan de match adversaire
-- **Heatmap** : HeatmapTerrainView zones 1-6 par catégorie
+- **Cycle du coach dans MatchsView** : Préparation (scouting en sidebar) → match (3 groupes-menus : Préparer · En direct · Après) → analyse (sheet pré-filtrée).
+- **Match éclair** (bolt) : 2 champs, composition héritée À LA CRÉATION (validée effectif actif + disponible).
+- **Score par set** (1-5, SetScore JSON) ; **stats live** point-par-point (PointMatch, rotations auto nous+adv, undo) ; **finalisation** via `AgregateurStatsMatch.finaliserStats`.
+- **Suppression cascade CONFIRMÉE** (confirmationDialog) : reverse stats joueurs + delete StatsMatch/PointMatch + soft delete.
+- **Reprise après kill** : `MatchLiveRestauration` (marqueur 6 h) → resélection + alerte « Reprendre ».
+- Heatmap/Rotations : accès canonique = hub Statistiques d'Équipe ; versions pré-filtrées dans « Analyse » du match.
 
 ### Musculation (Section Entraînement)
-- **ProgrammeMuscu** : exercices + joueurs assignés (JSON)
-- **SeanceMuscu** : joueur exécute un programme, enregistre charges/séries
-- **Suivi** : graphiques évolution charges + tests physiques par joueur
+- Le coach choisit le joueur AVANT la séance live (D2) — la `SeanceMuscu` porte son `joueurID` et alimente `SuiviMusculationView` ; option « séance d'équipe » sans joueur ; joueurs indisponibles (2.2.b) proposés mais désactivés.
 
 ## Commande build
 ```bash
-cd "/Users/armypo/Documents/Origotech/Playco" && xcodebuild -scheme "Playco" -destination 'platform=iOS Simulator,name=iPad Air 13-inch (M3)' build
+cd "/Users/armypo/Documents/Origotech/Playco" && xcodebuild -scheme "Playco" -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)' build
 ```
-
-### Build sous Xcode 27 beta (toolchain non par défaut)
-Xcode 27.0 beta est dans `~/Downloads/Xcode-beta.app` (pas le `xcode-select` global = Xcode 26.3). L'invoquer via `DEVELOPER_DIR` sans toucher au global :
+Tests (TOUJOURS en série — clones parallèles instables avec le host CloudKit) :
 ```bash
-DEVELOPER_DIR="/Users/armypo/Downloads/Xcode-beta.app/Contents/Developer" \
-xcodebuild build -scheme Playco -destination 'platform=iOS Simulator,name=iPad Air 13-inch (M4),OS=27.0'
+xcodebuild test -scheme Playco -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)' -parallel-testing-enabled NO
 ```
-⚠️ **Tests sous Xcode 27 beta** : lancer avec `-parallel-testing-enabled NO` — les clones de test parallèles font crasher le host CloudKit du simulateur iOS 27 beta (cascade de faux échecs 0.000 s).
+Baseline : **310/310 tests, 47 suites** (2026-09-01, pivot chantiers A-E). Toolchain stable par défaut (`xcode-select`). Notes historiques : Xcode 27 beta via `DEVELOPER_DIR=~/Downloads/Xcode-beta.app/...` ; régression runtime simulateur iOS 27 beta (juil. 2026 : crashs SwiftData in-memory) → valider sur la toolchain stable.
 
-🛑 **RÉGRESSION runtime simulateur iOS 27 beta (constatée 2026-07-03, runtime `24A5355p`)** : TOUS les tests SwiftData in-memory crashent au premier `context.save()` avec `NSInternalInconsistencyException: No eligible connection available` — y compris sur `main` NON modifié et simulateur vierge (bissection prouvée ; Xcode beta inchangé `27A5194q`, c'est le runtime qui s'est mis à jour). **Valider les tests sur la toolchain stable** :
-```bash
-# Xcode 26.6 (xcode-select par défaut) — 181/181 verts (2026-07-03)
-xcodebuild test -scheme Playco \
-  -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5),OS=26.5' \
-  -parallel-testing-enabled NO
-```
-(Plus d'iPad Air dans les runtimes 26.x installés — utiliser iPad Pro 13-inch M5.)
-
-## État actuel — v1.9.0
-- ✅ Build réussi — **0 erreur, 0 warning**
-- ✅ **TestFlight fonctionnel** — app validée et prête à être distribuée
-- ✅ CloudKit activé (sync inter-appareil) + indicateur hors-ligne (NWPathMonitor)
-- ✅ **CloudKit compatible** — tous les @Model avec defaults, relations optionnelles + inverses, Seance.exercices optionnel
-- ✅ **5 sections** : Séances (orange), Matchs (rouge), Stratégies (bleu), Équipe (vert), Entraînement (violet)
-- ✅ **Authentification** : connexion identifiant + mot de passe, rôles coach/athlète/admin, verrouillage 5 tentatives
-- ✅ **Rejoindre équipe** : code équipe + identifiant + mot de passe, validation appartenance
-- ✅ **Onboarding wizard 6 étapes** : établissement → sport → profil → équipe → membres → calendrier (exemples Cégep Garneau)
-- ✅ **Multi-équipes** : sélection équipe, données scopées par codeEquipe, changement d'équipe
-- ✅ **Section Matchs complète** : création, composition 6 départ, score par set (1-5), stats live point-par-point, box score, export PDF, scouting report, heatmap, suppression cascade
-- ✅ **Stats live temps réel** : PointMatch @Model, saisie point-par-point, rotation auto, undo dernier point
-- ✅ **Export PDF** : PDFExportService — résumé match + box score, ShareLink
-- ✅ **Scouting Report** : plan de match intelligent, joueurs adverses, forces/faiblesses, tendances, stratégies recommandées
-- ✅ **Heatmap terrain avancé** : zones 1-6 réelles (PointMatch.zone), sélection de zone optionnelle lors de la saisie live, filtres par match/set/joueur/catégorie, fallback distribution simulée si pas de données zone
-- ✅ **Graphiques d'évolution** : Swift Charts par joueur, 5 catégories stats, tendance hausse/baisse/stable
-- ✅ **Comparaison joueur** : ComparaisonView — joueur vs moyenne équipe par catégorie stats
-- ✅ **Section Stratégies** : StrategiesView + StrategieDetailView + FormationsView (5-1/4-2/6-2/beach), terrain éditable
-- ✅ **Bibliothèque exercices** : BibliothequeView + BibliothequeDetailView, catégories, favoris, import vers séance
-- ✅ **Section Musculation** : programmes, séances live, suivi charges, tests physiques, bibliothèque exercices muscu
-- ✅ **Messagerie** : inter-équipe + conversations privées, badges non-lus
-- ✅ **Profil étendu** : ModifierUtilisateurView (édition joueur complète), AvatarEditableView (photo + initiales), données physiques pieds/pouces
-- ✅ **Design Liquid Glass v2** : LiquidGlassKit constantes centralisées, GlassCard teinté, GlassButtonStyle spring, double gradient fond, .numericText()
-- ✅ **Performance** : @State cachés, StatsEquipeCache, .filtreEquipe(), spring transitions, Logger (pas de print)
-- ✅ **Terrain dessinable** : PencilKit + overlay, multi-étapes, verrouillage, formations, auto-save
-- ✅ **Calendrier unifié** : séances + matchs + entraînement, sync Apple Calendar
-- ✅ **DockBar** : Messages + Profil + indicateur sync, badges, spring animation
-- ✅ **Empty states** : ContentUnavailableView natif sur toutes les listes vides
-- ✅ **Haptics** : .sensoryFeedback sur les créations d'éléments
-- ✅ **App Store** : PlaycoInfo.plist (privacy keys, CFBundleIconName, ITSAppUsesNonExemptEncryption), entitlements CloudKit (iCloud.Origo.Playco), pas de fatalError
-- ✅ **Analytics saison** : AnalyticsSaisonView — résultats cumulatifs, efficacité attaque par match, séries V/D, classements performances, Swift Charts, filtrage par phase de saison
-- ✅ **Objectifs joueur** : ObjectifJoueur @Model — objectifs individuels par joueur avec suivi progression automatique, suggestions rapides, catégories stats
-- ✅ **Mode Live split-screen** : MatchLiveSplitView — Dashboard + saisie stats côte à côte sur iPad, TabView sur iPhone
-- ✅ **Export CSV** : CSVExportService — export stats joueurs/matchs/résultats en CSV, ShareLink, compatible Excel/Numbers
-- ✅ **Stats par rotation** : StatsParRotationView — analyse efficacité par rotation 1-6, graphiques barres, meilleure/pire rotation, tableau détaillé
-- ✅ **Palmarès & records** : PalmaresRecordsView — records individuels et d'équipe par match (kills, aces, blocs, hitting %, points, passes)
-- ✅ **Mode présentation** : bouton "Présenter" accessible depuis MatchDetailView et StrategieDetailView, plein écran AirPlay
-- ✅ **Tutoriel intégré** : TutorielView 12 pages paginées (TabView), affiché au premier lancement (@AppStorage), accessible depuis Paramètres → Voir le tutoriel
-- ✅ **30 @Model SwiftData** : incluant PointMatch (avec zone) + ObjectifJoueur + PhaseSaison + Abonnement + ActionRallye + CategorieExercice + CredentialAthlete + StaffPermissions
-- ✅ **Accessibilité** : `accessibilityLabel/Hint` sur Canvas PencilKit (UIViewRepresentable a11y traits + accessibilityValue dynamique selon mode), DockBar (badges → accessibilityValue), BarreOutilsDessin (outils dessin + menus formation + sélecteur joueurs BD). Tests humains à compléter : VoiceOver flow complet sur iPad physique + Dynamic Type xxxLarge + contraste WCAG AA mode courtside
-- ✅ **StoreKit 2 (Playco Pro)** : `StoreKitService` + `AbonnementService` (4 product IDs `ca.origotech.playco.{pro,club}.{monthly,yearly}`, subscription group `playco.pro`), modèle `Abonnement` @Model, `Playco.storekit` config, 5 vues paywall, `FeatureGating` modifier `.bloqueSiNonPayant(source:)`. Validation sandbox + restore : action humaine W6 (compte testeur Apple requis)
-- ✅ **Mode hors-ligne robuste** : journal de sync (EvenementSync, buffer 50 UserDefaults), mode match (pause sync auto pendant match live, toggle wifi.slash, capsule SYNC PAUSÉE), compteur modifications en attente branché sur enregistrerStat/substitution/TM/set
-- ✅ **Mode bord de terrain** : interface courtside simplifiée (grands boutons 60pt, score 72pt, 6 stats essentielles), pavé numérique rapide (#→joueur→action), feedback haptique (impact/warning/success), mode lecture seule (StaffPermissions.peutGererStats), réglages ProfilView (@AppStorage)
-- ✅ **Stats FIVB/NCAA complètes** : TypeActionRallye étendu (dig, tentativeAttaque, serviceEnJeu), hitting % amélioré, rotations historique par set, modification rotation manuelle (RotationLiveView)
-- ✅ **Transitions portrait/landscape** : SwiftUI Environment sizeClass (plus de UIKit), spring animations sur changement d'orientation
-- ✅ **Permissions granulaires** : StaffPermissions @Model (7 booleans), GestionStaffView, lecture seule en match live
-- ✅ **Stats adversaire symétriques** : 5 nouveaux TypeActionPoint (killAdversaire, aceAdversaire, blocAdversaire, erreurAttaqueAdversaire, erreurServiceAdversaire), DefinitionStat adversaire standard (scoring + erreurs), StatsLiveView sections adversaire dédiées, DashboardMatchLiveView comparaison détaillée (vraies valeurs adversaire)
-- ✅ **Rotation adversaire** : rotationAdversaire dans MatchLiveViewModel, rotation auto sur sideout adversaire, modification manuelle R1-R6, RotationLiveView onglet Nous/Adversaire (Picker segmenté, mini-terrain adversaire rouge), historique rotations adversaire par set, rotationAdvAuMoment sur PointMatch, affichage rotation adversaire dans score area + info chips dashboard
+## État actuel — pivot coach-first (branche `pivot/coach-first`, 2026-09-01)
+- ✅ Build **0 erreur / 0 warning** ; **320/320 tests, 50 suites**
+- ✅ **App GRATUITE** (D3) · **Coach-first** (D1-D6) · navigation (C) · uniformisation D vague 1 + 1bis partielle (Fermer, empty states, Forms)
+- ✅ **Chantier E → E′** : sync inter-coachs REFONDUE après revue adversariale (records par écrivain, confiance par créateur transitive, tombstones, filigranes anti-écho, PII minimale, mode match étanche) — `docs/Architecture_SyncEPrime.md`. **Posture A + C** : résidu adversarial accepté et documenté (`docs/SyncEPrime_Residuel.md`), CKShare au backlog. ⚠️ Action Dashboard CloudKit avant prod : ACL créateur-seul + champs QUERYABLE (`codeEquipe` partout, `ecrivainID`, `seanceID`/`publieLe` [sortable] sur `PointMatchPartage`, `SuppressionPartagee`)
+- 🔜 PR `pivot/coach-first` → `main` puis rebase de `suivis/pr6` (démo) ; D vague 1bis suite (kit stats, paddings) ; textes légaux ; action humaine `TelemetryDeckAppID`
+- Docs de référence : `docs/Pivot_CoachFirst_Plan.md` · `docs/Journal_Pivot_CoachFirst.md` · `docs/Revue_Chantier_E.md` · `docs/Architecture_SyncEPrime.md` · `docs/SyncEPrime_Residuel.md`
 
 ## Langue
 L'interface est entièrement en **français**. Noms de variables, commentaires et UI en français.
@@ -438,7 +330,8 @@ L'interface est entièrement en **français**. Noms de variables, commentaires e
 | **nuit 6-7 juil. 2026** | **Boucle de nuit autonome — 6 patchs roadmap livrés, 4 revues adversariales soldées (253 → 303/303, 47 suites)** : 2.2.b (consentement mineurs tracé + DM adulte↔mineur gatés AU POINT D'ENVOI, disponibilité joueur, TelemetryDeck 2.14.1 [1re dépendance SPM, épinglée, no-op DEMO], MetricKit) · 2.3.2 (match éclair + composition persistante validée — promotion MatchCalendrier RETIRÉE en revue, modèle dormant) · 2.3.1 complet (duplication « Continuer » + demi-terrain TypeTerrain.demiTerrain avec formations REMAPPÉES) · phase 0 SportPack (`Equipe.sportID`) · 2.6.2 (PDF plan de pratique régénéré à chaque partage) · 2.3 code (LienInvitation stricte + QR + « Inviter l'équipe » projetable [athlètes seulement] + jonction pré-remplie — revue sécurité : révocation Public DB rendue OPÉRANTE [fetch-puis-modifier], confirmation anti-phishing « Rejoindre « X » ? », rejeu du lien scanné avant login) · **2.4 Mat Nuit vague 1 noyau** (tokens MatNuit + CONTRAT de contraste WCAG exécutable [MatNuitTests], verre sombre 3.0 corps-sans-signatures, nuit par défaut [UN seul preferredColorScheme — toggle lune/soleil supprimé], PaletteMat remappée tons neutres, PencilKit overrideUserInterfaceStyle=.light [fidélité des dessins existants], courtside préservé via env modeBordDeTerrain). Glissées : 2.5a (fenêtre close), merge démo (permission requise). Suivis : vague 1bis Mat, 4 publierX à durcir, sync miroir Public DB. |
 | **2.2.a** (juil. 2026) | **Patch roadmap 2.2.a — undo par étape + State Restoration match live** (commit `7cd6594`) : piles undo/redo du terrain PAR ÉTAPE (clé UUID stable — naviguer entre les étapes ne détruit plus l'historique ; reset au chargement de document, purge à la suppression d'étape) ; nouveau `Helpers/MatchLiveRestauration.swift` (marqueur UserDefaults expirable 6 h — posé/effacé par `MatchLiveSplitView`, effacé aussi à la finalisation), resélection auto du match dans `MatchsView`, alerte « Reprendre le match en direct ? » dans `MatchDetailView` (gardée par `!statsEntrees`), `MatchLiveViewModel.restaurerSetActuel()` (reprend au set le plus avancé — PointMatch max + SetScore max — au lieu du set 1). **Tests : 270/270** (+17), build 0/0 Xcode 26.6. **Revue multi-dimensions post-patch (18 agents, vérification adversariale)** : 8 trouvailles corrigées (commit `431a5e3`) dont HI-001 — la reprise live contournait le gate `peutModifier` ET `DashboardMatchLiveView.lectureSeule` était déclarée sans être appliquée (trou préexistant corrigé : rotation/subs/temps morts désormais `.disabled(lectureSeule)`) ; `restaurerSetActuel` en fetch borné (fetchLimit 1) ; budget global de 60 snapshots undo (`maxSnapshotsTotal`, l'étape active garde ses 15) ; constante `nombreMaxDeSets`. |
 
-<!-- code-review-graph MCP tools -->
+<!-- code-review-graph MCP tools -->| **pivot coach-first** (août 2026) | **Pivot fondateur 2026-08-26 : app GRATUITE + coach-only** (décisions D1-D6 actées 2026-08-29 — voir `docs/Pivot_CoachFirst_Plan.md` + `docs/Journal_Pivot_CoachFirst.md`). Branche `pivot/coach-first` (sur la boucle de nuit, merge intégral validé par revue diff-par-diff des 25 commits). **Chantier A** : suppression COMPLÈTE du paywall StoreKit (~2 100 l. — StoreKitService/AbonnementService/PaywallViewModel/6 vues/FeatureGating/TextesPaywall/IdentifiantsIAP/.storekit/framework ; `Abonnement` @Model + `Equipe.tierAbonnementRaw` restent au schéma ; `migrerAssistantsVersNouveauRole` extraite vers `Services/MigrationRoles.swift`) + retrait de la MESSAGERIE (D1 — MessagerieView/PolitiqueMessagerie/dock Messages ; `MessageEquipe` @Model conservé). **Chantier B** : les athlètes redeviennent des DONNÉES (plus aucun compte) — MembreFactory sans `joueur:` (assistants seuls), NouveauJoueurView = formulaire JoueurEquipe pur, wizard joueurs sans identifiants, `roleJonctionAutorise` → `.assistantCoach` SEUL, MonProfilAthleteView/masquerPratiquesAthletes/branches `.etudiant` supprimées, muscu saisie AU NOM d'un joueur (sélecteur D2), PermissionsRole SUPPRIMÉ + StaffPermissions/GestionStaffView hors UI + `estCoach` supprimé (D6 : assistant = head coach, mêmes droits ; gardes → « session valide »), cascade d'équipe complétée (PhaseSaison/CredentialAthlete/Utilisateur membres/Presence-Evaluation-TestPhysique par joueurID), fin des miroirs Utilisateur (nouveau champ `JoueurEquipe.poidsKg`), code mort purgé (EvaluationView, SaisieStatsMatchView, ModifierUtilisateurView, publierModificationsEquipe…). **Chantier C** : scouting → Matchs (sidebar « Préparation »), toolbar match 7 chips → 3 groupes (Préparer · En direct · Après), Heatmap/Rotations hors bottomBar Matchs, Calendrier au Dock, Formations nommées en sidebar, Présences dans l'écran d'exercices, Exports au hub. **Chantier D vague 1** : BoutonRetourAccueil partagé, CONFIRMATION sur suppression de match, sidebars .sidebar+searchable, icône « + » unique, création muscu en Form, FiltresStats supprimé. **Tests : 276/276** (43 suites — 3 suites paywall + 6 tests DM supprimés, MultiUtilisateur/MembreFactory/RejoindreEquipe refondus coach/assistant + garde « jonction .etudiant REJETÉE »), build 0/0. **Chantier E (parité de sync assistant, sept. 2026 — LIVRÉ E1-E4)** : miroir Public DB élargi et BIDIRECTIONNEL entre coachs — E1 fetch-puis-modifier généralisé aux 5 `publierX` + mappings extraits en fonctions pures (`champsPublicsX`) + disponibilité/attestation sur `JoueurPartage` ; E2 contenus de préparation (`ExercicePartage` avec dessins [binaires ≤ 500 Ko inline, sinon CKAsset ; plafond 15 Mo import], `StrategiePartagee`, `ScoutingPartage` [**`joueursData` JAMAIS publié** — PII adverses], `BibliothequePartagee` [record par item×équipe, `estFavori` local]) + `dateModification` additifs (Exercice/ExerciceBibliotheque/ScoutingReport/StatsMatch) + bumps d'édition/archivage (l'archivage se propage) ; E3 analyse (`StatsMatchPartage`, `PointMatchPartage` immuables par LOTS de 400 [.allKeys] + purge des fantômes à la SORTIE du live [D6 : le sweep saute stats/points si mode match actif], `FormationPartagee` dédup par clé fonctionnelle, `statsEntrees` au miroir séance) ; E4 écriture assistant (`planSync(role:)` — tous les coachs importent PUIS publient, LWW par `dateModification` STRICT [égalité = no-op → anti-boucle], baseline `derniereSyncDate` post-import initial). **310/310 tests (47 suites)**, build 0/0. ⚠️ Action Dashboard CloudKit avant prod : champs QUERYABLE des nouveaux types (`codeEquipe` partout, `seanceID`+`horodatage` sur PointMatchPartage). **Restent** : D vague 1bis (Fermer/empty states/kit stats/paddings), rebase `suivis/pr6`, refresh CLAUDE.md complet, PR différée (GitHub indisponible). ⚠️ Sections plus haut mentionnant paywall/messagerie/comptes athlètes = PÉRIMÉES jusqu'au refresh. |
+
 ## MCP Tools: code-review-graph
 
 **IMPORTANT: This project has a knowledge graph. ALWAYS use the

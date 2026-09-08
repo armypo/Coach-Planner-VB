@@ -109,7 +109,6 @@ struct ExportStatsView: View {
             }
             .padding(.vertical, LiquidGlassKit.espaceXS)
         }
-        .bloqueSiNonPayant(source: "export_csv")
     }
 
     // MARK: - Génération CSV

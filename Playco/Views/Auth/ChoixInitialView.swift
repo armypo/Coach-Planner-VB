@@ -55,28 +55,28 @@ struct ChoixInitialView: View {
                         .offset(x: animee ? 0 : -60)
                         .opacity(animee ? 1 : 0)
 
-                        // Connexion (Coach / Assistant / Athlète)
+                        // Connexion (Coach / Assistant)
                         Button { onConnexion() } label: {
                             carteChoix(
                                 icone: "person.fill.badge.plus",
                                 titre: "Connexion",
                                 description: "Connectez-vous avec vos identifiants. Sélectionnez ensuite votre type de compte.",
                                 couleur: PaletteMat.bleu,
-                                badge: "Coach · Assistant · Athlète"
+                                badge: "Coach · Assistant"
                             )
                         }
                         .buttonStyle(.plain)
                         .offset(x: animee ? 0 : 60)
                         .opacity(animee ? 1 : 0)
 
-                        // Rejoindre avec un code (Athlète cross-Apple-ID)
+                        // Rejoindre avec un code (Assistant cross-Apple-ID)
                         Button { onRejoindre() } label: {
                             carteChoix(
                                 icone: "number.circle.fill",
                                 titre: "Rejoindre avec un code",
-                                description: "Athlète : entrez le code d'équipe fourni par votre coach + vos identifiants.",
+                                description: "Assistant : entrez le code d'équipe et votre code d'invitation fournis par le head coach.",
                                 couleur: PaletteMat.vert,
-                                badge: "Athlète"
+                                badge: "Assistant"
                             )
                         }
                         .buttonStyle(.plain)

@@ -113,4 +113,128 @@ struct CloudKitPartageImportTests {
         #expect(j.manchettes == 30)
         #expect(j.matchsJoues == 8)
     }
+
+    // MARK: - Disponibilité (E′ §7 — PII minimale : booléen seul)
+
+    @Test("Importer un joueur indisponible pose le statut GÉNÉRIQUE — jamais de motif santé ni d'attestation depuis la Public DB")
+    func importerJoueurDisponibilite() throws {
+        let service = CloudKitSharingService()
+        let ctx = try contexte()
+        let id = UUID()
+        let record = CKRecord(recordType: "JoueurPartage")
+        record["joueurID"] = id.uuidString
+        record["nom"] = "Roy"
+        record["prenom"] = "Alex"
+        record["estDisponible"] = 0
+        // Champs pré-E′ (ou forgés) : ne doivent JAMAIS être appliqués.
+        record["statutDisponibiliteRaw"] = "blesse"
+        record["consentementParentalAtteste"] = 1
+        record["dateAttestationConsentement"] = Date(timeIntervalSince1970: 1_700_000_000)
+        record["attesteParNom"] = "Coach Dionne"
+
+        service.importerJoueur(from: record, context: ctx)
+        try ctx.save()
+
+        let j = try #require(try ctx.fetch(FetchDescriptor<JoueurEquipe>()).first)
+        #expect(j.statutDisponibilite == .indisponible, "Motif générique — la santé ne transite pas")
+        #expect(!j.consentementParentalAtteste, "L'attestation ne s'importe JAMAIS (registre légal local)")
+        #expect(j.dateAttestationConsentement == nil)
+        #expect(j.attesteParNom.isEmpty)
+    }
+
+    @Test("Merge joueur : disponible côté remote plus récent vide le statut ; un motif local n'est pas dégradé par un booléen")
+    func mergeJoueurDisponibilite() throws {
+        let service = CloudKitSharingService()
+        let ctx = try contexte()
+        let id = UUID()
+
+        let local = JoueurEquipe(nom: "Roy", prenom: "Alex", numero: 10, poste: .passeur)
+        local.id = id
+        local.statutDisponibilite = .malade
+        local.dateModification = Date(timeIntervalSince1970: 1_000_000_000)
+        ctx.insert(local)
+        try ctx.save()
+
+        // Remote plus récent : redevenu disponible → statut vidé.
+        let record = CKRecord(recordType: "JoueurPartage")
+        record["joueurID"] = id.uuidString
+        record["estDisponible"] = 1
+        record["dateModification"] = Date(timeIntervalSince1970: 2_000_000_000)
+        service.importerJoueur(from: record, context: ctx)
+        try ctx.save()
+        #expect(local.statutDisponibilite == .disponible)
+
+        // Motif local reposé PUIS booléen indisponible distant plus récent :
+        // le motif local (plus riche) est conservé, pas dégradé en générique.
+        local.statutDisponibilite = .suspendu
+        local.dateModification = Date(timeIntervalSince1970: 2_500_000_000)
+        let record2 = CKRecord(recordType: "JoueurPartage")
+        record2["joueurID"] = id.uuidString
+        record2["estDisponible"] = 0
+        record2["dateModification"] = Date(timeIntervalSince1970: 3_000_000_000)
+        service.importerJoueur(from: record2, context: ctx)
+        try ctx.save()
+        #expect(local.statutDisponibilite == .suspendu)
+        #expect(!local.estDisponible)
+    }
+
+    // MARK: - Anti-boucle E4 (réimport de sa propre publication)
+
+    @Test("Anti-boucle : un remote de dateModification ÉGALE est un no-op")
+    func antiBoucleEgaliteNoOp() throws {
+        let service = CloudKitSharingService()
+        let ctx = try contexte()
+        let id = UUID()
+        let meme = Date(timeIntervalSince1970: 1_500_000_000)
+
+        // Simule sa propre publication réimportée : même id, même horodatage.
+        let local = JoueurEquipe(nom: "Roy", prenom: "Alex", numero: 10, poste: .passeur)
+        local.id = id
+        local.aces = 5
+        local.dateModification = meme
+        ctx.insert(local)
+        try ctx.save()
+
+        let record = CKRecord(recordType: "JoueurPartage")
+        record["joueurID"] = id.uuidString
+        record["aces"] = 999
+        record["dateModification"] = meme
+
+        service.importerJoueur(from: record, context: ctx)
+
+        #expect(local.aces == 5, "un écho de sa propre publication ne doit rien changer")
+
+        // Même garantie côté séance.
+        let seanceID = UUID()
+        let seanceLocale = Seance(nom: "Ma séance", date: Date())
+        seanceLocale.id = seanceID
+        seanceLocale.dateModification = meme
+        ctx.insert(seanceLocale)
+        try ctx.save()
+
+        let recordSeance = CKRecord(recordType: "SeancePartagee")
+        recordSeance["seanceID"] = seanceID.uuidString
+        recordSeance["nom"] = "Écho remote"
+        recordSeance["dateModification"] = meme
+
+        service.importerSeance(from: recordSeance, context: ctx)
+        #expect(seanceLocale.nom == "Ma séance")
+    }
+
+    @Test("Un statut de disponibilité inconnu (record public corrompu) est rejeté")
+    func statutDisponibiliteInconnuRejete() throws {
+        let service = CloudKitSharingService()
+        let ctx = try contexte()
+        let id = UUID()
+        let record = CKRecord(recordType: "JoueurPartage")
+        record["joueurID"] = id.uuidString
+        record["nom"] = "Roy"
+        record["statutDisponibiliteRaw"] = "en_vacances" // hors enum
+
+        service.importerJoueur(from: record, context: ctx)
+        try ctx.save()
+
+        let j = try #require(try ctx.fetch(FetchDescriptor<JoueurEquipe>()).first)
+        #expect(j.statutDisponibiliteRaw.isEmpty, "un raw hors enum ne doit pas être persisté")
+    }
 }

@@ -14,6 +14,7 @@ struct MatchDetailView: View {
 
     @Environment(\.modelContext) private var modelContext
     @Environment(AuthService.self) private var authService
+    @Environment(CloudKitSharingService.self) private var sharingService
     @Environment(\.codeEquipeActif) private var codeEquipeActif
     @Query(filter: #Predicate<StrategieCollective> { $0.categorieRaw == "Système d'attaque" && $0.estArchivee == false })
     private var strategiesOffensives: [StrategieCollective]
@@ -43,7 +44,7 @@ struct MatchDetailView: View {
     @State private var exerciceTerrain: Exercice?
 
     private var peutModifier: Bool {
-        authService.utilisateurConnecte?.role.peutModifierSeances ?? false
+        authService.utilisateurConnecte != nil
     }
 
     /// Cherche ou crée l'exercice terrain lié à cette séance
@@ -139,124 +140,53 @@ struct MatchDetailView: View {
         .toolbar {
             if peutModifier {
                 ToolbarItem(placement: .primaryAction) {
+                    // C2 (pivot) : 7 chips → 3 groupes, le cycle temporel réel
+                    // d'un match pour un coach : Préparer · En direct · Après.
                     HStack(spacing: 8) {
-                        // Composition
-                        Button { afficherComposition = true } label: {
-                            Image(systemName: "person.3.fill")
-                                .font(.caption)
-                                .foregroundStyle(.blue)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 6)
-                                .background(Color.blue.opacity(0.1), in: Capsule())
-                        }
-
-                        // Plan de match (scouting adversaire)
-                        if !seance.adversaire.isEmpty {
-                            Button { afficherPlanMatch = true } label: {
-                                HStack(spacing: 3) {
-                                    Image(systemName: "binoculars.fill")
-                                        .font(.caption)
-                                    Text("Scouting")
-                                        .font(.caption.weight(.medium))
+                        Menu {
+                            Button { afficherComposition = true } label: {
+                                Label("Composition", systemImage: "person.3.fill")
+                            }
+                            if !seance.adversaire.isEmpty {
+                                Button { afficherPlanMatch = true } label: {
+                                    Label("Plan de match (scouting)", systemImage: "binoculars.fill")
                                 }
-                                .foregroundStyle(PaletteMat.violet)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(PaletteMat.violet.opacity(0.1), in: Capsule())
                             }
+                        } label: {
+                            chipGroupe("Préparer", icone: "person.3.fill", couleur: PaletteMat.bleu)
                         }
 
-                        // Dashboard live
-                        Button { afficherDashboardLive = true } label: {
-                            HStack(spacing: 3) {
-                                Image(systemName: "chart.bar.fill")
-                                    .font(.caption)
-                                Text("Dashboard")
-                                    .font(.caption.weight(.medium))
+                        Menu {
+                            Button { afficherModeLive = true } label: {
+                                Label("Mode en direct", systemImage: "rectangle.split.2x1.fill")
                             }
-                            .foregroundStyle(PaletteMat.vert)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(PaletteMat.vert.opacity(0.1), in: Capsule())
+                            Button { afficherDashboardLive = true } label: {
+                                Label("Dashboard", systemImage: "chart.bar.fill")
+                            }
+                        } label: {
+                            chipGroupe("En direct", icone: "dot.radiowaves.left.and.right", couleur: MatNuit.live)
                         }
 
-                        // Finaliser le match (auto box score)
-                        if !seance.statsEntrees {
-                            Button { afficherConfirmationFinaliser = true } label: {
-                                HStack(spacing: 3) {
-                                    Image(systemName: "checkmark.seal.fill")
-                                        .font(.caption)
-                                    Text("Finaliser")
-                                        .font(.caption.weight(.medium))
+                        Menu {
+                            Button { afficherInfoMatch = true } label: {
+                                Label("Score & infos · \(resumeScore)", systemImage: "flag.fill")
+                            }
+                            if !seance.statsEntrees {
+                                Button { afficherConfirmationFinaliser = true } label: {
+                                    Label("Finaliser le match", systemImage: "checkmark.seal.fill")
                                 }
-                                .foregroundStyle(PaletteMat.vert)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(PaletteMat.vert.opacity(0.15), in: Capsule())
-                            }
-                        } else {
-                            HStack(spacing: 3) {
-                                Image(systemName: "checkmark.seal.fill")
-                                    .font(.caption)
-                                Text("Finalisé")
-                                    .font(.caption.weight(.medium))
-                            }
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(Color(.tertiarySystemFill), in: Capsule())
-
-                            // Analyse du match — liens croisés pré-filtrés (2.4)
-                            Button { afficherAnalyseMatch = true } label: {
-                                HStack(spacing: 3) {
-                                    Image(systemName: "chart.xyaxis.line")
-                                        .font(.caption)
-                                    Text("Analyse")
-                                        .font(.caption.weight(.medium))
+                            } else {
+                                Button { afficherAnalyseMatch = true } label: {
+                                    Label("Analyse du match", systemImage: "chart.xyaxis.line")
                                 }
-                                .foregroundStyle(PaletteMat.bleu)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(PaletteMat.bleu.opacity(0.1), in: Capsule())
                             }
-                        }
-
-                        // Mode live split-screen
-                        Button { afficherModeLive = true } label: {
-                            HStack(spacing: 3) {
-                                Image(systemName: "rectangle.split.2x1.fill")
-                                    .font(.caption)
-                                Text("Mode en direct")
-                                    .font(.caption.weight(.medium))
+                            Button { afficherExportPDF = true } label: {
+                                Label("Exporter en PDF", systemImage: "square.and.arrow.up")
                             }
-                            .foregroundStyle(.orange)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(Color.orange.opacity(0.1), in: Capsule())
-                        }
-
-                        // Score / Info match
-                        Button { afficherInfoMatch = true } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: "flag.fill")
-                                    .font(.caption)
-                                Text(resumeScore)
-                                    .font(.caption.weight(.medium))
-                            }
-                            .foregroundStyle(.red)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(Color.red.opacity(0.1), in: Capsule())
-                        }
-
-                        // Export PDF
-                        Button { afficherExportPDF = true } label: {
-                            Image(systemName: "square.and.arrow.up")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 6)
-                                .background(Color(.tertiarySystemFill), in: Capsule())
+                        } label: {
+                            chipGroupe(seance.statsEntrees ? "Finalisé · \(resumeScore)" : "Après",
+                                       icone: seance.statsEntrees ? "checkmark.seal.fill" : "flag.fill",
+                                       couleur: MatNuit.brique)
                         }
                     }
                 }
@@ -277,7 +207,7 @@ struct MatchDetailView: View {
                 .navigationTitle("Plan de match")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
-                    ToolbarItem(placement: .confirmationAction) {
+                    ToolbarItem(placement: .cancellationAction) {
                         Button("Fermer") { afficherPlanMatch = false }
                     }
                 }
@@ -306,7 +236,7 @@ struct MatchDetailView: View {
                     .navigationTitle("Dashboard Live")
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar {
-                        ToolbarItem(placement: .confirmationAction) {
+                        ToolbarItem(placement: .cancellationAction) {
                             Button("Fermer") { afficherDashboardLive = false }
                         }
                     }
@@ -321,7 +251,7 @@ struct MatchDetailView: View {
                     .navigationTitle("Mode en direct — \(seance.nom)")
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar {
-                        ToolbarItem(placement: .confirmationAction) {
+                        ToolbarItem(placement: .cancellationAction) {
                             Button("Fermer") { afficherModeLive = false }
                         }
                     }
@@ -353,6 +283,20 @@ struct MatchDetailView: View {
             return "\(seance.scoreEquipe) - \(seance.scoreAdversaire)"
         }
         return "Score"
+    }
+
+    /// Chip-menu de la toolbar match (C2) : libellé + icône teintés.
+    private func chipGroupe(_ titre: String, icone: String, couleur: Color) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: icone)
+                .font(.caption)
+            Text(titre)
+                .font(.caption.weight(.medium))
+        }
+        .foregroundStyle(couleur)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(couleur.opacity(0.1), in: Capsule())
     }
 
     private var barreInfoMatch: some View {
@@ -439,6 +383,16 @@ struct MatchDetailView: View {
             try modelContext.save()
             confirmeFinalisation = true
             logger.info("Match finalisé: \(seance.nom) — \(joueursIDs.count) joueurs")
+            // E3/E4 (D6) : publier immédiatement l'analyse du match finalisé
+            // (box scores + points + statsEntrees) — le sweep sert de filet.
+            // Tout rôle coach publie (assistant = head coach).
+            if let user = authService.utilisateurConnecte,
+               CloudKitSharingService.planSync(role: user.role).publie {
+                sharingService.ecrivainID = user.id.uuidString
+                let seanceFinalisee = seance
+                let contexte = modelContext
+                Task { await sharingService.publierAnalyseMatch(seance: seanceFinalisee, context: contexte) }
+            }
         } catch {
             logger.error("Erreur finalisation match: \(error.localizedDescription)")
         }
@@ -518,40 +472,6 @@ struct InfoMatchSheet: View {
 // MARK: - Wrappers pour sheets standalone (créent leur propre ViewModel)
 
 /// Wrapper pour StatsLiveView en sheet standalone (hors MatchLiveSplitView)
-struct StatsLiveSheetWrapper: View {
-    @Bindable var seance: Seance
-
-    @Environment(\.modelContext) private var modelContext
-    @Environment(\.codeEquipeActif) private var codeEquipeActif
-    @Query(filter: #Predicate<JoueurEquipe> { $0.estActif == true },
-           sort: \JoueurEquipe.numero) private var tousJoueurs: [JoueurEquipe]
-
-    @State private var viewModel: MatchLiveViewModel?
-
-    private var joueursEquipe: [JoueurEquipe] {
-        tousJoueurs.filtreEquipe(codeEquipeActif)
-    }
-
-    var body: some View {
-        Group {
-            if let vm = viewModel {
-                StatsLiveView(viewModel: vm)
-            } else {
-                ProgressView()
-            }
-        }
-        .onAppear {
-            if viewModel == nil {
-                viewModel = MatchLiveViewModel(
-                    seance: seance,
-                    modelContext: modelContext,
-                    joueurs: joueursEquipe,
-                    codeEquipe: codeEquipeActif
-                )
-            }
-        }
-    }
-}
 
 /// Wrapper pour DashboardMatchLiveView en sheet standalone
 struct DashboardLiveSheetWrapper: View {

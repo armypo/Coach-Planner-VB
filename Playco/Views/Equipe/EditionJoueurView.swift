@@ -122,7 +122,10 @@ struct EditionJoueurView: View {
                     moisNaissance = "\(cal.component(.month, from: dn))"
                     anneeNaissance = "\(cal.component(.year, from: dn))"
                 }
-                if let utilisateur = trouverUtilisateurLie(), utilisateur.poidKg > 0 {
+                if joueur.poidsKg > 0 {
+                    poids = String(format: "%.0f", joueur.poidsKg)
+                } else if let utilisateur = trouverUtilisateurLie(), utilisateur.poidKg > 0 {
+                    // Legacy : comptes athlètes pré-pivot — lecture seule du miroir.
                     poids = String(format: "%.0f", utilisateur.poidKg)
                 }
             }
@@ -144,17 +147,10 @@ struct EditionJoueurView: View {
             joueur.dateNaissance = Calendar.current.date(from: composants)
         }
 
-        // Synchroniser avec l'utilisateur lié
-        if let utilisateur = trouverUtilisateurLie() {
-            utilisateur.tailleCm = joueur.taille
-            utilisateur.prenom = joueur.prenom
-            utilisateur.nom = joueur.nom
-            utilisateur.numero = joueur.numero
-            utilisateur.posteRaw = joueur.poste.rawValue
-            utilisateur.dateNaissance = joueur.dateNaissance
-            if let p = Double(poids), p > 0 {
-                utilisateur.poidKg = p
-            }
+        // Pivot coach-first : le joueur porte ses données — plus aucun miroir
+        // écrit sur un Utilisateur athlète (champs gelés au schéma).
+        if let p = Double(poids), p > 0 {
+            joueur.poidsKg = p
         }
 
         try? modelContext.save()

@@ -17,7 +17,9 @@ struct ListeExercicesView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.editMode) private var editMode
     @Environment(AuthService.self) private var authService
+    @Environment(CloudKitSharingService.self) private var sharingService
     @Bindable var seance: Seance
+    @State private var afficherPresences = false
     @Environment(\.codeEquipeActif) private var codeEquipeActif
     @Query(filter: #Predicate<JoueurEquipe> { $0.estActif == true },
            sort: \JoueurEquipe.numero) private var tousJoueurs: [JoueurEquipe]
@@ -38,9 +40,9 @@ struct ListeExercicesView: View {
         (seance.exercices ?? []).reduce(0) { $0 + $1.duree }
     }
 
-    private var peutModifier: Bool {
-        authService.utilisateurConnecte?.role.peutModifierSeances ?? false
-    }
+    /// D6 (pivot coach-first) : tous les coachs connectés ont les mêmes droits —
+    /// seule garde résiduelle : une session valide.
+    private var peutModifier: Bool { authService.utilisateurConnecte != nil }
 
     /// Génère le PDF dans un fichier temporaire (nom basé sur l'id — revue :
     /// pas de collision d'homonymes ni de séparateurs de chemin) et ouvre la
@@ -91,6 +93,9 @@ struct ListeExercicesView: View {
             }
             .presentationDetents([.medium])
         }
+        .sheet(isPresented: $afficherPresences) {
+            PresencesView(seance: seance)
+        }
         .alert("Impossible de générer le plan", isPresented: $erreurPlanPratique) {
             Button("OK", role: .cancel) { }
         } message: {
@@ -103,6 +108,16 @@ struct ListeExercicesView: View {
             ToolbarItem(placement: .secondaryAction) {
                 if !(seance.exercices ?? []).isEmpty {
                     Button("Plan de pratique") { genererPlanPratique() }
+                }
+            }
+            // C7 (pivot) : les présences se prennent ICI, l'écran où le coach
+            // est pendant la pratique — plus seulement via le contextMenu de la
+            // liste des séances.
+            ToolbarItem(placement: .secondaryAction) {
+                Button {
+                    afficherPresences = true
+                } label: {
+                    Label("Présences", systemImage: "checklist")
                 }
             }
             ToolbarItem(placement: .primaryAction) {
@@ -318,6 +333,18 @@ struct ListeExercicesView: View {
     }
 
     private func supprimerExercice(_ exercice: Exercice) {
+        // E′ §4 — tombstone : sans lui, les copies publiées par les autres
+        // coachs feraient ressusciter l'exercice à la prochaine sync.
+        if let user = authService.utilisateurConnecte {
+            sharingService.ecrivainID = user.id.uuidString
+            let exerciceID = exercice.id
+            let code = seance.codeEquipe
+            Task {
+                await sharingService.publierSuppression(
+                    typeCible: CloudKitSharingService.RecordType.exercice,
+                    prefixeRecord: "exercice", entiteID: exerciceID, codeEquipe: code)
+            }
+        }
         seance.exercices?.removeAll { $0.id == exercice.id }
         modelContext.delete(exercice)
         reordonner()

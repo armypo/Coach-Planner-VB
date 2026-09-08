@@ -286,9 +286,7 @@ struct ScoutingLectureView: View {
 
     // MARK: - Export PDF
 
-    /// Bouton d'export placé dans le contenu (et pas la toolbar) : le
-    /// modificateur `.bloqueSiNonPayant` s'appuie sur overlay + fullScreenCover,
-    /// peu fiables dans un ToolbarItem (même pattern qu'ExportMatchPDFView).
+    /// Bouton d'export placé dans le contenu (même pattern qu'ExportMatchPDFView).
     private var boutonExport: some View {
         Button {
             exporterPDF()
@@ -300,7 +298,6 @@ struct ScoutingLectureView: View {
         }
         .buttonStyle(.borderedProminent)
         .tint(.red)
-        .bloqueSiNonPayant(source: "export_pdf_scouting")
     }
 
     private func exporterPDF() {

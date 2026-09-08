@@ -16,7 +16,7 @@ struct CredentialRecap: Identifiable {
     let identifiant: String
     let codeEquipe: String
     let codeInvitation: String
-    /// "Athlète" ou "Assistant" — utilisé dans le template de partage.
+    /// "Assistant" ou "Coach" — utilisé dans le template de partage.
     let role: String
 }
 
@@ -91,11 +91,11 @@ struct IdentifiantsRecapSheet: View {
                 Spacer()
                 Text(cred.role)
                     .font(.caption2.weight(.semibold))
-                    .foregroundStyle(cred.role == "Athlète" ? PaletteMat.orange : PaletteMat.bleu)
+                    .foregroundStyle(PaletteMat.bleu)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
                     .background(
-                        (cred.role == "Athlète" ? PaletteMat.orange : PaletteMat.bleu).opacity(0.12),
+                        PaletteMat.bleu.opacity(0.12),
                         in: Capsule()
                     )
             }

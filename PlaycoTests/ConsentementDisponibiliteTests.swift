@@ -1,7 +1,7 @@
 //  Playco
 //  Copyright © 2026 Christopher Dionne. Tous droits réservés.
 //
-//  Tests 2.2.b : consentement mineurs (estMineur, PolitiqueMessagerie)
+//  Tests 2.2.b : consentement mineurs (estMineur) et statut de disponibilité
 //  et statut de disponibilité des joueurs.
 //
 
@@ -62,51 +62,5 @@ struct ConsentementDisponibiliteTests {
         let j = joueur()
         j.statutDisponibiliteRaw = "en_vacances"
         #expect(j.statutDisponibilite == .disponible)
-    }
-
-    // MARK: - PolitiqueMessagerie
-
-    @Test("coach ↔ mineur sans consentement : DM privé bloqué (dans les deux sens)")
-    func dmCoachMineurBloque() {
-        #expect(!PolitiqueMessagerie.dmPriveAutorise(
-            roleExpediteur: .admin, expediteurEstMineur: false,
-            roleDestinataire: .etudiant, destinataireEstMineur: true,
-            consentementAtteste: false))
-        #expect(!PolitiqueMessagerie.dmPriveAutorise(
-            roleExpediteur: .etudiant, expediteurEstMineur: true,
-            roleDestinataire: .coach, destinataireEstMineur: false,
-            consentementAtteste: false))
-    }
-
-    @Test("coach ↔ mineur avec consentement attesté : DM privé autorisé")
-    func dmCoachMineurAvecConsentement() {
-        #expect(PolitiqueMessagerie.dmPriveAutorise(
-            roleExpediteur: .admin, expediteurEstMineur: false,
-            roleDestinataire: .etudiant, destinataireEstMineur: true,
-            consentementAtteste: true))
-    }
-
-    @Test("coach ↔ athlète majeur : autorisé sans consentement")
-    func dmCoachMajeur() {
-        #expect(PolitiqueMessagerie.dmPriveAutorise(
-            roleExpediteur: .coach, expediteurEstMineur: false,
-            roleDestinataire: .etudiant, destinataireEstMineur: false,
-            consentementAtteste: false))
-    }
-
-    @Test("athlète ↔ athlète (même mineurs) : autorisé — le blocage ne vise que la paire adulte-mineur")
-    func dmEntreAthletes() {
-        #expect(PolitiqueMessagerie.dmPriveAutorise(
-            roleExpediteur: .etudiant, expediteurEstMineur: true,
-            roleDestinataire: .etudiant, destinataireEstMineur: true,
-            consentementAtteste: false))
-    }
-
-    @Test("adulte ↔ adulte staff : toujours autorisé")
-    func dmEntreAdultes() {
-        #expect(PolitiqueMessagerie.dmPriveAutorise(
-            roleExpediteur: .admin, expediteurEstMineur: false,
-            roleDestinataire: .coach, destinataireEstMineur: false,
-            consentementAtteste: false))
     }
 }
