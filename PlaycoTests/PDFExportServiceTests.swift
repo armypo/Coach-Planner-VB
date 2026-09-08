@@ -100,4 +100,28 @@ struct PDFExportServiceTests {
         #expect(!data.isEmpty)
         #expect(data.prefix(4) == Self.prefixeMagiquePDF)
     }
+
+    // MARK: - Plan de pratique (2.6.2)
+
+    @Test("genererPlanPratique — séance avec exercices : PDF valide")
+    func planPratiqueComplet() {
+        let seance = Seance(nom: "Pratique mardi", typeSeance: .pratique)
+        let exo = Exercice(nom: "Réception R1", notes: "10 réceptions dans la cible", ordre: 0, duree: 12)
+        seance.exercices = [exo]
+        let joueur = JoueurEquipe(nom: "Tremblay", prenom: "Laurie", numero: 7, poste: .passeur)
+
+        let data = PDFExportService.genererPlanPratique(seance: seance, joueurs: [joueur])
+
+        #expect(!data.isEmpty)
+        #expect(String(data: data.prefix(4), encoding: .ascii) == "%PDF")
+    }
+
+    @Test("genererPlanPratique — séance vide : aucun crash, PDF valide")
+    func planPratiqueVide() {
+        let seance = Seance(nom: "Pratique", typeSeance: .pratique)
+
+        let data = PDFExportService.genererPlanPratique(seance: seance, joueurs: [])
+
+        #expect(String(data: data.prefix(4), encoding: .ascii) == "%PDF")
+    }
 }

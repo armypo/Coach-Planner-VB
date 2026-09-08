@@ -9,6 +9,8 @@ import SwiftData
 struct FormationsView: View {
     @Environment(\.modelContext) private var contexte
     @Environment(\.codeEquipeActif) private var codeEquipeActif
+    @Environment(AuthService.self) private var authService
+    @Environment(CloudKitSharingService.self) private var sharingService
     @Query private var toutesPersonnalisees: [FormationPersonnalisee]
 
     private var personnalisees: [FormationPersonnalisee] {
@@ -136,6 +138,7 @@ struct FormationsView: View {
         .buttonStyle(.plain)
         .contextMenu {
             Button(role: .destructive) {
+                publierTombstoneFormation(perso)
                 contexte.delete(perso)
             } label: {
                 Label("Supprimer", systemImage: "trash")
@@ -253,7 +256,21 @@ struct FormationsView: View {
     // MARK: - Réinitialiser (supprimer la personnalisation)
     private func reinitialiser() {
         if let existante = formationPerso {
+            publierTombstoneFormation(existante)
             contexte.delete(existante)
+        }
+    }
+
+    /// E′ §4 — tombstone anti-résurrection (copies des autres coachs).
+    private func publierTombstoneFormation(_ formation: FormationPersonnalisee) {
+        guard let user = authService.utilisateurConnecte else { return }
+        sharingService.ecrivainID = user.id.uuidString
+        let formationID = formation.id
+        let code = codeEquipeActif
+        Task {
+            await sharingService.publierSuppression(
+                typeCible: CloudKitSharingService.RecordType.formation,
+                prefixeRecord: "formation", entiteID: formationID, codeEquipe: code)
         }
     }
 }

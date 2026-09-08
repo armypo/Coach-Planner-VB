@@ -67,8 +67,6 @@ struct ConfigurationView: View {
     // Sheet récap des identifiants créés à la finalisation
     @State private var afficherRecap = false
     @State private var credsRecap: [CredentialRecap] = []
-    // Sheet de bienvenue paywall (après le récap)
-    @State private var afficherBienvenuePaywall = false
 
     // MARK: - Validation
 
@@ -125,14 +123,6 @@ struct ConfigurationView: View {
         .sheet(isPresented: $afficherRecap) {
             IdentifiantsRecapSheet(creds: credsRecap) {
                 afficherRecap = false
-                // Après les identifiants → présenter le paywall de bienvenue
-                afficherBienvenuePaywall = true
-            }
-            .interactiveDismissDisabled(true)
-        }
-        .fullScreenCover(isPresented: $afficherBienvenuePaywall) {
-            BienvenuePaywallView {
-                afficherBienvenuePaywall = false
                 onTermine()
             }
             .interactiveDismissDisabled(true)
@@ -356,20 +346,13 @@ struct ConfigurationView: View {
             recaps.append(membre.recap)
         }
 
-        // 5. Joueurs → JoueurEquipe + Utilisateur + CredentialAthlete (SIWA)
+        // 5. Joueurs → JoueurEquipe (données pures du roster — aucun compte,
+        // pivot coach-first : les athlètes ne sont plus des utilisateurs)
         for j in joueursTemp {
             let joueur = JoueurEquipe(nom: j.nom, prenom: j.prenom, numero: j.numero, poste: j.poste)
             joueur.codeEquipe = codeEquipe
             joueur.equipe = equipe
             modelContext.insert(joueur)
-
-            let membre = MembreFactory.creerMembre(
-                prenom: j.prenom, nom: j.nom,
-                role: .etudiant, codeEquipe: codeEquipe,
-                joueur: joueur,
-                context: modelContext, exclusions: &idsCreesEnMemoire
-            )
-            recaps.append(membre.recap)
         }
 
         // 6. Créneaux récurrents → Séances pour 4 semaines
@@ -472,6 +455,9 @@ struct ConfigurationView: View {
         let equipeAPublier = equipe
         let etabAPublier = etablissement
         let codeAPublier = codeEquipe
+        // E′ §1 — identité d'écrivain du coach créateur (auto-login déjà fait
+        // ci-dessus) avant de publier les ancres d'équipe.
+        sharingService.ecrivainID = authService.utilisateurConnecte?.id.uuidString
         Task {
             // Récupérer tous les utilisateurs et joueurs de cette équipe
             let descripteurUsers = FetchDescriptor<Utilisateur>(
@@ -507,12 +493,12 @@ struct ConfigurationView: View {
         wizardEnCours = false
 
         // Présenter le sheet récap si au moins un credential a été créé,
-        // sinon aller directement au paywall de bienvenue.
+        // sinon terminer directement.
         if !recaps.isEmpty {
             credsRecap = recaps
             afficherRecap = true
         } else {
-            afficherBienvenuePaywall = true
+            onTermine()
         }
     }
 
@@ -547,7 +533,6 @@ struct JoueurTemp: Identifiable {
     var nom = ""
     var numero: Int = 1
     var poste: PosteJoueur = .recepteur
-    var identifiant = ""
 }
 
 struct CreneauTemp: Identifiable {

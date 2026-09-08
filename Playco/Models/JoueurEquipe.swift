@@ -56,10 +56,24 @@ final class JoueurEquipe {
     var posteRaw: String = PosteJoueur.recepteur.rawValue  // PosteJoueur.rawValue
     var dateNaissance: Date? = nil
     var taille: Int = 0       // cm
+    /// Poids en kg (pivot coach-first : vivait sur l'Utilisateur athlète lié,
+    /// désormais porté par la donnée joueur — champ additif CloudKit-safe).
+    var poidsKg: Double = 0
     var notes: String = ""
     @Attribute(.externalStorage) var photoData: Data? = nil
     var estActif: Bool = true
     var dateCreation: Date = Date()
+
+    // MARK: - Consentement parental & disponibilité (2.2.b — défauts CloudKit-safe)
+
+    /// Attestation du coach : « j'ai le consentement parental » (mineurs).
+    var consentementParentalAtteste: Bool = false
+    /// Horodatage de l'attestation (traçabilité Loi 25).
+    var dateAttestationConsentement: Date? = nil
+    /// Nom de l'attestant (traçabilité — revue 2.2.b).
+    var attesteParNom: String = ""
+    /// Statut de disponibilité — StatutDisponibilite.rawValue ("" = disponible).
+    var statutDisponibiliteRaw: String = ""
 
     /// Code équipe — filtre multi-équipe
     var codeEquipe: String = ""
@@ -247,4 +261,71 @@ final class JoueurEquipe {
         self.posteRaw = poste.rawValue
         self.dateCreation = Date()
     }
+}
+
+// MARK: - Statut de disponibilité (2.2.b)
+
+/// Disponibilité d'un joueur pour la composition, les présences et la musculation.
+/// Stocké en String sur le @Model (rawValue) — "" = disponible (défaut CloudKit-safe).
+enum StatutDisponibilite: String, CaseIterable, Identifiable {
+    case disponible
+    case blesse
+    case malade
+    case suspendu
+    /// E′ (PII minimale) : statut générique posé à l'IMPORT quand un autre coach
+    /// signale un joueur indisponible — le MOTIF (santé) ne transite jamais par
+    /// la Public DB. Jamais proposé dans le Picker coach (cf. `casSelectionnables`).
+    case indisponible = "Indisponible"
+
+    var id: String { rawValue }
+
+    var libelle: String {
+        switch self {
+        case .disponible:   return "Disponible"
+        case .blesse:       return "Blessé"
+        case .malade:       return "Malade"
+        case .suspendu:     return "Suspendu"
+        case .indisponible: return "Indisponible"
+        }
+    }
+
+    var couleur: Color {
+        switch self {
+        case .disponible:   return .green
+        case .blesse:       return .red
+        case .malade:       return .orange
+        case .suspendu:     return .gray
+        case .indisponible: return .gray
+        }
+    }
+
+    /// Cas proposés au COACH dans le Picker de la fiche joueur — `.indisponible`
+    /// (statut générique posé par l'import E′) n'est jamais choisi à la main.
+    static var casSelectionnables: [StatutDisponibilite] {
+        allCases.filter { $0 != .indisponible }
+    }
+}
+
+// MARK: - Consentement & disponibilité (computed)
+
+extension JoueurEquipe {
+    /// Âge de majorité (Québec/Canada) pour le consentement parental.
+    static let ageMajorite = 18
+
+    /// Vrai si la date de naissance CONNUE indique un mineur.
+    /// Une date absente ne bloque rien (pas de faux positifs sur les rosters
+    /// sans date) — l'attestation reste proposée au coach.
+    var estMineur: Bool {
+        guard let dateNaissance else { return false }
+        let age = Calendar.current.dateComponents([.year], from: dateNaissance, to: Date()).year ?? 0
+        return age < Self.ageMajorite
+    }
+
+    var statutDisponibilite: StatutDisponibilite {
+        get { StatutDisponibilite(rawValue: statutDisponibiliteRaw) ?? .disponible }
+        set { statutDisponibiliteRaw = newValue == .disponible ? "" : newValue.rawValue }
+    }
+
+    /// Vrai si le joueur peut être aligné (composition, muscu).
+    var estDisponible: Bool { statutDisponibilite == .disponible }
 }

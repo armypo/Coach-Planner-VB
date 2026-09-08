@@ -19,10 +19,10 @@ struct JoueurDetailView: View {
 
     @Environment(AuthService.self) private var authService
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.codeEquipeActif) private var codeEquipeActif
     @State private var afficherEdition = false
     @State private var ongletAnalyse: OngletAnalyseJoueur = .statistiques
     /// Code d'invitation de l'Utilisateur lié — cache @State (évite un fetch par render)
-    @State private var codeInvitationJoueur: String?
     @Query private var toutesPresences: [Presence]
     @Query private var tousStatsMatch: [StatsMatch]
     @Query private var toutesActionsRallye: [ActionRallye]
@@ -67,8 +67,8 @@ struct JoueurDetailView: View {
         ScrollView {
             VStack(spacing: LiquidGlassKit.espaceLG) {
                 enteteJoueur
-                if authService.utilisateurConnecte?.role.peutGererEquipe ?? false {
-                    sectionIdentifiants
+                if authService.utilisateurConnecte != nil {
+                    sectionDisponibiliteConsentement
                 }
                 sectionResume
                 sectionPresencesEvals
@@ -100,7 +100,7 @@ struct JoueurDetailView: View {
                     ComparaisonView(joueur: joueur, estIncorporee: true)
                 }
 
-                if authService.utilisateurConnecte?.role.peutGererEquipe ?? false,
+                if authService.utilisateurConnecte != nil,
                    ongletAnalyse == .statistiques {
                     sectionEditionStats
                     sectionNotes
@@ -111,7 +111,7 @@ struct JoueurDetailView: View {
         .navigationTitle(joueur.nomComplet)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if authService.utilisateurConnecte?.role.peutGererEquipe ?? false {
+            if authService.utilisateurConnecte != nil {
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
                         Button {
@@ -135,15 +135,12 @@ struct JoueurDetailView: View {
                     } label: {
                         Image(systemName: "ellipsis.circle")
                     }
-                    .bloqueSiNonPayant(source: "gestion_joueur")
                 }
             }
         }
         .sheet(isPresented: $afficherEdition) {
             EditionJoueurView(joueur: joueur)
         }
-        .onAppear { chargerCodeInvitation() }
-        .onChange(of: joueur.utilisateurID) { chargerCodeInvitation() }
     }
 
     // MARK: - En-tête
@@ -222,81 +219,90 @@ struct JoueurDetailView: View {
         .glassSection()
     }
 
-    // MARK: - Identifiants (visible coach uniquement)
-    private var sectionIdentifiants: some View {
+    // MARK: - Disponibilité & consentement parental (2.2.b)
+
+    private var sectionDisponibiliteConsentement: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("Identifiants", systemImage: "person.badge.key.fill")
+            Label("Disponibilité", systemImage: "figure.walk.motion")
                 .font(.subheadline.weight(.bold))
-                .foregroundStyle(PaletteMat.bleu)
+                .foregroundStyle(PaletteMat.vert)
 
-            // Identifiant
-            HStack {
-                Text("Identifiant")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text(joueur.identifiant.isEmpty ? "Non défini" : joueur.identifiant)
-                    .font(.subheadline.weight(.semibold).monospaced())
-                    .foregroundStyle(.primary)
-                    .textSelection(.enabled)
-                if !joueur.identifiant.isEmpty {
-                    Button {
-                        UIPasteboard.general.string = joueur.identifiant
-                    } label: {
-                        Image(systemName: "doc.on.doc")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+            Picker("Statut", selection: Binding(
+                get: { joueur.statutDisponibilite },
+                set: {
+                    joueur.statutDisponibilite = $0
+                    joueur.dateModification = Date() // sync partagée (revue 2.2.b)
+                }
+            )) {
+                ForEach(StatutDisponibilite.casSelectionnables) { statut in
+                    Text(statut.libelle).tag(statut)
                 }
             }
-            .padding(12)
-            .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: LiquidGlassKit.rayonPetit))
+            .pickerStyle(.segmented)
 
-            // Code d'invitation (SIWA : remplace le mot de passe — le joueur
-            // rejoint l'équipe avec Sign in with Apple + ce code)
-            HStack {
-                Text("Code d'invitation")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
-                Spacer()
-                if let code = codeInvitationJoueur, !code.isEmpty {
-                    Text(code)
-                        .font(.subheadline.weight(.semibold).monospaced())
-                        .foregroundStyle(.primary)
-                        .textSelection(.enabled)
-                    Button {
-                        UIPasteboard.general.string = code
-                    } label: {
-                        Image(systemName: "doc.on.doc")
+            if !joueur.estDisponible {
+                Text("Un joueur \(joueur.statutDisponibilite.libelle.lowercased()) est grisé dans la composition et les présences ; ses séances de musculation sont suspendues.")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+
+            // Revue 2.2.b : seul un coach (.admin/.coach au sens compte) atteste —
+            // pas l'adulte assistant que le blocage DM est censé contraindre.
+            if (joueur.estMineur || joueur.dateNaissance == nil),
+               let role = authService.utilisateurConnecte?.role, role == .admin || role == .coach {
+                Divider()
+
+                Label("Consentement parental", systemImage: "figure.and.child.holdinghands")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(PaletteMat.bleu)
+
+                HStack {
+                    if joueur.consentementParentalAtteste {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(joueur.attesteParNom.isEmpty ? "Attesté par le coach" : "Attesté par \(joueur.attesteParNom)")
+                                .font(.caption.weight(.semibold))
+                            if let date = joueur.dateAttestationConsentement {
+                                Text(date, format: .dateTime.day().month().year())
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        Spacer()
+                        Button("Retirer", role: .destructive) {
+                            joueur.consentementParentalAtteste = false
+                            joueur.dateAttestationConsentement = nil
+                            joueur.dateModification = Date()
+                        }
+                        .font(.caption)
+                    } else {
+                        Text("Requis pour les messages privés avec un mineur")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Attester") {
+                            joueur.consentementParentalAtteste = true
+                            joueur.dateAttestationConsentement = Date()
+                            joueur.attesteParNom = authService.utilisateurConnecte?.nomComplet ?? ""
+                            joueur.dateModification = Date()
+                        }
+                        .font(.caption.weight(.semibold))
+                        .buttonStyle(.borderedProminent)
                     }
-                } else {
-                    Text("Non défini")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.secondary)
                 }
-            }
-            .padding(12)
-            .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: LiquidGlassKit.rayonPetit))
+                .padding(12)
+                .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: LiquidGlassKit.rayonPetit))
 
-            Text("Le joueur se connecte avec Sign in with Apple : communique-lui le code d'équipe et ce code d'invitation.")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
+                ShareLink(item: AppConstants.urlPolitiqueConfidentialite) {
+                    Label("Envoyer l'avis de confidentialité aux parents", systemImage: "square.and.arrow.up")
+                        .font(.caption)
+                }
+
+                Text("En attestant, tu confirmes avoir obtenu le consentement d'un parent ou tuteur pour ce joueur mineur (collecte de données).")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
         }
         .glassSection()
-    }
-
-    /// Charge le code d'invitation de l'Utilisateur lié à ce joueur (nil si non lié).
-    private func chargerCodeInvitation() {
-        guard let utilisateurID = joueur.utilisateurID else {
-            codeInvitationJoueur = nil
-            return
-        }
-        let descriptor = FetchDescriptor<Utilisateur>(
-            predicate: #Predicate { $0.id == utilisateurID }
-        )
-        codeInvitationJoueur = try? modelContext.fetch(descriptor).first?.codeInvitation
     }
 
     // MARK: - Résumé général

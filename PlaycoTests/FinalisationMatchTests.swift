@@ -79,6 +79,25 @@ struct FinalisationMatchTests {
         #expect(stats.first?.codeEquipe == Self.codeEquipe)
     }
 
+    @Test("finaliserStats — E3 : bump dateModification (StatsMatch, joueur, séance) pour le sweep")
+    func finalisationBumpDatesModification() throws {
+        let (contexte, seance, joueur, points) = try creerMatchLive()
+        let seuil = Date(timeIntervalSinceNow: -1)
+        seance.dateModification = .distantPast
+        joueur.dateModification = .distantPast
+
+        AgregateurStatsMatch.finaliserStats(
+            seance: seance, points: points, actions: [],
+            statsExistants: [], joueurs: [joueur],
+            codeEquipe: Self.codeEquipe, contexte: contexte
+        )
+
+        let stat = try #require(try contexte.fetch(FetchDescriptor<StatsMatch>()).first)
+        #expect(stat.dateModification > seuil, "le box score doit être repris par le sweep")
+        #expect(joueur.dateModification > seuil, "le cumul carrière doit être republié")
+        #expect(seance.dateModification > seuil, "statsEntrees doit se propager (chip Analyse)")
+    }
+
     @Test("finaliserStats — déjà finalisé : aucun double comptage (guard statsEntrees)")
     func dejaFinaliseInerte() throws {
         let (contexte, seance, joueur, points) = try creerMatchLive()

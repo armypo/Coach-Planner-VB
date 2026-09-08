@@ -22,14 +22,24 @@ struct EntrainementView: View {
     @Query(filter: #Predicate<ProgrammeMuscu> { $0.estArchive == false },
            sort: \ProgrammeMuscu.dateCreation, order: .reverse) private var programmes: [ProgrammeMuscu]
     @Query(sort: \SeanceMuscu.date, order: .reverse) private var seances: [SeanceMuscu]
+    @Query private var tousJoueurs: [JoueurEquipe]
+
+    /// D2 (pivot coach-first) : le coach saisit la séance live AU NOM d'un
+    /// joueur — choisi juste avant de lancer (alimente SuiviMusculationView).
+    private enum ChoixJoueurLive: Hashable {
+        case joueur(UUID)
+        case sansJoueur
+        var joueurID: UUID? {
+            if case .joueur(let id) = self { return id }
+            return nil
+        }
+    }
+    @State private var choixJoueurLive: ChoixJoueurLive?
+    @State private var recherche = ""
 
     enum SelectionEntrainement: Hashable {
         case programme(ProgrammeMuscu)
         case seanceLive(ProgrammeMuscu)
-    }
-
-    private var role: RoleUtilisateur {
-        authService.utilisateurConnecte?.role ?? .etudiant
     }
 
     /// Données filtrées cachées
@@ -37,13 +47,9 @@ struct EntrainementView: View {
     @State private var seancesEquipe: [SeanceMuscu] = []
 
     private func recalculerDonnees() {
-        let programmesEquipe = programmes.filtreEquipe(codeEquipeActif)
-        if role.peutGererProgrammes {
-            programmesFiltres = programmesEquipe
-        } else {
-            let joueurID = authService.utilisateurConnecte?.joueurEquipeID
-            guard let joueurID else { programmesFiltres = []; return }
-            programmesFiltres = programmesEquipe.filter { $0.decoderJoueursAssignes().contains(joueurID) }
+        let equipe = programmes.filtreEquipe(codeEquipeActif)
+        programmesFiltres = recherche.isEmpty ? equipe : equipe.filter {
+            $0.nom.localizedCaseInsensitiveContains(recherche)
         }
         seancesEquipe = seances.filtreEquipe(codeEquipeActif)
     }
@@ -61,8 +67,6 @@ struct EntrainementView: View {
                         Button { afficherNouveauProgramme = true } label: {
                             Image(systemName: "plus")
                         }
-                        .siAutorise(role.peutGererProgrammes)
-                        .bloqueSiNonPayant(source: "creation_programme")
                     }
                     ToolbarItem(placement: .bottomBar) {
                         HStack(spacing: 24) {
@@ -93,13 +97,34 @@ struct EntrainementView: View {
         .onChange(of: programmes) { recalculerDonnees() }
         .onChange(of: seances) { recalculerDonnees() }
         .onChange(of: codeEquipeActif) { recalculerDonnees() }
+        .onChange(of: selectionSidebar) { choixJoueurLive = nil }
+        .onChange(of: recherche) { recalculerDonnees() }
         .sensoryFeedback(.success, trigger: programmesFiltres.count)
-        .alert("Nouveau programme", isPresented: $afficherNouveauProgramme) {
-            TextField("Nom du programme", text: $nomNouveauProgramme)
-            Button("Annuler", role: .cancel) { nomNouveauProgramme = "" }
-            Button("Créer") { creerProgramme() }
-        } message: {
-            Text("Entrez un nom pour votre programme d'entraînement.")
+        .sheet(isPresented: $afficherNouveauProgramme) {
+            // D (uniformisation) : création en Form, comme les autres sections
+            // — fin de l'alert-TextField.
+            NavigationStack {
+                Form {
+                    Section("Programme") {
+                        TextField("Nom du programme", text: $nomNouveauProgramme)
+                    }
+                }
+                .navigationTitle("Nouveau programme")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Annuler") {
+                            nomNouveauProgramme = ""
+                            afficherNouveauProgramme = false
+                        }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Créer") { creerProgramme() }
+                            .disabled(nomNouveauProgramme.trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
+                }
+            }
+            .presentationDetents([.medium])
         }
         .sheet(isPresented: $afficherBibliotheque) {
             NavigationStack {
@@ -124,13 +149,11 @@ struct EntrainementView: View {
                         ligneProgramme(prog)
                     }
                     .swipeActions(edge: .trailing) {
-                        if role.peutGererProgrammes {
-                            Button(role: .destructive) {
-                                prog.estArchive = true
-                                try? modelContext.save()
-                            } label: {
-                                Label("Supprimer", systemImage: "trash")
-                            }
+                        Button(role: .destructive) {
+                            prog.estArchive = true
+                            try? modelContext.save()
+                        } label: {
+                            Label("Supprimer", systemImage: "trash")
                         }
                     }
                 }
@@ -141,13 +164,11 @@ struct EntrainementView: View {
                     } description: {
                         Text("Appuyez sur + pour créer un programme")
                     } actions: {
-                        if role.peutGererProgrammes {
-                            Button("Nouveau programme", systemImage: "plus") {
-                                afficherNouveauProgramme = true
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .tint(PaletteMat.violet)
+                        Button("Nouveau programme", systemImage: "plus") {
+                            afficherNouveauProgramme = true
                         }
+                        .buttonStyle(.borderedProminent)
+                        .tint(PaletteMat.violet)
                     }
                 }
             } header: {
@@ -156,7 +177,8 @@ struct EntrainementView: View {
             }
 
         }
-        .listStyle(.insetGrouped)
+        .listStyle(.sidebar)
+        .searchable(text: $recherche, prompt: "Rechercher un programme")
     }
 
     // MARK: - Ligne programme
@@ -197,8 +219,13 @@ struct EntrainementView: View {
                     selectionSidebar = .seanceLive(prog)
                 }
             case .seanceLive(let prog):
-                SeanceLiveView(programme: prog, joueurID: authService.utilisateurConnecte?.joueurEquipeID) {
-                    selectionSidebar = .programme(prog)
+                if let choix = choixJoueurLive {
+                    SeanceLiveView(programme: prog, joueurID: choix.joueurID) {
+                        choixJoueurLive = nil
+                        selectionSidebar = .programme(prog)
+                    }
+                } else {
+                    selecteurJoueurLive(prog)
                 }
             }
         } else {
@@ -214,6 +241,74 @@ struct EntrainementView: View {
         }
     }
 
+    // MARK: - Sélecteur de joueur (D2 — le coach saisit au nom d'un athlète)
+
+    /// Joueurs assignés au programme, puis le reste du roster actif.
+    /// Un joueur indisponible (2.2.b) est proposé mais désactivé.
+    private func selecteurJoueurLive(_ programme: ProgrammeMuscu) -> some View {
+        let actifs = tousJoueurs.filtreEquipe(codeEquipeActif)
+            .filter { $0.estActif }
+            .sorted { $0.numero < $1.numero }
+        let assignesIDs = Set(programme.decoderJoueursAssignes())
+        let assignes = actifs.filter { assignesIDs.contains($0.id) }
+        let autres = actifs.filter { !assignesIDs.contains($0.id) }
+
+        return List {
+            Section {
+                Text("La séance sera enregistrée au nom du joueur choisi et alimentera son suivi des charges.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .listRowBackground(Color.clear)
+            }
+            if !assignes.isEmpty {
+                Section("Assignés au programme") {
+                    ForEach(assignes) { joueur in
+                        ligneJoueurLive(joueur)
+                    }
+                }
+            }
+            if !autres.isEmpty {
+                Section(assignes.isEmpty ? "Joueurs" : "Autres joueurs") {
+                    ForEach(autres) { joueur in
+                        ligneJoueurLive(joueur)
+                    }
+                }
+            }
+            Section {
+                Button {
+                    choixJoueurLive = .sansJoueur
+                } label: {
+                    Label("Séance d'équipe (sans joueur)", systemImage: "person.3")
+                }
+            }
+        }
+        .navigationTitle("Pour quel joueur ?")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func ligneJoueurLive(_ joueur: JoueurEquipe) -> some View {
+        let indisponible = !joueur.estDisponible
+        return Button {
+            choixJoueurLive = .joueur(joueur.id)
+        } label: {
+            HStack {
+                Text("#\(joueur.numero)")
+                    .font(.subheadline.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .frame(width: 40, alignment: .leading)
+                Text("\(joueur.prenom) \(joueur.nom)")
+                Spacer()
+                if indisponible {
+                    Text(joueur.statutDisponibilite.libelle)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .disabled(indisponible)
+        .opacity(indisponible ? 0.5 : 1)
+    }
+
     // MARK: - Actions
 
     private func creerProgramme() {
@@ -224,23 +319,12 @@ struct EntrainementView: View {
         modelContext.insert(prog)
         try? modelContext.save()
         nomNouveauProgramme = ""
+        afficherNouveauProgramme = false
         selectionSidebar = .programme(prog)
     }
 
     private var boutonRetour: some View {
-        Button {
-            onRetour()
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 14, weight: .semibold))
-                Image(systemName: "volleyball.fill")
-                    .font(.system(size: 14))
-                Text("Accueil")
-                    .font(.subheadline.weight(.medium))
-            }
-            .foregroundStyle(PaletteMat.violet)
-        }
+        BoutonRetourAccueil(couleur: PaletteMat.violet) { onRetour() }
     }
 }
 
@@ -252,15 +336,11 @@ struct HistoriqueView: View {
     var body: some View {
         Group {
             if seances.isEmpty {
-                VStack(spacing: 16) {
-                    Image(systemName: "clock")
-                        .font(.system(size: 50))
-                        .foregroundStyle(.tertiary)
-                    Text("Aucun entraînement complété")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                ContentUnavailableView {
+                    Label("Aucun entraînement complété", systemImage: "clock")
+                } description: {
+                    Text("Les séances lancées depuis un programme apparaîtront ici.")
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 List {
                     ForEach(seances) { seance in

@@ -1,10 +1,12 @@
 //  Playco
 //  Copyright © 2025 Christopher Dionne. Tous droits réservés.
 //
-//  Tests du flux multi-utilisateur coach/athlète en SIWA strict (v2.1) :
-//  le coach crée les membres via MembreFactory (aucun secret), l'athlète
-//  rejoint par code d'équipe + code d'invitation (reclamerMembreLocal) puis
-//  se connecte par Sign in with Apple.
+//  Tests du flux multi-utilisateur coach/assistant en SIWA strict :
+//  le coach crée les membres du staff via MembreFactory (aucun secret),
+//  l'assistant rejoint par code d'équipe + code d'invitation
+//  (reclamerMembreLocal) puis se connecte par Sign in with Apple.
+//  Pivot coach-first : plus de comptes athlètes — la jonction .etudiant
+//  est explicitement rejetée (test dédié).
 //
 
 import Testing
@@ -13,7 +15,7 @@ import SwiftData
 @testable import Playco
 
 /// Tests sérialisés : partage de Keychain global iOS (session).
-@Suite("Multi-utilisateur — Coach / Athlète", .serialized)
+@Suite("Multi-utilisateur — Coach / Assistant", .serialized)
 @MainActor
 struct MultiUtilisateurTests {
 
@@ -45,8 +47,8 @@ struct MultiUtilisateurTests {
 
     // MARK: - Simulation complète du flux SIWA
 
-    @Test("Flux complet SIWA : coach crée l'équipe, athlète rejoint par code d'invitation, permissions correctes")
-    func fluxCompletCoachAthlete() throws {
+    @Test("Flux complet SIWA : coach crée l'équipe, l'assistant rejoint par code d'invitation")
+    func fluxCompletCoachAssistant() throws {
         let auth = creerAuthIsole()
         let context = try creerContexteEnMemoire()
 
@@ -63,70 +65,90 @@ struct MultiUtilisateurTests {
         coach.codeEquipe = "ELANS01"
         context.insert(coach)
 
-        // ── 2. Coach crée l'équipe ──
+        // ── 2. Coach crée l'équipe + un joueur (donnée pure, sans compte) ──
         let equipe = Equipe(nom: "Élans")
         equipe.codeEquipe = "ELANS01"
         equipe.categorieRaw = CategorieEquipe.masculin.rawValue
         context.insert(equipe)
 
-        // ── 3. Coach crée un joueur + membre athlète via MembreFactory ──
         let joueur = JoueurEquipe(nom: "Tremblay", prenom: "Jean", numero: 7, poste: .passeur)
         joueur.codeEquipe = "ELANS01"
         context.insert(joueur)
 
+        // ── 3. Coach crée un ASSISTANT via MembreFactory ──
         var exclusions: Set<String> = []
         let membre = MembreFactory.creerMembre(
-            prenom: "Jean", nom: "Tremblay", role: .etudiant,
-            codeEquipe: "ELANS01", joueur: joueur,
+            prenom: "Sophie", nom: "Martin", role: .assistantCoach,
+            codeEquipe: "ELANS01",
             context: context, exclusions: &exclusions
         )
         try context.save()
 
-        // ── 4. Connexion coach via SIWA → vérifier permissions ──
+        // Le joueur n'est PAS lié à un compte (pivot coach-first)
+        #expect(joueur.utilisateurID == nil)
+        #expect(membre.credential.joueurEquipeID == nil)
+
+        // ── 4. Connexion coach via SIWA ──
         let etatCoach = auth.connexionApple(appleUserID: "001.coach.apple", prenom: "", nom: "", context: context)
         guard case .connecte = etatCoach else {
             Issue.record("Le coach doit être connecté via SIWA")
             return
         }
         #expect(auth.utilisateurConnecte?.role == .admin)
-        #expect(auth.utilisateurConnecte?.role.peutModifierSeances == true)
-        #expect(auth.utilisateurConnecte?.role.peutGererEquipe == true)
-        #expect(auth.utilisateurConnecte?.role.peutModifierStrategies == true)
-        #expect(auth.utilisateurConnecte?.role.peutGererProgrammes == true)
-        #expect(auth.utilisateurConnecte?.role.peutExporter == true)
-        #expect(auth.utilisateurConnecte?.role.peutCreerComptes == true)
         auth.deconnexion()
 
-        // ── 5. Athlète rejoint depuis SON Apple ID : code équipe + code d'invitation ──
+        // ── 5. L'assistant rejoint depuis SON Apple ID : code équipe + invitation ──
         let sharing = CloudKitSharingService()
         let reclame = sharing.reclamerMembreLocal(
             codeEquipe: "ELANS01",
             codeInvitation: membre.recap.codeInvitation,
-            appleUserID: "002.athlete.apple",
+            appleUserID: "002.assistant.apple",
             context: context
         )
-        #expect(reclame?.id == membre.utilisateur.id, "La jonction doit réclamer la ligne roster de l'athlète")
-        #expect(reclame?.appleUserID == "002.athlete.apple")
+        #expect(reclame?.id == membre.utilisateur.id, "La jonction doit réclamer la ligne staff de l'assistant")
+        #expect(reclame?.appleUserID == "002.assistant.apple")
 
-        // ── 6. Connexion athlète via SIWA → vérifier permissions restreintes ──
-        let etatAthlete = auth.connexionApple(appleUserID: "002.athlete.apple", prenom: "", nom: "", context: context)
-        guard case .connecte = etatAthlete else {
-            Issue.record("L'athlète doit être connecté via SIWA après jonction")
+        // ── 6. Connexion assistant via SIWA — mêmes droits que le head coach (D6) ──
+        let etatAssistant = auth.connexionApple(appleUserID: "002.assistant.apple", prenom: "", nom: "", context: context)
+        guard case .connecte = etatAssistant else {
+            Issue.record("L'assistant doit être connecté via SIWA après jonction")
             return
         }
-        #expect(auth.utilisateurConnecte?.role == .etudiant)
-        #expect(auth.utilisateurConnecte?.role.peutModifierSeances == false)
-        #expect(auth.utilisateurConnecte?.role.peutGererEquipe == false)
-        #expect(auth.utilisateurConnecte?.role.peutModifierStrategies == false)
-        #expect(auth.utilisateurConnecte?.role.peutGererProgrammes == false)
-        #expect(auth.utilisateurConnecte?.role.peutExporter == false)
-        #expect(auth.utilisateurConnecte?.role.peutCreerComptes == false)
-
-        // Vérifier que le lien joueur est correct
-        #expect(auth.utilisateurConnecte?.joueurEquipeID == joueur.id)
-        #expect(joueur.utilisateurID == membre.utilisateur.id)
+        #expect(auth.utilisateurConnecte?.role == .assistantCoach)
         #expect(auth.utilisateurConnecte?.codeEcole == "ELANS01")
         auth.deconnexion()
+    }
+
+    @Test("Pivot coach-first : la jonction d'un membre .etudiant est REJETÉE")
+    func jonctionAthleteRejetee() throws {
+        let context = try creerContexteEnMemoire()
+
+        // Ligne legacy : un compte athlète pré-pivot avec code d'invitation
+        let athlete = Utilisateur(
+            identifiant: "jean.tremblay",
+            motDePasseHash: "",
+            prenom: "Jean", nom: "Tremblay",
+            role: .etudiant,
+            codeEcole: "ELANS01"
+        )
+        athlete.codeEquipe = "ELANS01"
+        athlete.codeInvitation = "ABC234"
+        context.insert(athlete)
+        try context.save()
+
+        #expect(CloudKitSharingService.roleJonctionAutorise("etudiant") == nil,
+                "Le rôle athlète ne doit plus passer le filtre de jonction")
+        #expect(CloudKitSharingService.roleJonctionAutorise("assistantCoach") == .assistantCoach)
+
+        let sharing = CloudKitSharingService()
+        let reclame = sharing.reclamerMembreLocal(
+            codeEquipe: "ELANS01",
+            codeInvitation: "ABC234",
+            appleUserID: "003.athlete.apple",
+            context: context
+        )
+        #expect(reclame == nil, "Un code d'invitation athlète legacy ne doit plus permettre de rejoindre")
+        #expect(athlete.appleUserID.isEmpty, "L'Apple ID ne doit pas être rattaché")
     }
 
     // MARK: - Identifiants uniques

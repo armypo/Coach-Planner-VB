@@ -19,7 +19,6 @@ struct StrategiesView: View {
     @State private var strategieSelectionnee: StrategieCollective?
     @State private var afficherCreation = false
     @State private var afficherFormations = false
-    @State private var afficherRapports = false
     @State private var recherche = ""
     @State private var categorieFiltre: CategorieStrategie?
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
@@ -81,31 +80,27 @@ struct StrategiesView: View {
                     }
             }
         }
-        .sheet(isPresented: $afficherRapports) {
-            NavigationStack {
-                ScoutingReportListView()
-            }
-        }
     }
 
     // MARK: - Sidebar
     private var sidebar: some View {
         List(selection: $strategieSelectionnee) {
-            // Section Rapports (Scouting)
+            // C6 (pivot) : Formations en entrée nommée — fin de l'icône
+            // person.3.fill ambiguë (collision avec « Composition » côté Matchs).
             Section {
                 Button {
-                    afficherRapports = true
+                    afficherFormations = true
                 } label: {
                     HStack(spacing: 10) {
-                        Image(systemName: "doc.text.magnifyingglass")
+                        Image(systemName: "person.3.sequence.fill")
                             .font(.body)
-                            .foregroundStyle(.red)
+                            .foregroundStyle(PaletteMat.bleu)
                             .frame(width: 28)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Rapports")
+                            Text("Formations")
                                 .font(.subheadline.weight(.medium))
                                 .foregroundStyle(.primary)
-                            Text("Analyse des adversaires")
+                            Text("5-1, 4-2, 6-2, beach et rotations")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }
@@ -117,12 +112,7 @@ struct StrategiesView: View {
                     .padding(.vertical, 4)
                 }
                 .buttonStyle(.plain)
-            } header: {
-                Label("Scouting", systemImage: "binoculars.fill")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.red)
             }
-
             // Filtre par catégorie
             filtreCategories
 
@@ -134,13 +124,14 @@ struct StrategiesView: View {
                             strategieRow(strategie)
                         }
                     }
-                    .onDelete(perform: (authService.utilisateurConnecte?.role.peutModifierStrategies ?? false) ? { indices in
+                    .onDelete(perform: (authService.utilisateurConnecte != nil) ? { indices in
                         let toDelete = indices.compactMap { i in
                             i < items.count ? items[i] : nil
                         }
                         for s in toDelete {
                             if strategieSelectionnee?.id == s.id { strategieSelectionnee = nil }
                             s.estArchivee = true
+                            s.dateModification = Date() // E2 — propager l'archivage au sweep
                         }
                     } : nil)
                 } header: {
@@ -150,6 +141,7 @@ struct StrategiesView: View {
                 }
             }
         }
+        .listStyle(.sidebar)
         .searchable(text: $recherche, prompt: "Rechercher une stratégie")
         .navigationTitle("Stratégies")
         .toolbar {
@@ -162,19 +154,8 @@ struct StrategiesView: View {
                 } label: {
                     Image(systemName: "plus")
                 }
-                .siAutorise(authService.utilisateurConnecte?.role.peutModifierStrategies ?? false)
-                .bloqueSiNonPayant(source: "creation_strategie")
             }
             // Rapports accessible via sidebar
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    afficherFormations = true
-                } label: {
-                    Image(systemName: "person.3.fill")
-                }
-                .help("Mes formations")
-                .siAutorise(authService.utilisateurConnecte?.role.peutModifierStrategies ?? false)
-            }
         }
     }
 
@@ -277,19 +258,7 @@ struct StrategiesView: View {
 
     // MARK: - Bouton retour
     private var boutonRetour: some View {
-        Button {
-            retour()
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 14, weight: .semibold))
-                Image(systemName: "volleyball.fill")
-                    .font(.system(size: 14))
-                Text("Accueil")
-                    .font(.subheadline.weight(.medium))
-            }
-            .foregroundStyle(PaletteMat.bleu)
-        }
+        BoutonRetourAccueil(couleur: PaletteMat.bleu) { retour() }
     }
 }
 

@@ -16,9 +16,8 @@ struct PlaycoApp: App {
     @State private var syncService = CloudKitSyncService()
     @State private var sharingService = CloudKitSharingService()
     @State private var analyticsService = AnalyticsService()
-    @State private var storeKitService = StoreKitService()
-    @State private var abonnementService = AbonnementService()
-    @State private var observerTransactionsTask: Task<Void, Never>? = nil
+    /// Garde processus : app_launched émis une seule fois (revue 2.2.b).
+    @MainActor static var lancementSignale = false
     @AppStorage("tutorielVu") private var tutorielVu = false
     @AppStorage("playco_wizard_en_cours") private var wizardEnCours = false
     @State private var afficherTutorielInitial = false
@@ -26,9 +25,6 @@ struct PlaycoApp: App {
     /// Message d'erreur critique affiché si aucun des 4 fallbacks ModelContainer ne réussit.
     /// Initialisé dans `init()` via `_erreurInitialisation = State(initialValue:)`.
     @State private var erreurInitialisation: String? = nil
-    /// Message d'erreur de la gate paywall (athlète bloqué, assistant bloqué).
-    /// Affiché en alert sur ChoixInitialView après déconnexion forcée.
-    @State private var erreurGate: String? = nil
 
     /// Liste des types @Model pour éviter la répétition
     private static let modeles: [any PersistentModel.Type] = [
@@ -162,15 +158,6 @@ struct PlaycoApp: App {
                         } message: {
                             Text("Un wizard de configuration a été commencé mais non terminé. Voulez-vous reprendre ou recommencer ? Les saisies précédentes ne sont pas conservées.")
                         }
-                        .alert("Accès bloqué", isPresented: Binding(
-                            get: { erreurGate != nil },
-                            set: { if !$0 { erreurGate = nil } }
-                        )) {
-                            Button("OK", role: .cancel) { erreurGate = nil }
-                        } message: {
-                            Text(erreurGate ?? "")
-                        }
-
                     case .configuration:
                         ConfigurationView(
                             onRetour: {
@@ -186,8 +173,6 @@ struct PlaycoApp: App {
                         .environment(appleSignInService)
                         .environment(sharingService)
                         .environment(analyticsService)
-                        .environment(storeKitService)
-                        .environment(abonnementService)
                         .modelContainer(container)
                         .transition(.move(edge: .trailing).combined(with: .opacity))
 
@@ -197,7 +182,6 @@ struct PlaycoApp: App {
                                 withAnimation { ecranActif = .choixInitial }
                             },
                             onConnecte: {
-                                // Gate centrale (async : peut relire le tier en Public DB).
                                 // La transition vers .app est gérée dans routerVersApp.
                                 Task { await routerVersApp() }
                             }
@@ -216,12 +200,16 @@ struct PlaycoApp: App {
                             .environment(syncService)
                             .environment(sharingService)
                             .environment(analyticsService)
-                            .environment(storeKitService)
-                            .environment(abonnementService)
                             .modelContainer(container)
                             .onAppear {
                                 analyticsService.initialiser()
-                                analyticsService.suivre(evenement: EvenementAnalytics.appLancee)
+                                MetricKitService.partage.demarrer()
+                                // Revue 2.2.b (suivi) : un seul app_launched par
+                                // lancement — pas à chaque retour sur .app.
+                                if !Self.lancementSignale {
+                                    Self.lancementSignale = true
+                                    analyticsService.suivre(evenement: EvenementAnalytics.appLancee)
+                                }
                                 syncService.demarrerSuivi()
                                 syncService.demarrerSurveillanceReseau()
                                 // Brancher le rejeu automatique de la file de publication
@@ -253,24 +241,9 @@ struct PlaycoApp: App {
                                             metadonnees: ["role": authService.utilisateurConnecte?.role.rawValue ?? "inconnu"]
                                         )
                                     }
-                                    // Paywall v2.0 : migration rôles + chargement produits + rafraîchir statut
-                                    abonnementService.migrerAssistantsVersNouveauRole(context: container.mainContext)
-                                    do {
-                                        try await storeKitService.chargerProduits()
-                                    } catch {
-                                        logger.warning("Chargement produits StoreKit échoué au démarrage: \(error.localizedDescription)")
-                                    }
-                                    await abonnementService.rafraichir(
-                                        utilisateur: authService.utilisateurConnecte,
-                                        context: container.mainContext,
-                                        storeKit: storeKitService
-                                    )
-                                    // Appliquer la gate (athlète bloqué si tier coach != .club)
+                                    // Migration one-shot héritée de v2.0 (indépendante du paywall supprimé).
+                                    MigrationRoles.migrerAssistantsVersNouveauRole(context: container.mainContext)
                                     await routerVersApp()
-                                    // Observer transactions Apple en continu (renouvellements, refunds)
-                                    if observerTransactionsTask == nil {
-                                        observerTransactionsTask = storeKitService.observerTransactions()
-                                    }
                                 }
                                 if !tutorielVu {
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
@@ -291,17 +264,28 @@ struct PlaycoApp: App {
             }
             .animation(LiquidGlassKit.springDefaut, value: splashTermine)
             .animation(LiquidGlassKit.springDefaut, value: ecranActif)
+            // 2.4-B — Mat Nuit : la nuit est LE fond de l'app (révision fondateur).
+            .preferredColorScheme(.dark)
+            // 2.3 — lien universel d'invitation, attaché à la RACINE (revue :
+            // il était perdu hors de l'écran .app). On ne fait que PRÉ-REMPLIR
+            // la jonction SIWA ; rejoindreEquipe reste seule autorité. Le rejeu
+            // (jonctionEnAttente) couvre le scan AVANT d'atteindre LoginView.
+            .onOpenURL { url in
+                #if !DEMO
+                guard let codes = LienInvitation.analyser(url) else { return }
+                LienInvitation.jonctionEnAttente = codes
+                NotificationCenter.default.post(
+                    name: .lienInvitationRecu, object: nil,
+                    userInfo: ["codeEquipe": codes.codeEquipe,
+                               "codeInvitation": codes.codeInvitation])
+                #endif
+            }
         }
     }
 
     /// Routage post-connexion vers l'app. Appelée après chaque connexion réussie
-    /// + au démarrage après `restaurerSession`.
-    ///
-    /// Modèle role-aware (v2.0.1/SIWA) : la connexion n'est JAMAIS bloquée selon le
-    /// tier — athlètes et assistants entrent toujours. Le paywall est appliqué in-app
-    /// et UNIQUEMENT pour le coach/admin (`paywallDoitBloquer`). Aucune confiance
-    /// accordée à un tier publié non signé (sécurité : pas de décision d'accès
-    /// basée sur la Public DB).
+    /// + au démarrage après `restaurerSession`. (App gratuite depuis le pivot
+    /// coach-first : aucune gate — tout utilisateur connecté entre.)
     private func routerVersApp() async {
         guard authService.utilisateurConnecte != nil else { return }
         withAnimation(LiquidGlassKit.springDefaut) { ecranActif = .app }

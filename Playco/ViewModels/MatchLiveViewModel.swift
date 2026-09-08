@@ -46,7 +46,35 @@ final class MatchLiveViewModel {
         self.tousJoueurs = joueurs
         self.codeEquipeActif = codeEquipe
         self.nousServons = seance.nousServonsEnPremier
+        restaurerSetActuel()
         chargerSet()
+    }
+
+    /// Nombre maximal de sets d'un match (indoor : au meilleur des 5).
+    static let nombreMaxDeSets = 5
+
+    /// 2.2.a — State Restoration : reprendre au set où le match était rendu
+    /// (le plus avancé entre les scores de sets — déjà en mémoire, upsertés
+    /// après chaque point par sauvegarderSet — et les PointMatch persistés),
+    /// au lieu de retomber sur le set 1 à chaque réouverture du live.
+    private func restaurerSetActuel() {
+        // Source principale : seance.sets, tenue à jour à chaque point.
+        let dernierSetScore = seance.sets.map(\.numero).max() ?? 0
+
+        // Fallback : le set le plus haut des PointMatch — fetch borné à une
+        // seule ligne (revue LO-001 : plus de scan complet de la table).
+        let seanceIDCapture = seance.id
+        var fd = FetchDescriptor<PointMatch>(
+            predicate: #Predicate { $0.seanceID == seanceIDCapture },
+            sortBy: [SortDescriptor(\.set, order: .reverse)]
+        )
+        fd.fetchLimit = 1
+        let dernierSetJoue = ((try? modelContext.fetch(fd)) ?? []).first?.set ?? 0
+
+        let restaure = max(dernierSetJoue, dernierSetScore)
+        if restaure >= 1 {
+            setActuel = min(restaure, Self.nombreMaxDeSets)
+        }
     }
 
     // MARK: - Joueurs sur le terrain

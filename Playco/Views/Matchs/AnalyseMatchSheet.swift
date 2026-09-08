@@ -54,7 +54,7 @@ struct AnalyseMatchSheet: View {
             .navigationTitle("Analyse du match")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button("Fermer") { dismiss() }
                 }
             }

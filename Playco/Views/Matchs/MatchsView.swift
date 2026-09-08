@@ -14,6 +14,7 @@ struct MatchsView: View {
 
     @Environment(\.modelContext) private var modelContext
     @Environment(AuthService.self) private var authService
+    @Environment(CloudKitSharingService.self) private var sharingService
     @Environment(\.codeEquipeActif) private var codeEquipeActif
     @Query(filter: #Predicate<Seance> { $0.estArchivee == false },
            sort: \Seance.date, order: .reverse) private var toutesSeances: [Seance]
@@ -27,9 +28,14 @@ struct MatchsView: View {
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var matchSelectionne: Seance?
     @State private var afficherNouveauMatch = false
-    @State private var afficherCalendrier = false
-    @State private var afficherHeatmap = false
-    @State private var afficherStatsRotation = false
+    @State private var afficherMatchEclair = false
+    @State private var afficherScouting = false
+    @State private var recherche = ""
+
+    /// D (uniformisation) : la suppression d'un match est une cascade
+    /// destructive (stats joueurs inversées + StatsMatch/PointMatch effacés)
+    /// — toujours confirmée, jamais au simple swipe.
+    @State private var matchASupprimer: Seance?
 
     /// Données filtrées cachées
     @State private var matchs: [Seance] = []
@@ -38,12 +44,30 @@ struct MatchsView: View {
 
     private func recalculerMatchs() {
         matchs = toutesSeances.filtreEquipe(codeEquipeActif).filter { $0.estMatch }
-        matchsAVenir = matchs.filter { $0.date > Date() }.sorted { $0.date < $1.date }
-        matchsPasses = matchs.filter { $0.date <= Date() }.sorted { $0.date > $1.date }
+        let visibles = recherche.isEmpty ? matchs : matchs.filter {
+            $0.adversaire.localizedCaseInsensitiveContains(recherche) ||
+            $0.nom.localizedCaseInsensitiveContains(recherche) ||
+            $0.lieu.localizedCaseInsensitiveContains(recherche)
+        }
+        matchsAVenir = visibles.filter { $0.date > Date() }.sorted { $0.date < $1.date }
+        matchsPasses = visibles.filter { $0.date <= Date() }.sorted { $0.date > $1.date }
+    }
+
+    /// 2.2.a — State Restoration : si l'app a été tuée pendant un match live,
+    /// resélectionne ce match pour que MatchDetailView propose la reprise.
+    /// Gardée par le rôle (revue HI-001) : un utilisateur qui ne peut pas
+    /// modifier les séances ne déclenche pas la reprise (et ne consomme pas
+    /// le marqueur du coach — il reste vivant pour la bonne session).
+    private func restaurerSelectionLive() {
+        guard peutModifier,
+              matchSelectionne == nil,
+              let id = MatchLiveRestauration.seanceEnCours(),
+              let match = matchs.first(where: { $0.id == id && !$0.statsEntrees }) else { return }
+        matchSelectionne = match
     }
 
     private var peutModifier: Bool {
-        authService.utilisateurConnecte?.role.peutModifierSeances ?? false
+        authService.utilisateurConnecte != nil
     }
 
     var body: some View {
@@ -59,31 +83,18 @@ struct MatchsView: View {
                         Button { afficherNouveauMatch = true } label: {
                             Image(systemName: "plus")
                         }
-                        .siAutorise(peutModifier)
-                        .bloqueSiNonPayant(source: "creation_match")
                     }
-                    ToolbarItem(placement: .bottomBar) {
-                        HStack(spacing: 20) {
-                            Button {
-                                afficherCalendrier = true
-                            } label: {
-                                Label("Calendrier", systemImage: "calendar")
-                                    .font(.subheadline.weight(.medium))
-                            }
-                            Button {
-                                afficherHeatmap = true
-                            } label: {
-                                Label("Heatmap", systemImage: "square.grid.3x3.fill")
-                                    .font(.subheadline.weight(.medium))
-                            }
-                            Button {
-                                afficherStatsRotation = true
-                            } label: {
-                                Label("Rotations", systemImage: "arrow.triangle.2.circlepath")
-                                    .font(.subheadline.weight(.medium))
-                            }
+                    // 2.3.2 — match éclair : un match hors calendrier en 2 champs
+                    ToolbarItem(placement: .primaryAction) {
+                        Button { afficherMatchEclair = true } label: {
+                            Image(systemName: "bolt")
                         }
+                        .accessibilityLabel("Match éclair")
+                        .accessibilityHint("Crée un match immédiat : adversaire et service, rien d'autre")
                     }
+                    // C3/C4 (pivot) : Heatmap et Rotations vivent dans le hub
+                    // Statistiques d'Équipe, le calendrier au Dock — plus de
+                    // bottomBar dans Matchs.
                 }
         } detail: {
             NavigationStack {
@@ -95,7 +106,7 @@ struct MatchsView: View {
             }
         }
         .navigationSplitViewStyle(.balanced)
-        .tint(.red)
+        .tint(MatNuit.brique) // 2.4 — le 5e espace (Matchs) en ton brique
         .sheet(isPresented: $afficherNouveauMatch) {
             NouvelMatchSheet { nom, date, adversaire, lieu in
                 let match = Seance(nom: nom, date: date, typeSeance: .match)
@@ -106,36 +117,56 @@ struct MatchsView: View {
                 matchSelectionne = match
             }
         }
-        .onAppear { recalculerMatchs() }
+        .onAppear {
+            recalculerMatchs()
+            restaurerSelectionLive()
+        }
         .onChange(of: toutesSeances) { recalculerMatchs() }
         .onChange(of: codeEquipeActif) { recalculerMatchs() }
+        .onChange(of: recherche) { recalculerMatchs() }
         .sensoryFeedback(.success, trigger: matchs.count)
-        .sheet(isPresented: $afficherCalendrier) {
-            NavigationStack {
-                CalendrierView()
+        .sheet(isPresented: $afficherMatchEclair) {
+            MatchEclairSheet { adversaire, nousServons in
+                let match = FabriqueMatch.matchEclair(adversaire: adversaire,
+                                                      nousServons: nousServons,
+                                                      codeEquipe: codeEquipeActif)
+                // Revue 2.3.2 : la composition est héritée À LA CRÉATION —
+                // « Mode en direct » direct trouve son 6 de départ, validé
+                // contre l'effectif actif ET disponible.
+                let valides = Set(joueurs.filtreEquipe(codeEquipeActif)
+                    .filter(\.estDisponible).map(\.id))
+                if let compo = FabriqueMatch.derniereComposition(
+                    parmi: toutesSeances, codeEquipe: codeEquipeActif,
+                    avant: match.id, joueursValides: valides) {
+                    match.partants = compo.partants
+                    match.liberoID = compo.liberoID
+                }
+                modelContext.insert(match)
+                matchSelectionne = match
             }
         }
-        .sheet(isPresented: $afficherHeatmap) {
+        .sheet(isPresented: $afficherScouting) {
             NavigationStack {
-                HeatmapEquipeView()
-                    .navigationTitle("Heatmap terrain")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .topBarTrailing) {
-                            Button("Fermer") { afficherHeatmap = false }
-                        }
-                    }
+                ScoutingReportListView()
             }
         }
-        .sheet(isPresented: $afficherStatsRotation) {
-            NavigationStack {
-                StatsParRotationView()
-                    .toolbar {
-                        ToolbarItem(placement: .topBarTrailing) {
-                            Button("Fermer") { afficherStatsRotation = false }
-                        }
-                    }
+        .confirmationDialog(
+            "Supprimer ce match ?",
+            isPresented: Binding(
+                get: { matchASupprimer != nil },
+                set: { if !$0 { matchASupprimer = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Supprimer le match", role: .destructive) {
+                if let match = matchASupprimer {
+                    supprimerMatch(match)
+                }
+                matchASupprimer = nil
             }
+            Button("Annuler", role: .cancel) { matchASupprimer = nil }
+        } message: {
+            Text("Les stats du box score seront retirées des cumuls des joueurs et le fil du match sera effacé. Cette action est irréversible.")
         }
     }
 
@@ -143,6 +174,37 @@ struct MatchsView: View {
 
     private var sidebarContent: some View {
         List(selection: $matchSelectionne) {
+            // C1 (pivot) : le scouting vit dans Matchs — préparé ici, consommé
+            // ici (chip « Plan de match » du détail + dashboard live).
+            Section {
+                Button {
+                    afficherScouting = true
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "binoculars.fill")
+                            .font(.body)
+                            .foregroundStyle(MatNuit.brique)
+                            .frame(width: 28)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Rapports de scouting")
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(.primary)
+                            Text("Analyse des adversaires")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                    .padding(.vertical, 4)
+                }
+                .buttonStyle(.plain)
+            } header: {
+                Text("Préparation")
+            }
+
             // Matchs à venir
             if !matchsAVenir.isEmpty {
                 Section {
@@ -153,7 +215,7 @@ struct MatchsView: View {
                         .swipeActions(edge: .trailing) {
                             if peutModifier {
                                 Button(role: .destructive) {
-                                    supprimerMatch(match)
+                                    matchASupprimer = match
                                 } label: {
                                     Label("Supprimer", systemImage: "trash")
                                 }
@@ -177,7 +239,7 @@ struct MatchsView: View {
                         .swipeActions(edge: .trailing) {
                             if peutModifier {
                                 Button(role: .destructive) {
-                                    supprimerMatch(match)
+                                    matchASupprimer = match
                                 } label: {
                                     Label("Supprimer", systemImage: "trash")
                                 }
@@ -206,7 +268,8 @@ struct MatchsView: View {
                 }
             }
         }
-        .listStyle(.insetGrouped)
+        .listStyle(.sidebar)
+        .searchable(text: $recherche, prompt: "Rechercher un match")
     }
 
     // MARK: - Ligne match
@@ -277,6 +340,26 @@ struct MatchsView: View {
     private func supprimerMatch(_ match: Seance) {
         if matchSelectionne?.id == match.id { matchSelectionne = nil }
 
+        // E′ §4 — tombstones AVANT les deletes : sans eux, les StatsMatch et
+        // PointMatch publiés par d'autres écrivains ressusciteraient à la
+        // prochaine sync (et regonfleraient les cumuls carrière).
+        if let user = authService.utilisateurConnecte {
+            sharingService.ecrivainID = user.id.uuidString
+            let code = match.codeEquipe
+            let idsStats = tousStatsMatch.filter { $0.seanceID == match.id }.map(\.id)
+            let seanceID = match.id
+            Task {
+                for statID in idsStats {
+                    await sharingService.publierSuppression(
+                        typeCible: CloudKitSharingService.RecordType.statsMatch,
+                        prefixeRecord: "stats", entiteID: statID, codeEquipe: code)
+                }
+                await sharingService.publierSuppression(
+                    typeCible: CloudKitSharingService.typeCiblePointsSeance,
+                    prefixeRecord: nil, entiteID: seanceID, codeEquipe: code)
+            }
+        }
+
         // Si stats déjà entrées → retirer les stats cumulées des joueurs
         if match.statsEntrees {
             let statsASupprimer = tousStatsMatch.filter { $0.seanceID == match.id }
@@ -303,6 +386,8 @@ struct MatchsView: View {
 
                     joueur.passesDecisives = max(0, joueur.passesDecisives - stat.passesDecisives)
                     joueur.manchettes = max(0, joueur.manchettes - stat.manchettes)
+                    // E3 — republier le cumul corrigé au prochain sweep.
+                    joueur.dateModification = Date()
                 }
                 // Supprimer la ligne StatsMatch
                 modelContext.delete(stat)
@@ -323,6 +408,7 @@ struct MatchsView: View {
 
         // Soft delete du match
         match.estArchivee = true
+        match.dateModification = Date() // E2 — propager l'archivage au sweep
         do {
             try modelContext.save()
         } catch {
@@ -331,19 +417,7 @@ struct MatchsView: View {
     }
 
     private var boutonRetour: some View {
-        Button {
-            onRetour()
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 14, weight: .semibold))
-                Image(systemName: "volleyball.fill")
-                    .font(.system(size: 14))
-                Text("Accueil")
-                    .font(.subheadline.weight(.medium))
-            }
-            .foregroundStyle(.red)
-        }
+        BoutonRetourAccueil(couleur: MatNuit.brique) { onRetour() }
     }
 }
 
@@ -361,57 +435,23 @@ struct NouvelMatchSheet: View {
 
     var body: some View {
         NavigationStack {
-            VStack(alignment: .leading, spacing: 16) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("ADVERSAIRE")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .tracking(0.5)
+            // D vague 1bis : création en Form — pattern unique des sheets.
+            Form {
+                Section("Match") {
                     TextField("Nom de l'équipe adverse", text: $adversaire)
-                        .font(.title3)
-                        .padding(14)
-                        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
                         .focused($focused)
                         .autocorrectionDisabled()
-                }
-
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("NOM DU MATCH (optionnel)")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .tracking(0.5)
-                    TextField("ex : Demi-finale", text: $nom)
-                        .padding(14)
-                        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
+                    TextField("Nom du match (optionnel) — ex : Demi-finale", text: $nom)
                         .autocorrectionDisabled()
                 }
-
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("DATE DU MATCH")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .tracking(0.5)
-                    DatePicker("", selection: $date, displayedComponents: [.date, .hourAndMinute])
-                        .datePickerStyle(.compact)
-                        .labelsHidden()
+                Section("Détails") {
+                    DatePicker("Date", selection: $date, displayedComponents: [.date, .hourAndMinute])
                         .environment(\.locale, Locale(identifier: "fr_FR"))
-                        .tint(.red)
-                }
-
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("LIEU")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .tracking(0.5)
-                    TextField("ex : Domicile, Gymnase XYZ", text: $lieu)
-                        .padding(14)
-                        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
+                        .tint(MatNuit.brique)
+                    TextField("Lieu — ex : Domicile, Gymnase XYZ", text: $lieu)
                         .autocorrectionDisabled()
                 }
-
-                Spacer()
             }
-            .padding(LiquidGlassKit.espaceLG)
             .navigationTitle("Nouveau match")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -433,5 +473,49 @@ struct NouvelMatchSheet: View {
         }
         .presentationDetents([.medium, .large])
         .onAppear { focused = true }
+    }
+}
+
+
+// MARK: - Sheet match éclair (2.3.2)
+
+/// Un match en 2 champs : l'adversaire et qui sert. Tout le reste attendra.
+struct MatchEclairSheet: View {
+    var onCreer: (String, Bool) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var adversaire = ""
+    @State private var nousServons = true
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("Adversaire", text: $adversaire)
+                        .focused($focused)
+                        .submitLabel(.done)
+                    Toggle("Nous servons en premier", isOn: $nousServons)
+                } footer: {
+                    Text("Le match est créé maintenant, daté de maintenant. Le 6 de départ du dernier match est pré-rempli — il ne reste qu'à lancer le mode en direct.")
+                }
+            }
+            .navigationTitle("Match éclair")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Annuler") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Coacher") {
+                        onCreer(adversaire, nousServons)
+                        dismiss()
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+            .onAppear { focused = true }
+        }
+        .presentationDetents([.medium])
     }
 }

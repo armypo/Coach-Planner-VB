@@ -53,7 +53,7 @@ struct ScoutingReportView: View {
     }
 
     private var peutModifier: Bool {
-        authService.utilisateurConnecte?.role.peutModifierStrategies ?? false
+        authService.utilisateurConnecte != nil
     }
 
     // MARK: - Pickers data
@@ -90,6 +90,19 @@ struct ScoutingReportView: View {
             sauvegardeTask?.cancel()
             persisterTout()
         }
+        // E2 — les champs à liaison DIRECTE sur le modèle (en-tête, tendances,
+        // notes) ne passent pas par persisterTout : signature dédiée pour le
+        // sweep de publication incrémental.
+        .onChange(of: signatureChampsDirects) { _, _ in
+            rapport.dateModification = Date()
+        }
+    }
+
+    /// E2 — signature des champs édités par liaison directe sur le modèle.
+    private var signatureChampsDirects: String {
+        "\(rapport.adversaire)|\(rapport.adversaireObserve)|\(rapport.systemJeu)|\(rapport.styleJeu)|" +
+        "\(rapport.notes)|\(rapport.tendanceService)|\(rapport.tendanceAttaque)|\(rapport.tendanceReception)|" +
+        "\(rapport.tendanceBloc)|\(rapport.dateMatch.timeIntervalSince1970)|\(rapport.seanceID?.uuidString ?? "")"
     }
 
     // MARK: - Repli / dépli
@@ -236,7 +249,6 @@ struct ScoutingReportView: View {
                             .font(.subheadline.weight(.semibold))
                     }
                     .buttonStyle(GlassButtonStyle())
-                    .siAutorise(peutModifier)
                 }
                 boutonRepli(.joueurs)
             }
@@ -289,7 +301,6 @@ struct ScoutingReportView: View {
                             .font(.subheadline.weight(.semibold))
                     }
                     .buttonStyle(GlassButtonStyle())
-                    .siAutorise(peutModifier)
                 }
                 boutonRepli(.forces)
             }
@@ -318,7 +329,6 @@ struct ScoutingReportView: View {
                                 Image(systemName: "minus.circle.fill")
                                     .foregroundStyle(PaletteMat.negatif.opacity(0.7))
                             }
-                            .siAutorise(peutModifier)
                         }
                     }
                 }
@@ -345,7 +355,6 @@ struct ScoutingReportView: View {
                             .font(.subheadline.weight(.semibold))
                     }
                     .buttonStyle(GlassButtonStyle())
-                    .siAutorise(peutModifier)
                 }
                 boutonRepli(.faiblesses)
             }
@@ -374,7 +383,6 @@ struct ScoutingReportView: View {
                                 Image(systemName: "minus.circle.fill")
                                     .foregroundStyle(PaletteMat.negatif.opacity(0.7))
                             }
-                            .siAutorise(peutModifier)
                         }
                     }
                 }
@@ -468,7 +476,6 @@ struct ScoutingReportView: View {
                             .font(.subheadline.weight(.semibold))
                     }
                     .buttonStyle(GlassButtonStyle())
-                    .siAutorise(peutModifier)
                 }
                 boutonRepli(.strategies)
             }
@@ -532,7 +539,6 @@ struct ScoutingReportView: View {
                         .font(.caption)
                         .foregroundStyle(PaletteMat.negatif.opacity(0.7))
                 }
-                .siAutorise(peutModifier)
             }
 
             TextEditor(text: strategie.description)
@@ -722,6 +728,8 @@ struct ScoutingReportView: View {
         rapport.faiblesses = faiblesses
         rapport.strategies = strategies
         rapport.tendancesZonales = tendancesZonales
+        // E2 — sweep de publication incrémental (parité assistant D6).
+        rapport.dateModification = Date()
         aDesModifications = false
     }
 }

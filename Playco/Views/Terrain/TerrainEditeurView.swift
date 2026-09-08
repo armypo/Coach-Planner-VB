@@ -77,7 +77,7 @@ struct TerrainEditeurView: View {
                     .stroke(Color.primary.opacity(0.08), lineWidth: 1))
                 .shadow(color: .black.opacity(0.05), radius: 6, y: 2)
                 .padding(.horizontal, 10)
-                .aspectRatio(orientationPortrait ? 0.5 : 2.0, contentMode: .fit)
+                .aspectRatio(orientationPortrait ? typeTerrain.ratioVertical : typeTerrain.ratioHorizontal, contentMode: .fit)
                 .animation(.spring(response: 0.4, dampingFraction: 0.85), value: orientationPortrait)
 
                 // Barre d'étapes — toujours visible sous le terrain
@@ -143,7 +143,8 @@ struct TerrainEditeurView: View {
             peutAnnuler: vm.peutAnnuler, peutRetablir: vm.peutRetablir,
             onFormation: { formation, rotation, mode in
                 vm.ajouterFormation(formation, rotation: rotation, mode: mode,
-                                    formationsPerso: formationsPerso)
+                                    formationsPerso: formationsPerso,
+                                    typeTerrain: typeTerrain)
             },
             strategiesOffensives: strategiesOffensives,
             formationsPerso: formationsPerso,
@@ -215,6 +216,26 @@ struct TerrainEditeurView: View {
                 .help("Dupliquer l'étape courante")
                 .accessibilityLabel("Dupliquer l'étape courante")
                 .accessibilityHint("Crée une nouvelle étape avec une copie du dessin et des éléments actuels")
+
+                // Bouton « Continuer » (2.3.1) : arrivées → départs de la suite
+                Button {
+                    vm.dupliquerEtapeContinuer(dessinData: &dessinData, elementsData: &elementsData)
+                    etapesData = vm.sauvegarderEtapes()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.forward.square")
+                            .font(.system(size: 12, weight: .bold))
+                        Text("Continuer")
+                            .font(.caption.weight(.medium))
+                    }
+                    .foregroundStyle(.orange)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+                }
+                .help("Nouvelle étape : les arrivées deviennent les départs")
+                .accessibilityLabel("Continuer vers une nouvelle étape")
+                .accessibilityHint("Déplace les joueurs au bout de leurs trajectoires et efface les traits")
             }
             .padding(.horizontal, 6)
             .padding(.vertical, 4)

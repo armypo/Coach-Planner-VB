@@ -29,11 +29,12 @@ struct LoginView: View {
     /// conservé pour la jointure d'équipe par code d'invitation.
     @State private var appleUserIDEnAttente: String?
 
-    // Rejoindre une équipe (athlète/assistant/coach invité, cross-Apple-ID)
+    // Rejoindre une équipe (assistant, cross-Apple-ID)
     @State private var afficherRejoindre = false
     @State private var codeEquipeSaisi = ""
     @State private var codeInvitationSaisi = ""
     @State private var rejoindreEnCours = false
+    @State private var nomEquipeAConfirmer: String?
 
     var body: some View {
         ZStack {
@@ -118,7 +119,7 @@ struct LoginView: View {
         } onCompletion: { resultat in
             traiterApple(resultat)
         }
-        .signInWithAppleButtonStyle(.black)
+        .signInWithAppleButtonStyle(.whiteOutline)
         .frame(height: LiquidGlassKit.hauteurBoutonApple)
         .clipShape(RoundedRectangle(cornerRadius: LiquidGlassKit.rayonMoyen))
     }
@@ -142,7 +143,7 @@ struct LoginView: View {
             onConnecte?()
         case .compteInconnu(let appleUserID, _, _):
             appleUserIDEnAttente = appleUserID
-            authService.erreur = "Aucun compte lié à cet Apple ID. Rejoins ton équipe avec ton code d'invitation, ou crée une équipe."
+            authService.erreur = "Aucun compte lié à cet Apple ID. Rejoignez votre équipe avec votre code d'invitation d'assistant, ou créez une équipe."
         case .echec(let message):
             authService.erreur = message
         }
@@ -169,6 +170,28 @@ struct LoginView: View {
             codeInvitationSaisi = ""
             rejoindreEnCours = false
         }) { sheetRejoindre }
+        // 2.3 — lien universel scanné : pré-remplit et ouvre la jonction.
+        .onReceive(NotificationCenter.default.publisher(for: .lienInvitationRecu)) { notification in
+            guard let codeEquipe = notification.userInfo?["codeEquipe"] as? String,
+                  let codeInvitation = notification.userInfo?["codeInvitation"] as? String else { return }
+            appliquerLienInvitation(codeEquipe: codeEquipe, codeInvitation: codeInvitation)
+        }
+        // Rejeu (revue) : lien scanné avant que cet écran existe.
+        .onAppear {
+            if let attente = LienInvitation.jonctionEnAttente {
+                LienInvitation.jonctionEnAttente = nil
+                appliquerLienInvitation(codeEquipe: attente.codeEquipe,
+                                        codeInvitation: attente.codeInvitation)
+            }
+        }
+    }
+
+    /// Revue : ne jamais écraser une jonction en cours ni une saisie active.
+    private func appliquerLienInvitation(codeEquipe: String, codeInvitation: String) {
+        guard !rejoindreEnCours else { return }
+        codeEquipeSaisi = codeEquipe
+        codeInvitationSaisi = codeInvitation
+        afficherRejoindre = true
     }
 
     private var sheetRejoindre: some View {
@@ -182,9 +205,9 @@ struct LoginView: View {
                         .textInputAutocapitalization(.characters)
                         .autocorrectionDisabled()
                 } header: {
-                    Text("Codes fournis par ton coach")
+                    Text("Codes fournis par le head coach")
                 } footer: {
-                    Text("Ton coach te communique le code d'équipe et ton code d'invitation personnel.")
+                    Text("Le head coach vous communique le code d'équipe et votre code d'invitation personnel d'assistant.")
                 }
                 if let erreur = authService.erreur {
                     Text(erreur).font(.caption).foregroundStyle(.red)
@@ -197,10 +220,41 @@ struct LoginView: View {
                     Button("Annuler") { afficherRejoindre = false }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Rejoindre") { Task { await rejoindre() } }
+                    Button("Rejoindre") { Task { await verifierPuisConfirmer() } }
                         .disabled(codeEquipeSaisi.isEmpty || codeInvitationSaisi.isEmpty || rejoindreEnCours)
                 }
             }
+            // Revue (anti-phishing QR) : on montre QUELLE équipe avant le
+            // rattachement irréversible de l'Apple ID.
+            .alert("Rejoindre « \(nomEquipeAConfirmer ?? "") » ?", isPresented: Binding(
+                get: { nomEquipeAConfirmer != nil },
+                set: { if !$0 { nomEquipeAConfirmer = nil } }
+            )) {
+                Button("Rejoindre") {
+                    nomEquipeAConfirmer = nil
+                    Task { await rejoindre() }
+                }
+                Button("Annuler", role: .cancel) { nomEquipeAConfirmer = nil }
+            } message: {
+                Text("Vérifie que c'est bien ton équipe avant de lier ton compte Apple.")
+            }
+        }
+    }
+
+    /// Résout le nom PUBLIC de l'équipe avant le rattachement (anti-phishing).
+    @MainActor
+    private func verifierPuisConfirmer() async {
+        authService.erreur = nil
+        rejoindreEnCours = true
+        defer { rejoindreEnCours = false }
+        do {
+            if let nom = try await sharingService.nomEquipePublique(codeEquipe: codeEquipeSaisi), !nom.isEmpty {
+                nomEquipeAConfirmer = nom
+            } else {
+                authService.erreur = "Aucune équipe trouvée avec ce code."
+            }
+        } catch {
+            authService.erreur = "Réseau indisponible — réessaie."
         }
     }
 

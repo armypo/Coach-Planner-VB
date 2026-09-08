@@ -55,6 +55,8 @@ final class ProfilCoach {
     var dateCreation: Date = Date()
 
     /// Masquer le contenu des pratiques pour les athlètes
+    /// GELÉ (pivot coach-first) : plus jamais écrit ni lu — conservé au schéma
+    /// CloudKit (suppression = migration destructive).
     var masquerPratiquesAthletes: Bool = false
 
     // Relation

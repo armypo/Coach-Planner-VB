@@ -47,7 +47,6 @@ struct DashboardMatchLiveView: View {
     @Query(filter: #Predicate<JoueurEquipe> { $0.estActif == true },
            sort: \JoueurEquipe.numero) private var tousJoueurs: [JoueurEquipe]
 
-    @Query private var toutesPermissions: [StaffPermissions]
     @State private var afficherSubstitutions = false
     @State private var afficherRotation = false
     @State private var afficherDetailsJoueurs = false
@@ -161,15 +160,6 @@ struct DashboardMatchLiveView: View {
         .sorted { $0.points > $1.points }
 
         cache = s
-    }
-
-    private var lectureSeule: Bool {
-        guard let user = authService.utilisateurConnecte else { return true }
-        if user.role == .admin || user.role == .coach { return false }
-        if let perms = toutesPermissions.first(where: { $0.assistantID == user.id && $0.codeEquipe == codeEquipeActif }) {
-            return !perms.peutGererStats
-        }
-        return true
     }
 
     var body: some View {

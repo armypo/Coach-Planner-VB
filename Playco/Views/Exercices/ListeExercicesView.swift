@@ -4,13 +4,27 @@
 
 import SwiftUI
 import SwiftData
+import os
+
+private let loggerListeExercices = Logger(subsystem: "com.origotech.playco", category: "ListeExercicesView")
+
+extension URL: @retroactive Identifiable {
+    public var id: String { absoluteString }
+}
 import PencilKit
 
 struct ListeExercicesView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.editMode) private var editMode
     @Environment(AuthService.self) private var authService
+    @Environment(CloudKitSharingService.self) private var sharingService
     @Bindable var seance: Seance
+    @State private var afficherPresences = false
+    @Environment(\.codeEquipeActif) private var codeEquipeActif
+    @Query(filter: #Predicate<JoueurEquipe> { $0.estActif == true },
+           sort: \JoueurEquipe.numero) private var tousJoueurs: [JoueurEquipe]
+    @State private var urlPlanPratique: URL?
+    @State private var erreurPlanPratique = false
     @State private var afficherNouvelExercice = false
     @State private var afficherBibliotheque = false
     @State private var exerciceARenommer: Exercice?
@@ -26,8 +40,25 @@ struct ListeExercicesView: View {
         (seance.exercices ?? []).reduce(0) { $0 + $1.duree }
     }
 
-    private var peutModifier: Bool {
-        authService.utilisateurConnecte?.role.peutModifierSeances ?? false
+    /// D6 (pivot coach-first) : tous les coachs connectés ont les mêmes droits —
+    /// seule garde résiduelle : une session valide.
+    private var peutModifier: Bool { authService.utilisateurConnecte != nil }
+
+    /// Génère le PDF dans un fichier temporaire (nom basé sur l'id — revue :
+    /// pas de collision d'homonymes ni de séparateurs de chemin) et ouvre la
+    /// feuille de partage. Régénéré à chaque tap : jamais de plan périmé.
+    private func genererPlanPratique() {
+        let data = PDFExportService.genererPlanPratique(
+            seance: seance, joueurs: tousJoueurs.filtreEquipe(codeEquipeActif))
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Plan-\(seance.id.uuidString).pdf")
+        do {
+            try data.write(to: url, options: .atomic)
+            urlPlanPratique = url
+        } catch {
+            loggerListeExercices.error("Écriture du plan de pratique échouée : \(error.localizedDescription)")
+            erreurPlanPratique = true
+        }
     }
 
     var body: some View {
@@ -40,7 +71,55 @@ struct ListeExercicesView: View {
         }
         .navigationTitle(seance.nom)
         .navigationBarTitleDisplayMode(.large)
+        .sheet(item: $urlPlanPratique) { url in
+            NavigationStack {
+                VStack(spacing: 16) {
+                    Text("Le plan d'une page est prêt : heures, diagrammes, consignes et présences à cocher.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+                    ShareLink("Partager le plan de pratique", item: url)
+                        .buttonStyle(.borderedProminent)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .navigationTitle("Plan de pratique")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Fermer") { urlPlanPratique = nil }
+                    }
+                }
+            }
+            .presentationDetents([.medium])
+        }
+        .sheet(isPresented: $afficherPresences) {
+            PresencesView(seance: seance)
+        }
+        .alert("Impossible de générer le plan", isPresented: $erreurPlanPratique) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("Réessaie — si le problème persiste, libère de l'espace sur l'iPad.")
+        }
         .toolbar {
+            // 2.6.2 — le papier vit encore dans les gymnases : plan de pratique
+            // une page. Revue : UN geste, régénération À CHAQUE tap (jamais de
+            // PDF périmé), erreurs affichées.
+            ToolbarItem(placement: .secondaryAction) {
+                if !(seance.exercices ?? []).isEmpty {
+                    Button("Plan de pratique") { genererPlanPratique() }
+                }
+            }
+            // C7 (pivot) : les présences se prennent ICI, l'écran où le coach
+            // est pendant la pratique — plus seulement via le contextMenu de la
+            // liste des séances.
+            ToolbarItem(placement: .secondaryAction) {
+                Button {
+                    afficherPresences = true
+                } label: {
+                    Label("Présences", systemImage: "checklist")
+                }
+            }
             ToolbarItem(placement: .primaryAction) {
                 HStack(spacing: 8) {
                     if peutModifier {
@@ -254,6 +333,18 @@ struct ListeExercicesView: View {
     }
 
     private func supprimerExercice(_ exercice: Exercice) {
+        // E′ §4 — tombstone : sans lui, les copies publiées par les autres
+        // coachs feraient ressusciter l'exercice à la prochaine sync.
+        if let user = authService.utilisateurConnecte {
+            sharingService.ecrivainID = user.id.uuidString
+            let exerciceID = exercice.id
+            let code = seance.codeEquipe
+            Task {
+                await sharingService.publierSuppression(
+                    typeCible: CloudKitSharingService.RecordType.exercice,
+                    prefixeRecord: "exercice", entiteID: exerciceID, codeEquipe: code)
+            }
+        }
         seance.exercices?.removeAll { $0.id == exercice.id }
         modelContext.delete(exercice)
         reordonner()

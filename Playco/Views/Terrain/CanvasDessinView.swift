@@ -60,6 +60,10 @@ struct CanvasDessinView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> PKCanvasView {
         let canvas = PKCanvasView()
+        // Revue 2.4 : le fond du terrain est un asset CLAIR fixe — sans ça,
+        // PencilKit ré-adapte l'encre au trait sombre et les dessins existants
+        // (noirs) deviennent quasi blancs sur le parquet (contraste ~1,9:1).
+        canvas.overrideUserInterfaceStyle = .light
         canvas.drawing = drawing
         canvas.backgroundColor = .clear
         canvas.isOpaque = false

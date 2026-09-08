@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		F257B2FE2FEAACA6004F19FC /* StoreKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F272CB452FB728D2006EC6E9 /* StoreKit.framework */; };
+		DDDD000000000000000000A3 /* TelemetryDeck in Frameworks */ = {isa = PBXBuildFile; productRef = DDDD000000000000000000A2 /* TelemetryDeck */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -22,7 +22,6 @@
 
 /* Begin PBXFileReference section */
 		A1B2C3D40002000100000001 /* PlaycoTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PlaycoTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		F272CB452FB728D2006EC6E9 /* StoreKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = StoreKit.framework; path = System/Library/Frameworks/StoreKit.framework; sourceTree = SDKROOT; };
 		F2738D612F6AFFEE0039653D /* Playco.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Playco.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -51,7 +50,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				F257B2FE2FEAACA6004F19FC /* StoreKit.framework in Frameworks */,
+				DDDD000000000000000000A3 /* TelemetryDeck in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -61,7 +60,6 @@
 		F272CB442FB728D2006EC6E9 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
-				F272CB452FB728D2006EC6E9 /* StoreKit.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -128,6 +126,7 @@
 			);
 			name = Playco;
 			packageProductDependencies = (
+				DDDD000000000000000000A2 /* TelemetryDeck */,
 			);
 			productName = Playco;
 			productReference = F2738D612F6AFFEE0039653D /* Playco.app */;
@@ -164,6 +163,9 @@
 			);
 			mainGroup = F2738D582F6AFFEE0039653D;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				DDDD000000000000000000A1 /* XCRemoteSwiftPackageReference "SwiftSDK" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = F2738D622F6AFFEE0039653D /* Products */;
 			projectDirPath = "";
@@ -450,6 +452,25 @@
 			name = Release;
 		};
 /* End XCBuildConfiguration section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		DDDD000000000000000000A1 /* XCRemoteSwiftPackageReference "SwiftSDK" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/TelemetryDeck/SwiftSDK";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		DDDD000000000000000000A2 /* TelemetryDeck */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = DDDD000000000000000000A1 /* XCRemoteSwiftPackageReference "SwiftSDK" */;
+			productName = TelemetryDeck;
+		};
+/* End XCSwiftPackageProductDependency section */
 
 /* Begin XCConfigurationList section */
 		A1B2C3D4000A000100000001 /* Build configuration list for PBXNativeTarget "PlaycoTests" */ = {

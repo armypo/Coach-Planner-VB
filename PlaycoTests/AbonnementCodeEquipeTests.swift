@@ -38,12 +38,12 @@ struct AbonnementCodeEquipeTests {
                              codeEquipe: "EQU-1",
                              tier: .pro,
                              type: .annuel,
-                             produitIAPID: IdentifiantsIAP.proAnnuel,
+                             produitIAPID: "ca.origotech.playco.pro.yearly",
                              appStoreTransactionID: "tx-123",
                              dateExpiration: .distantFuture)
         #expect(abo.tier == .pro)
         #expect(abo.type == .annuel)
         #expect(abo.codeEquipe == "EQU-1")
-        #expect(abo.produitIAPID == IdentifiantsIAP.proAnnuel)
+        #expect(abo.produitIAPID == "ca.origotech.playco.pro.yearly")
     }
 }

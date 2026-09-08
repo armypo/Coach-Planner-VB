@@ -159,6 +159,18 @@ struct BibliothequeDetailView: View {
         .onChange(of: exercice.dessinData) { _, _ in aDesModifications = true }
         .onChange(of: exercice.elementsData) { _, _ in aDesModifications = true }
         .onChange(of: exercice.notes) { _, _ in aDesModifications = true }
+        // E2 — toute édition partagée (terrain, textes, catégorie, durée) bump
+        // dateModification pour le sweep de publication. estFavori exclu
+        // (préférence personnelle, non synchronisée).
+        .onChange(of: signatureContenu) { _, _ in
+            exercice.dateModification = Date()
+        }
+    }
+
+    /// E2 — signature du contenu éditable partagé.
+    private var signatureContenu: String {
+        "\(exercice.nom)|\(exercice.categorie)|\(exercice.notes)|\(exercice.notesCoach)|\(exercice.duree)|" +
+        "\(exercice.dessinData?.hashValue ?? 0)|\(exercice.elementsData?.hashValue ?? 0)|\(exercice.etapesData?.hashValue ?? 0)"
     }
 
     // MARK: - Notes coach (sous le terrain)

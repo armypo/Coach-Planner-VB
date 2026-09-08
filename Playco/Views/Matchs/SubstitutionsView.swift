@@ -70,7 +70,7 @@ struct SubstitutionsView: View {
             .navigationTitle("Substitutions")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button("Fermer") { dismiss() }
                 }
             }

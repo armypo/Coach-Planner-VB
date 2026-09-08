@@ -145,7 +145,7 @@ If you are a parent or guardian and discover that a child under 14 has created a
 
 ## 11. Cookies and Trackers
 
-Playco **uses no cookies, trackers, advertising pixels, or third-party analytics SDKs**. No behavioral analysis is performed.
+Playco **uses no cookies, trackers, or advertising pixels**. One privacy-first analytics SDK, TelemetryDeck (Germany), receives only anonymized, aggregated usage signals — never a name, identifier, email, or team code. No behavioral analysis is performed.
 
 ---
 

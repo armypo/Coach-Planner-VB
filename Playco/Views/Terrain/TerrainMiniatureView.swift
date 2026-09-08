@@ -21,13 +21,27 @@ struct TerrainMiniatureView: View {
             RoundedRectangle(cornerRadius: 4)
                 .stroke(typeTerrain == .beach ? Color.red.opacity(0.5) : Color.white.opacity(0.5), lineWidth: 0.5)
 
-            // Filet vertical
-            Rectangle()
-                .fill(Color.white.opacity(0.6))
-                .frame(width: 1.5)
+            // Filet : central (plein terrain) ou au bord gauche (demi-terrain — revue 2.3.1)
+            if typeTerrain == .demiTerrain {
+                HStack(spacing: 0) {
+                    Rectangle().fill(Color.white.opacity(0.8)).frame(width: 2)
+                    Spacer()
+                }
+            } else {
+                Rectangle()
+                    .fill(Color.white.opacity(0.6))
+                    .frame(width: 1.5)
+            }
 
             // Lignes d'attaque (indoor uniquement)
-            if typeTerrain == .indoor {
+            if typeTerrain == .demiTerrain {
+                // Ligne d'attaque unique au tiers
+                HStack(spacing: 0) {
+                    Spacer().frame(width: taille / 3)
+                    Rectangle().fill(Color.white.opacity(0.4)).frame(width: 0.5)
+                    Spacer()
+                }
+            } else if typeTerrain == .indoor {
                 HStack {
                     Spacer()
                         .frame(width: taille * 0.165)
@@ -89,7 +103,7 @@ struct TerrainMiniatureView: View {
                 }
             }
         }
-        .frame(width: taille, height: taille / 2)
+        .frame(width: taille, height: typeTerrain == .demiTerrain ? taille : taille / 2)
         .clipShape(RoundedRectangle(cornerRadius: 4))
         .onAppear {
             guard let d = elementsData,

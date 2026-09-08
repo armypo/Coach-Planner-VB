@@ -109,7 +109,6 @@ struct CarteJoueurAdverseEditable: View {
                     .font(.caption)
                     .foregroundStyle(.red.opacity(0.7))
             }
-            .siAutorise(peutModifier)
         }
     }
 

@@ -11,6 +11,7 @@ struct EquipeView: View {
 
     @Environment(\.modelContext) private var contexte
     @Environment(AuthService.self) private var authService
+    @Environment(CloudKitSharingService.self) private var sharingService
     @Environment(\.codeEquipeActif) private var codeEquipeActif
     @Query(sort: \JoueurEquipe.numero) private var tousJoueurs: [JoueurEquipe]
     @Query(filter: #Predicate<Seance> { $0.estArchivee == false },
@@ -73,7 +74,7 @@ struct EquipeView: View {
             }
         }
         .navigationSplitViewStyle(.balanced)
-        .tint(.green)
+        .tint(PaletteMat.vert)
         .sensoryFeedback(.success, trigger: joueurs.count)
         .sheet(isPresented: $afficherAjout) {
             NouveauJoueurView { joueur in
@@ -123,6 +124,15 @@ struct EquipeView: View {
                     Label("Palmarès & records", systemImage: "trophy.fill")
                         .font(.subheadline.weight(.medium))
                 }
+                // C8 (pivot) : les exports CSV vivent dans le hub, plus
+                // derrière une icône de toolbar anonyme.
+                Button {
+                    afficherExport = true
+                } label: {
+                    Label("Exports CSV", systemImage: "square.and.arrow.up")
+                        .font(.subheadline.weight(.medium))
+                }
+                .buttonStyle(.plain)
             }
 
             // Joueurs par poste (filtrés par recherche)
@@ -139,7 +149,7 @@ struct EquipeView: View {
                                 joueurRow(j)
                             }
                         }
-                        .onDelete(perform: (authService.utilisateurConnecte?.role.peutGererEquipe ?? false) ? { indices in
+                        .onDelete(perform: (authService.utilisateurConnecte != nil) ? { indices in
                             let toDelete = indices.compactMap { i in
                                 i < joueursPoste.count ? joueursPoste[i] : nil
                             }
@@ -151,6 +161,18 @@ struct EquipeView: View {
                                     )
                                     if let utilisateur = try? contexte.fetch(descriptor).first {
                                         utilisateur.joueurEquipeID = nil
+                                    }
+                                }
+                                // E′ §4 — tombstone : les copies JoueurPartage
+                                // des autres coachs ne le feront pas ressusciter.
+                                if let user = authService.utilisateurConnecte {
+                                    sharingService.ecrivainID = user.id.uuidString
+                                    let joueurID = joueur.id
+                                    let code = codeEquipeActif
+                                    Task {
+                                        await sharingService.publierSuppression(
+                                            typeCible: CloudKitSharingService.RecordType.joueur,
+                                            prefixeRecord: "joueur", entiteID: joueurID, codeEquipe: code)
                                     }
                                 }
                                 contexte.delete(joueur)
@@ -174,12 +196,12 @@ struct EquipeView: View {
                 } description: {
                     Text("Ajoutez des joueurs à votre équipe")
                 } actions: {
-                    if authService.utilisateurConnecte?.role.peutGererEquipe ?? false {
+                    if authService.utilisateurConnecte != nil {
                         Button("Nouveau joueur", systemImage: "plus") {
                             afficherAjout = true
                         }
                         .buttonStyle(.borderedProminent)
-                        .tint(.green)
+                        .tint(PaletteMat.vert)
                     }
                 }
             }
@@ -198,20 +220,15 @@ struct EquipeView: View {
             }
         }
         .navigationTitle("Équipe")
+        .listStyle(.sidebar)
         .searchable(text: $recherche, prompt: "Rechercher un joueur")
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 boutonRetour
             }
             ToolbarItem(placement: .primaryAction) {
-                HStack(spacing: LiquidGlassKit.espaceSM) {
-                    Button { afficherExport = true } label: {
-                        Image(systemName: "square.and.arrow.up")
-                    }
-                    Button { afficherAjout = true } label: {
-                        Image(systemName: "plus")
-                    }
-                    .siAutorise(authService.utilisateurConnecte?.role.peutGererEquipe ?? false)
+                Button { afficherAjout = true } label: {
+                    Image(systemName: "plus")
                 }
             }
         }
@@ -281,19 +298,7 @@ struct EquipeView: View {
 
     // MARK: - Bouton retour
     private var boutonRetour: some View {
-        Button {
-            retour()
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 14, weight: .semibold))
-                Image(systemName: "volleyball.fill")
-                    .font(.system(size: 14))
-                Text("Accueil")
-                    .font(.subheadline.weight(.medium))
-            }
-            .foregroundStyle(.green)
-        }
+        BoutonRetourAccueil(couleur: PaletteMat.vert) { retour() }
     }
 }
 

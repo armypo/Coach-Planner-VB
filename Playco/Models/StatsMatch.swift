@@ -15,6 +15,10 @@ final class StatsMatch {
     /// Code équipe — filtre multi-équipe
     var codeEquipe: String = ""
 
+    /// E3 — sweep de publication incrémental (parité assistant D6).
+    /// Champ additif CloudKit-safe (défaut sur la déclaration).
+    var dateModification: Date = Date()
+
     // Attaque
     var kills: Int = 0
     var erreursAttaque: Int = 0
