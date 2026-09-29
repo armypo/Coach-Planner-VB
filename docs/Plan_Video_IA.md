@@ -82,7 +82,7 @@ horodatage;etiquette;resultat;periode
 2026-09-29T19:04:12.350-04:00;Kill;pourNous;1
 ```
 
-**Vidéo YouTube** : l'outil lit un fichier local ; il ne télécharge rien. Tes propres vidéos : YouTube Studio → Télécharger. Télécharger la vidéo d'un autre enfreint les conditions de YouTube ; dans l'APP, importer depuis YouTube est interdit par l'App Store (règle 5.2.3) — l'app n'importera que depuis Photos/Fichiers. Sur une vidéo du web, la date du fichier n'est jamais fiable (ré-encodée) et la caméra bouge : la **compensation de caméra** (panoramiques retirés, coupures de montage ignorées) est active par défaut ; `--camera-fixe` la désactive pour comparer. Limite connue : les ralentis/reprises d'une diffusion télé peuvent être pris pour des échanges.
+**Vidéo YouTube** : l'outil Swift lit un fichier local ; le **site `web/`** (section plus bas) prend directement un lien YouTube. Télécharger la vidéo d'un autre enfreint les conditions de YouTube ; dans l'APP, importer depuis YouTube est interdit par l'App Store (règle 5.2.3) — l'app n'importera que depuis Photos/Fichiers. Sur une vidéo du web, la date du fichier n'est jamais fiable (ré-encodée) et la caméra bouge : la **compensation de caméra** (panoramiques retirés, coupures de montage ignorées) est active par défaut ; `--camera-fixe` la désactive pour comparer. Limite connue : les ralentis/reprises d'une diffusion télé peuvent être pris pour des échanges.
 
 ### Résultats sur données SIMULÉES (pas encore de vraie vidéo de match)
 
@@ -105,6 +105,20 @@ horodatage;etiquette;resultat;periode
 | UI | Import (PhotosPicker/Fichiers), lecteur à pastilles, filtres, export/partage de montage |
 | **Vraie vidéo** | Filmer 2-3 matchs avec stats live → banc d'essai réel, régler seuils et fenêtre (valeurs actuelles ESTIMÉES) |
 | IA N2 | Suivi du ballon (modèles open source YOLO → Core ML), mesuré au même banc d'essai |
+| Site | Premier vrai lien YouTube (job CI `youtube`) ; analyse Claude complète avec une clé API ; noms d'équipes et tendances d'un match à l'autre |
+
+## Site d'analyse IA : `web/` (lien YouTube → rapport)
+
+Python (FastAPI + yt-dlp + ffmpeg + numpy + SDK Anthropic), hors de l'app. Mode d'emploi : `web/README.md`.
+
+| Étape | Moteur | Étiquette |
+|---|---|---|
+| Échanges, sets, temps de jeu | port numpy du détecteur Swift (mouvement compensé, seuils locaux, sifflets FFT, fusion) | MESURÉ |
+| Chaque échange | Claude vision, ~1 image / 1,2 s, sortie JSON validée (service, contacts, fin, gagnant, zone/type d'attaque, réception 0-3, observations) | ESTIMÉ |
+| Stats par camp, tendances (score par set, sideout glissant, pente des durées) | code | CALCULÉ |
+| Synthèse (forces, faiblesses, recommandations) | Claude, à partir des chiffres calculés | ESTIMÉ |
+
+Rapport : lecteur intégré, chiffres, graphiques (Chart.js, palette validée sur fond sombre), tableau des échanges cliquable (saute au moment), historique des matchs. Vidéo YouTube supprimée après l'analyse. Tests : 18 (vidéos générées, IA factice) ; CI `.github/workflows/playco-web.yml`. Coût IA ESTIMÉ ~2-3 $ / match de ~50 échanges.
 
 ## Sources
 
