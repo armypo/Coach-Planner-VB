@@ -43,11 +43,11 @@ public enum JeuDonnees {
         inclureJoueur: Bool = false
     ) throws -> [EchantillonEntrainement] {
         guard manifeste.consentementEntrainementIA else { throw ErreurJeuDonnees.consentementAbsent }
-        return IndexVideo.chapitres(evenements, alignement: manifeste.alignement, fenetre: manifeste.fenetre).map { c in
+        return IndexVideo.chapitres(evenements, fichiers: manifeste.alignements, fenetre: manifeste.fenetre).map { c in
             EchantillonEntrainement(
                 versionSchema: EchantillonEntrainement.versionSchemaActuelle,
                 seanceID: manifeste.seanceID,
-                fichierVideo: manifeste.nomFichierVideo,
+                fichierVideo: manifeste.fichiers[c.indexFichier].nomFichier,
                 debut: c.debut,
                 fin: c.fin,
                 instant: c.instant,

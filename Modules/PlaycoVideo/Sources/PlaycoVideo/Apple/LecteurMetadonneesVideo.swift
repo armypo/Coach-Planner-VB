@@ -12,13 +12,26 @@
 import AVFoundation
 import Foundation
 
+/// D'où vient la date de création — détermine la confiance du calage initial.
+public enum OrigineDateCreation: String, Hashable, Sendable {
+    /// Clé caméra `com.apple.quicktime.creationdate` : instant du tournage.
+    case cameraQuickTime
+    /// En-tête du conteneur (mvhd) : instant d'ÉCRITURE du fichier — faux
+    /// après un ré-encodage (partage, export) ; à recaler automatiquement.
+    case enTeteConteneur
+}
+
 public struct MetadonneesVideo: Hashable, Sendable {
     public var dateCreation: Date?
+    public var origineDate: OrigineDateCreation?
     public var duree: Double
     public var largeur: Int
     public var hauteur: Int
     public var imagesParSeconde: Double
     public var aUnePisteAudio: Bool
+
+    /// Vrai seulement pour la date du tournage (clé caméra).
+    public var dateFiable: Bool { origineDate == .cameraQuickTime }
 }
 
 public enum ErreurVideo: Error, Equatable {
@@ -39,8 +52,10 @@ public enum LecteurMetadonneesVideo {
         let taille = try await piste.load(.naturalSize)
         let cadence = try await piste.load(.nominalFrameRate)
         let audio = try await asset.loadTracks(withMediaType: .audio)
+        let date = try await dateCreation(asset)
         return MetadonneesVideo(
-            dateCreation: try await dateCreation(asset),
+            dateCreation: date?.date,
+            origineDate: date?.origine,
             duree: duree.isFinite ? duree : 0,
             largeur: Int(abs(taille.width)),
             hauteur: Int(abs(taille.height)),
@@ -55,17 +70,25 @@ public enum LecteurMetadonneesVideo {
 
     // MARK: - Date de création
 
-    static func dateCreation(_ asset: AVURLAsset) async throws -> Date? {
-        var candidats: [AVMetadataItem] = []
-        if let item = try await asset.load(.creationDate) { candidats.append(item) }
+    static func dateCreation(_ asset: AVURLAsset) async throws -> (date: Date, origine: OrigineDateCreation)? {
+        // 1. Clé caméra explicite : instant du tournage.
         let metadonnees = try await asset.load(.metadata)
-        candidats += metadonnees.filter {
-            $0.identifier == .quickTimeMetadataCreationDate || $0.commonKey == .commonKeyCreationDate
+        for item in metadonnees where item.identifier == .quickTimeMetadataCreationDate {
+            if let date = try await valeurDate(item) { return (date, .cameraQuickTime) }
         }
-        for item in candidats {
-            if let date = try await item.load(.dateValue) { return date }
-            if let texte = try await item.load(.stringValue), let date = analyserDate(texte) { return date }
+        // 2. Sinon, date « commune » : en pratique l'en-tête du conteneur.
+        if let item = try await asset.load(.creationDate), let date = try await valeurDate(item) {
+            return (date, .enTeteConteneur)
         }
+        for item in metadonnees where item.commonKey == .commonKeyCreationDate {
+            if let date = try await valeurDate(item) { return (date, .enTeteConteneur) }
+        }
+        return nil
+    }
+
+    static func valeurDate(_ item: AVMetadataItem) async throws -> Date? {
+        if let date = try await item.load(.dateValue) { return date }
+        if let texte = try await item.load(.stringValue) { return analyserDate(texte) }
         return nil
     }
 

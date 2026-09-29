@@ -79,6 +79,31 @@ public enum CalageAutomatique {
             appariementsConcurrent: concurrent)
     }
 
+    /// Recherche LARGE (date de fichier non fiable : ré-encodage, horloge de
+    /// caméra jamais réglée) : passe grossière sur ±`plage`, puis passe fine
+    /// autour du meilleur pic. Le concurrent vient de la passe grossière (la
+    /// seule qui voit les décalages lointains).
+    public static func estimerLarge(
+        taps: [Double],
+        finsEchanges: [Double],
+        delaiMax: Double = 8,
+        plage: Double = 4 * 3600,
+        pasGrossier: Double = 2
+    ) -> ResultatCalage? {
+        guard let grossier = estimer(taps: taps, finsEchanges: finsEchanges, delaiMax: delaiMax,
+                                     plage: plage, pas: pasGrossier) else { return nil }
+        guard grossier.appariements > 0 else { return grossier }
+        let recales = taps.map { $0 + grossier.decalage }
+        guard let fin = estimer(taps: recales, finsEchanges: finsEchanges, delaiMax: delaiMax,
+                                plage: delaiMax + 2 * pasGrossier, pas: 0.25),
+              fin.appariements >= grossier.appariements else { return grossier }
+        return ResultatCalage(
+            decalage: grossier.decalage + fin.decalage,
+            appariements: fin.appariements,
+            couverture: fin.couverture,
+            appariementsConcurrent: grossier.appariementsConcurrent)
+    }
+
     /// Alignement corrigé par un calage automatique.
     public static func appliquer(_ resultat: ResultatCalage, a alignement: AlignementVideo) -> AlignementVideo {
         var corrige = alignement

@@ -93,6 +93,17 @@ struct CalageAutomatiqueTests {
         #expect(r.estFiable)
     }
 
+    @Test("recherche large : retrouve 2 h 13 min d'écart (fichier ré-encodé)")
+    func rechercheLarge() throws {
+        let match = MatchSimule(graine: 3)
+        let fins = DetecteurEchanges.detecter(match.signal).map(\.fin)
+        let taps = match.echanges.map { $0.tap - 7980 }
+
+        let r = try #require(CalageAutomatique.estimerLarge(taps: taps, finsEchanges: fins))
+        #expect(abs(r.decalage - 7980) <= 4)
+        #expect(r.estFiable)
+    }
+
     @Test("échanges parfaitement réguliers : calage ambigu, déclaré non fiable")
     func ambigu() throws {
         // Cycle constant de 25 s et saisie toujours 2 s après la fin : décaler

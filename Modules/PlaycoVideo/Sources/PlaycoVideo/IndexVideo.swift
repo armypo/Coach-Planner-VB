@@ -43,17 +43,20 @@ public struct FenetreClip: Codable, Hashable, Sendable {
 /// Un événement situé dans la vidéo.
 public struct ChapitreVideo: Codable, Hashable, Sendable, Identifiable {
     public var evenement: EvenementMatch
-    /// Position du tap dans la vidéo (secondes, brute — peut dépasser la durée).
+    /// Fichier du match qui contient le clip (0 pour un match en un fichier).
+    public var indexFichier: Int
+    /// Position du tap dans ce fichier (secondes, brute — peut dépasser la durée).
     public var instant: Double
-    /// Bornes du clip, bornées à [0, durée].
+    /// Bornes du clip, bornées à [0, durée du fichier].
     public var debut: Double
     public var fin: Double
 
     public var id: UUID { evenement.id }
     public var duree: Double { fin - debut }
 
-    public init(evenement: EvenementMatch, instant: Double, debut: Double, fin: Double) {
+    public init(evenement: EvenementMatch, indexFichier: Int = 0, instant: Double, debut: Double, fin: Double) {
         self.evenement = evenement
+        self.indexFichier = indexFichier
         self.instant = instant
         self.debut = debut
         self.fin = fin
@@ -113,21 +116,39 @@ public struct FiltreChapitres: Hashable, Sendable {
 
 public enum IndexVideo {
 
-    /// Chapitres triés par instant. Un événement dont le clip borné est plus
-    /// court que `fenetre.dureeMinimale` (saisi hors de l'enregistrement) est écarté.
+    /// Chapitres d'un match en un seul fichier.
     public static func chapitres(
         _ evenements: [EvenementMatch],
         alignement: AlignementVideo,
         fenetre: FenetreClip = .parDefaut
     ) -> [ChapitreVideo] {
+        chapitres(evenements, fichiers: [alignement], fenetre: fenetre)
+    }
+
+    /// Chapitres d'un match filmé en plusieurs fichiers (ex. un par set),
+    /// triés chronologiquement. Chaque événement est rattaché au fichier qui
+    /// contient le plus long clip ; un événement dont aucun clip borné
+    /// n'atteint `fenetre.dureeMinimale` (saisi hors de tout enregistrement,
+    /// ex. pendant une pause caméra coupée) est écarté.
+    public static func chapitres(
+        _ evenements: [EvenementMatch],
+        fichiers: [AlignementVideo],
+        fenetre: FenetreClip = .parDefaut
+    ) -> [ChapitreVideo] {
         evenements
-            .map { (evenement: $0, instant: alignement.instantDansVideo($0.horodatage)) }
-            .sorted { $0.instant < $1.instant }
-            .compactMap { paire in
-                let debut = max(0, paire.instant - fenetre.avant)
-                let fin = min(alignement.dureeVideo, paire.instant + fenetre.apres)
-                guard fin - debut >= fenetre.dureeMinimale else { return nil }
-                return ChapitreVideo(evenement: paire.evenement, instant: paire.instant, debut: debut, fin: fin)
+            .sorted { $0.horodatage < $1.horodatage }
+            .compactMap { evenement in
+                var meilleur: ChapitreVideo?
+                for (index, alignement) in fichiers.enumerated() {
+                    let instant = alignement.instantDansVideo(evenement.horodatage)
+                    let debut = max(0, instant - fenetre.avant)
+                    let fin = min(alignement.dureeVideo, instant + fenetre.apres)
+                    guard fin - debut >= fenetre.dureeMinimale else { continue }
+                    if let actuel = meilleur, actuel.duree >= fin - debut { continue }
+                    meilleur = ChapitreVideo(evenement: evenement, indexFichier: index,
+                                             instant: instant, debut: debut, fin: fin)
+                }
+                return meilleur
             }
     }
 
@@ -139,29 +160,44 @@ public enum IndexVideo {
 
 // MARK: - Segments de lecture
 
-/// Plage continue de la vidéo à lire d'un trait.
+/// Plage continue d'un fichier du match à lire d'un trait.
 public struct SegmentLecture: Hashable, Sendable {
+    public var indexFichier: Int
     public var debut: Double
     public var fin: Double
     /// Chapitres couverts, dans l'ordre.
     public var chapitres: [UUID]
 
     public var duree: Double { fin - debut }
+
+    public init(indexFichier: Int = 0, debut: Double, fin: Double, chapitres: [UUID] = []) {
+        self.indexFichier = indexFichier
+        self.debut = debut
+        self.fin = fin
+        self.chapitres = chapitres
+    }
 }
 
 public enum PlanLecture {
 
-    /// Fusionne les clips qui se chevauchent ou sont séparés de moins de
-    /// `ecartFusion` secondes : moins de sauts, aucune image vue deux fois.
+    /// Fusionne, dans un même fichier, les clips qui se chevauchent ou sont
+    /// séparés de moins de `ecartFusion` secondes : moins de sauts, aucune
+    /// image vue deux fois. Jamais de fusion entre deux fichiers.
     public static func segments(_ chapitres: [ChapitreVideo], ecartFusion: Double = 1) -> [SegmentLecture] {
+        let tries = chapitres.sorted {
+            ($0.indexFichier, $0.debut) < ($1.indexFichier, $1.debut)
+        }
         var resultat: [SegmentLecture] = []
-        for chapitre in chapitres.sorted(by: { $0.debut < $1.debut }) {
-            if var dernier = resultat.last, chapitre.debut <= dernier.fin + ecartFusion {
+        for chapitre in tries {
+            if var dernier = resultat.last, dernier.indexFichier == chapitre.indexFichier,
+               chapitre.debut <= dernier.fin + ecartFusion {
                 dernier.fin = max(dernier.fin, chapitre.fin)
                 dernier.chapitres.append(chapitre.id)
                 resultat[resultat.count - 1] = dernier
             } else {
-                resultat.append(SegmentLecture(debut: chapitre.debut, fin: chapitre.fin, chapitres: [chapitre.id]))
+                resultat.append(SegmentLecture(indexFichier: chapitre.indexFichier,
+                                               debut: chapitre.debut, fin: chapitre.fin,
+                                               chapitres: [chapitre.id]))
             }
         }
         return resultat

@@ -123,6 +123,8 @@ struct AppleMediaTests {
         let attendue = try #require(ISO8601DateFormatter().date(from: "2026-09-29T14:00:00Z"))
         let date = try #require(meta.dateCreation)
         #expect(abs(date.timeIntervalSince(attendue)) < 1)
+        #expect(meta.origineDate == .cameraQuickTime)
+        #expect(meta.dateFiable)
         #expect(abs(meta.duree - 3) < 0.2)
         #expect(meta.largeur == FabriqueMedia.largeur)
         #expect(meta.hauteur == FabriqueMedia.hauteur)
@@ -130,12 +132,16 @@ struct AppleMediaTests {
         #expect(LecteurMetadonneesVideo.alignementInitial(meta)?.dateDebutVideo == date)
     }
 
-    @Test("sans date de création : pas d'alignement initial")
-    func sansDate() async throws {
+    @Test("sans clé caméra : date de l'en-tête (écriture du fichier), signalée non fiable")
+    func sansCleCamera() async throws {
         let url = try await FabriqueMedia.video(duree: 2, actives: [])
         let meta = try await LecteurMetadonneesVideo.lire(url)
-        #expect(meta.dateCreation == nil)
-        #expect(LecteurMetadonneesVideo.alignementInitial(meta) == nil)
+        // AVFoundation date quand même le fichier : l'instant où il a été écrit.
+        if let date = meta.dateCreation {
+            #expect(abs(date.timeIntervalSinceNow) < 600)
+            #expect(meta.origineDate == .enTeteConteneur)
+        }
+        #expect(!meta.dateFiable)
     }
 
     @Test("formats de date acceptés")
@@ -192,10 +198,22 @@ struct AppleMediaTests {
         #expect(abs(dureeClip - 4) < 0.25)
 
         let montage = FabriqueMedia.fichierTemporaire("mp4")
-        let segments = [SegmentLecture(debut: 5, fin: 9, chapitres: []), SegmentLecture(debut: 13, fin: 16, chapitres: [])]
-        try await ExporteurClip.exporter(video: url, segments: segments, vers: montage)
+        let segments = [SegmentLecture(debut: 5, fin: 9), SegmentLecture(debut: 13, fin: 16)]
+        try await ExporteurClip.exporter(videos: [url], segments: segments, vers: montage)
         let dureeMontage = try await LecteurMetadonneesVideo.lire(montage).duree
         #expect(abs(dureeMontage - 7) < 0.3)
+    }
+
+    @Test("montage à travers deux fichiers du même match (un par set)")
+    func montageMultiFichiers() async throws {
+        let set1 = try await FabriqueMedia.video(duree: 6, actives: [1...3])
+        let set2 = try await FabriqueMedia.video(duree: 6, actives: [2...5])
+        let montage = FabriqueMedia.fichierTemporaire("mp4")
+        let segments = [SegmentLecture(indexFichier: 0, debut: 1, fin: 3),
+                        SegmentLecture(indexFichier: 1, debut: 2, fin: 5)]
+        try await ExporteurClip.exporter(videos: [set1, set2], segments: segments, vers: montage)
+        let duree = try await LecteurMetadonneesVideo.lire(montage).duree
+        #expect(abs(duree - 5) < 0.3)
     }
 
     @Test("export hors de la vidéo : erreur explicite")
