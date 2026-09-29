@@ -41,14 +41,48 @@ Chaque `PointMatch` porte un `horodatage` (préservé par la sync entre coachs).
 - **Loi 25 (à valider par un juriste)** : entraîner une IA = finalité distincte → consentement propre, **NON par défaut** (`ManifesteVideoMatch.consentementEntrainementIA`) ; < 14 ans → consentement parental ; évaluation des facteurs relatifs à la vie privée avant tout envoi hors Québec (IA cloud).
 - **Identifier les joueurs par le numéro de maillot, jamais par le visage** (biométrie → déclaration à la CAI).
 
-## Phase 1 — replay indexé (en cours)
+## Où vit le code : `Modules/PlaycoVideo` (hors de l'app)
 
-| Tranche | Contenu | État |
+Package Swift autonome, **non lié à la cible Playco**, testé à chaque push par la CI `.github/workflows/playco-video.yml` : Linux (logique pure — prouve l'indépendance aux frameworks Apple) + macOS (AVFoundation sur de vrais fichiers générés par les tests). L'environnement de dev distant bloque `download.swift.org` : la CI est la boucle de test.
+
+| Brique | Rôle | Testé sur |
 |---|---|---|
-| 1a | Flag `VIDEO` · `IndexVideoMatch` (alignement, chapitres, filtres « cutups ») · `VideoMatchStore` (local, hors sauvegarde iCloud) · tests | ✅ code — **à compiler sur Mac** |
-| 1b | Import (PhotosPicker/Fichiers) · heure de début lue dans les métadonnées du fichier (hypothèse à valider sur vidéo iPhone réelle) · suppression de la vidéo dans la cascade de suppression de match | ☐ |
-| 1c | Lecteur à pastilles (1 pastille = 1 point) · filtres · export de clip | ☐ |
-| 1d | Calibration de la fenêtre de clip (8 s avant / 3 s après — ESTIMÉ) sur un vrai match filmé + stats live | ☐ |
+| `EvenementMatch` | Point saisi en live, sport-agnostique (étiquette brute, résultat, période, rotation/zone/service optionnels — l'inconnu n'est jamais deviné) | Linux |
+| `AlignementVideo` | Temps réel ↔ temps vidéo ; calage par ancres (1 = décalage ; éloignées = décalage + dérive d'horloge ; médiane robuste) | Linux |
+| `IndexVideo` · `FiltreChapitres` · `PlanLecture` | Chapitres par point, « cutups » filtrés, segments de lecture continue ; match en **plusieurs fichiers** (un par set) | Linux |
+| `StockageVideoMatch` · `ManifesteVideoMatch` v2 | Stockage local hors iCloud, manifeste versionné (relit le v1), import multi-fichiers, ajout d'un fichier | Linux |
+| `BancEssai` · `AnalyseurVideo` | Précision/rappel/F1 d'un analyseur contre la vérité du coaching ; tout modèle se branche par le protocole | Linux |
+| `DetecteurEchanges` | IA N1 — échanges sur signal d'activité (hystérésis entre repos et actif) | Linux + vraie vidéo (macOS) |
+| `DetecteurSifflets` · `AnalyseurSiffletsFlux` | IA N1 audio — sifflet d'arbitre (FFT, pic tonal 2-4,5 kHz), en flux à mémoire constante | Linux + vrai WAV (macOS) |
+| `FusionBornes` | Fin d'échange recalée sur le sifflet | Linux |
+| `CalageAutomatique` (± `estimerLarge`) · `EstimationFenetre` | Calage vidéo ↔ stats **sans ancre** (jusqu'à ±4 h) + fenêtre de clip apprise | Linux |
+| `ReglageDetecteur` | Réglage AUTOMATIQUE des seuils au banc d'essai (grille → meilleur F1, validation sur un match non utilisé) | Linux |
+| `CalibrationTerrain` | IA N2 (fondation) — 4 coins touchés → homographie image ↔ terrain en mètres ; tout détecteur (ballon, joueurs) devient une position sur le terrain | Linux |
+| `JeuDonnees` | Export JSON Lines des clips étiquetés — refusé sans consentement, minimisé | Linux |
+| `LecteurMetadonneesVideo` | Date de création **avec son origine** (clé caméra = tournage ; en-tête = écriture, faux après ré-encodage) | macOS |
+| `ExtracteurSignaux` · `ExporteurClip` · `AnalyseurEchanges` | Signal d'activité, audio 11 kHz en flux, export clip/montage multi-fichiers, analyseur concret | macOS |
+
+### Résultats sur données SIMULÉES (pas encore de vraie vidéo de match)
+
+| Mesure | Résultat | Étiquette |
+|---|---|---|
+| Échanges retrouvés (bornes ±1 s), 3 matchs simulés de 40 échanges | rappel ≥ 95 %, précision ≥ 95 % | MESURÉ (simulé) |
+| Calage automatique, horloge fausse de 37 s | erreur ≤ 4 s, fiable | MESURÉ (simulé) |
+| Calage large, fichier ré-encodé (2 h 13 min d'écart) | erreur ≤ 4 s | MESURÉ (simulé) |
+| Clips qui couvrent l'échange entier après calage auto + fenêtre apprise | ≥ 90 % | MESURÉ (simulé) |
+| Vraie vidéo H.264 générée → échanges | bornes ±0,5 s | MESURÉ (synthétique) |
+| Vrai WAV 44,1 kHz → sifflets | bornes ±60 ms | MESURÉ (synthétique) |
+
+**Trouvailles de la boucle de test** : (1) le concurrent naturel du calage automatique est le décalage d'UN échange (~75 % des taps expliqués) → la fiabilité se juge à la marge, pas à un ratio ; (2) sans clé caméra, la date d'un fichier est celle de son écriture → calage large obligatoire.
+
+### Reste à faire
+
+| Tranche | Contenu |
+|---|---|
+| Colle app | Lier le package (Xcode → Add Local Package) ; adaptateur `PointMatch` → `EvenementMatch` sous `#if VIDEO` ; préréglages de cutups volleyball (sideouts ratés, kills d'un joueur…) |
+| UI | Import (PhotosPicker/Fichiers), lecteur à pastilles, filtres, export/partage de montage |
+| **Vraie vidéo** | Filmer 2-3 matchs avec stats live → banc d'essai réel, régler seuils et fenêtre (valeurs actuelles ESTIMÉES) |
+| IA N2 | Suivi du ballon (modèles open source YOLO → Core ML), mesuré au même banc d'essai |
 
 ## Sources
 

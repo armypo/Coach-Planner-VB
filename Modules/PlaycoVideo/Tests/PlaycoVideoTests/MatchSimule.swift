@@ -38,7 +38,7 @@ struct MatchSimule {
     let signal: SignalActivite
 
     init(graine: UInt64, nombreEchanges: Int = 40, frequence: Double = 10,
-         delaiSaisie: ClosedRange<Double> = 1...4) {
+         delaiSaisie: ClosedRange<Double> = 1...4, dureeParasite: Double = 0.5) {
         var rng = GenerateurDeterministe(graine: graine)
         var echanges: [Echange] = []
         var t = 5.0
@@ -59,10 +59,10 @@ struct MatchSimule {
             let milieu = (a + b) / 2
             for i in milieu..<min(b, milieu + Int(0.4 * frequence)) { valeurs[i] = 0.15 }
         }
-        // Mouvements parasites courts (0,5 s) pendant les temps morts.
+        // Mouvements parasites (0,5 s par défaut) pendant les temps morts.
         for (k, e) in echanges.enumerated() where k % 3 == 0 {
             let a = Int((e.debut - 5) * frequence)
-            for i in max(0, a)..<max(0, a + Int(0.5 * frequence)) { valeurs[i] = 0.9 }
+            for i in max(0, a)..<max(0, a + Int(dureeParasite * frequence)) { valeurs[i] = 0.9 }
         }
 
         self.echanges = echanges
