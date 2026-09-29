@@ -17,13 +17,20 @@ public struct ResultatCalage: Hashable, Sendable {
     public var appariements: Int
     /// Part des taps expliqués (0-1).
     public var couverture: Double
-    /// Meilleur score obtenu loin du décalage retenu (> 2 × délai max) :
-    /// proche de `appariements` = calage ambigu (structure périodique).
+    /// Meilleur score obtenu loin du décalage retenu (> 2 × délai max).
+    /// Le concurrent naturel est le décalage d'UN échange (les cycles
+    /// service-échange se ressemblent) : il explique souvent 70-80 % des taps.
     public var appariementsConcurrent: Int
 
-    /// Calage fiable : couverture suffisante et pic net.
+    /// Écart minimal (en part des appariements) entre le pic retenu et son
+    /// concurrent pour déclarer le calage fiable.
+    public static let margeMinimale = 0.1
+
+    /// Calage fiable : couverture suffisante ET pic qui domine nettement son
+    /// concurrent (sinon : échanges trop réguliers, demander une ancre).
     public var estFiable: Bool {
-        couverture >= 0.5 && Double(appariementsConcurrent) <= 0.7 * Double(appariements)
+        couverture >= 0.5
+            && Double(appariements - appariementsConcurrent) >= Self.margeMinimale * Double(appariements)
     }
 }
 

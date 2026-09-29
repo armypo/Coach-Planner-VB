@@ -93,6 +93,18 @@ struct CalageAutomatiqueTests {
         #expect(r.estFiable)
     }
 
+    @Test("échanges parfaitement réguliers : calage ambigu, déclaré non fiable")
+    func ambigu() throws {
+        // Cycle constant de 25 s et saisie toujours 2 s après la fin : décaler
+        // d'un échange explique 39 taps sur 40 — impossible de trancher.
+        let fins = (1...40).map { Double($0) * 25 }
+        let taps = fins.map { $0 + 2 - 37 }
+        let r = try #require(CalageAutomatique.estimer(taps: taps, finsEchanges: fins))
+        #expect(r.appariements == 40)
+        #expect(r.appariementsConcurrent >= 39)
+        #expect(!r.estFiable)
+    }
+
     @Test("sans correspondance possible : non fiable")
     func sansCorrespondance() throws {
         let r = try #require(CalageAutomatique.estimer(taps: [10, 20, 30, 40], finsEchanges: [5000], plage: 60))
