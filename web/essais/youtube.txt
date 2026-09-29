@@ -1,0 +1,5 @@
+# Liens YouTube analysés par la CI (job « youtube » de .github/workflows/playco-web.yml)
+# quand ce fichier change. Un lien par ligne ; les lignes « # » sont ignorées.
+# Analyse du SIGNAL seulement (échanges, sets, temps de jeu) : aucun appel IA payant.
+# Pour l'analyse IA complète : Actions → PlaycoWeb → Run workflow (secret ANTHROPIC_API_KEY).
+https://www.youtube.com/watch?v=Cmdh61ZhP7E

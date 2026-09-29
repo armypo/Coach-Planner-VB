@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Playco Analyse</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" defer></script>
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <header class="entete">
+    <span class="marque">Playco</span>
+    <span class="sous-titre">Analyse IA de volleyball</span>
+  </header>
+
+  <main>
+    <section class="carte" id="nouvelle">
+      <h2>Analyser un match</h2>
+      <form id="form-lien" class="ligne-saisie">
+        <input type="url" id="lien" placeholder="Lien YouTube : youtube.com/watch?v=… ou youtu.be/…" required>
+        <button type="submit">Analyser</button>
+      </form>
+      <p class="ou">ou
+        <label class="lien-fichier">importer une vidéo
+          <input type="file" id="fichier" accept="video/*" hidden>
+        </label>
+      </p>
+      <p id="erreur-form" class="erreur" hidden></p>
+    </section>
+
+    <section class="carte" id="progression" hidden>
+      <h2 id="prog-titre">Analyse en cours</h2>
+      <div class="barre"><div id="prog-barre"></div></div>
+      <p id="prog-etape" class="secondaire"></p>
+    </section>
+
+    <section id="rapport" hidden></section>
+
+    <section class="carte" id="historique">
+      <h2>Matchs analysés</h2>
+      <div id="liste" class="tableau-defilant"></div>
+    </section>
+  </main>
+</body>
+</html>
