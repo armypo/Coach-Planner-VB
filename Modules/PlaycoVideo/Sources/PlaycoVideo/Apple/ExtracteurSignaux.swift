@@ -97,9 +97,27 @@ public enum ExtracteurSignaux {
 
     // MARK: - Audio
 
-    /// Piste audio mixée en mono, PCM flottant à `frequence` Hz.
-    /// Mémoire : ~2,6 Mo par minute à 11 025 Hz.
+    /// Piste audio complète, mixée en mono, PCM flottant à `frequence` Hz.
+    /// Mémoire : ~2,6 Mo par minute à 11 025 Hz — pour un match entier,
+    /// préférer `sifflets(video:)` (flux, mémoire constante).
     public static func audio(video url: URL, frequence: Double = 11_025) async throws -> SignalAudio {
+        var echantillons: [Float] = []
+        try await parcourirAudio(video: url, frequence: frequence) { echantillons.append(contentsOf: $0) }
+        return SignalAudio(echantillons: echantillons, frequenceEchantillonnage: frequence)
+    }
+
+    /// Sifflets de toute la piste audio, analysés au fil de la lecture.
+    public static func sifflets(video url: URL, frequence: Double = 11_025,
+                                parametres: ParametresSifflet = .parDefaut) async throws -> [SiffletDetecte] {
+        guard var flux = AnalyseurSiffletsFlux(frequenceEchantillonnage: frequence, parametres: parametres) else {
+            return []
+        }
+        try await parcourirAudio(video: url, frequence: frequence) { flux.ajouter($0) }
+        return flux.terminer()
+    }
+
+    /// Lit la piste audio morceau par morceau (mono, PCM flottant).
+    static func parcourirAudio(video url: URL, frequence: Double, _ traiter: ([Float]) -> Void) async throws {
         let asset = AVURLAsset(url: url)
         let pistes = try await asset.loadTracks(withMediaType: .audio)
         guard !pistes.isEmpty else { throw ErreurVideo.aucunePisteAudio }
@@ -118,26 +136,22 @@ public enum ExtracteurSignaux {
             throw ErreurVideo.lectureImpossible(lecteur.error?.localizedDescription ?? "startReading")
         }
 
-        var echantillons: [Float] = []
         while let tampon = sortie.copyNextSampleBuffer() {
             guard let bloc = CMSampleBufferGetDataBuffer(tampon) else { continue }
-            let longueur = CMBlockBufferGetDataLength(bloc)
-            let nombre = longueur / MemoryLayout<Float>.size
+            let nombre = CMBlockBufferGetDataLength(bloc) / MemoryLayout<Float>.size
             guard nombre > 0 else { continue }
-            let debut = echantillons.count
-            echantillons.append(contentsOf: repeatElement(0, count: nombre))
-            let statut = echantillons.withUnsafeMutableBytes { tamponOctets -> OSStatus in
-                guard let adresse = tamponOctets.baseAddress else { return kCMBlockBufferBadPointerParameterErr }
-                return CMBlockBufferCopyDataBytes(
-                    bloc, atOffset: 0, dataLength: nombre * MemoryLayout<Float>.size,
-                    destination: adresse.advanced(by: debut * MemoryLayout<Float>.size))
+            var morceau = [Float](repeating: 0, count: nombre)
+            let statut = morceau.withUnsafeMutableBytes { octets -> OSStatus in
+                guard let adresse = octets.baseAddress else { return kCMBlockBufferBadPointerParameterErr }
+                return CMBlockBufferCopyDataBytes(bloc, atOffset: 0,
+                                                  dataLength: nombre * MemoryLayout<Float>.size,
+                                                  destination: adresse)
             }
-            if statut != kCMBlockBufferNoErr { echantillons.removeLast(nombre) }
+            if statut == kCMBlockBufferNoErr { traiter(morceau) }
         }
         if lecteur.status == .failed {
             throw ErreurVideo.lectureImpossible(lecteur.error?.localizedDescription ?? "lecture")
         }
-        return SignalAudio(echantillons: echantillons, frequenceEchantillonnage: frequence)
     }
 }
 #endif

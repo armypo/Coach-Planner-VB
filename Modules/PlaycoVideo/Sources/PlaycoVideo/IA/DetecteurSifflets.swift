@@ -65,71 +65,13 @@ public struct ParametresSifflet: Hashable, Sendable {
 
 public enum DetecteurSifflets {
 
+    /// Détection sur un signal complet (tests, courts extraits). Pour un match
+    /// entier, préférer `AnalyseurSiffletsFlux` (mémoire constante).
     public static func detecter(_ audio: SignalAudio, parametres: ParametresSifflet = .parDefaut) -> [SiffletDetecte] {
-        let fs = audio.frequenceEchantillonnage
-        guard fs > 0, parametres.bandeHaute < fs / 2 else { return [] }
-        let taille = puissanceDeDeux(auMoins: Int(parametres.trame * fs))
-        let pas = taille / 2
-        guard audio.echantillons.count >= taille else { return [] }
-
-        let hann = (0..<taille).map { 0.5 - 0.5 * cos(2 * Double.pi * Double($0) / Double(taille)) }
-        let resolution = fs / Double(taille)
-        let caseBasse = max(1, Int((parametres.bandeBasse / resolution).rounded(.down)))
-        let caseHaute = min(taille / 2 - 2, Int((parametres.bandeHaute / resolution).rounded(.up)))
-        guard caseBasse < caseHaute else { return [] }
-
-        // Score par trame : (tonalité, fréquence) si sifflet plausible.
-        var trames: [(instant: Double, tonalite: Double, frequence: Double)?] = []
-        var debutTrame = 0
-        while debutTrame + taille <= audio.echantillons.count {
-            let bloc = audio.echantillons[debutTrame..<debutTrame + taille]
-            var energie = 0.0
-            var reel = [Double](repeating: 0, count: taille)
-            for (i, x) in bloc.enumerated() {
-                let v = Double(x)
-                energie += v * v
-                reel[i] = v * hann[i]
-            }
-            let rms = (energie / Double(taille)).squareRoot()
-            var detection: (Double, Double, Double)?
-            if rms >= parametres.energieMinimale {
-                let puissance = spectrePuissance(reel)
-                let total = puissance[1..<(taille / 2)].reduce(0, +)
-                if total > 0, let pic = (caseBasse...caseHaute).max(by: { puissance[$0] < puissance[$1] }) {
-                    let concentree = puissance[pic - 1] + puissance[pic] + puissance[pic + 1]
-                    let tonalite = concentree / total
-                    if tonalite >= parametres.seuilTonalite {
-                        detection = (Double(debutTrame) / fs, tonalite, Double(pic) * resolution)
-                    }
-                }
-            }
-            trames.append(detection.map { (instant: $0.0, tonalite: $0.1, frequence: $0.2) })
-            debutTrame += pas
-        }
-
-        // Regroupement des trames positives consécutives, fusion, durée minimale.
-        let dureeTrame = Double(taille) / fs
-        var sifflets: [SiffletDetecte] = []
-        var courant: [(instant: Double, tonalite: Double, frequence: Double)] = []
-        func clore() {
-            guard let premier = courant.first, let dernier = courant.last else { return }
-            let nouveau = SiffletDetecte(
-                debut: premier.instant,
-                fin: dernier.instant + dureeTrame,
-                frequence: courant.map(\.frequence).reduce(0, +) / Double(courant.count),
-                tonalite: courant.map(\.tonalite).reduce(0, +) / Double(courant.count))
-            if let precedent = sifflets.last, nouveau.debut - precedent.fin <= parametres.fusionEcart {
-                sifflets[sifflets.count - 1].fin = nouveau.fin
-            } else {
-                sifflets.append(nouveau)
-            }
-            courant = []
-        }
-        for trame in trames {
-            if let trame { courant.append(trame) } else { clore() }
-        }
-        clore()
-        return sifflets.filter { $0.duree >= parametres.dureeMinimale }
+        guard var flux = AnalyseurSiffletsFlux(frequenceEchantillonnage: audio.frequenceEchantillonnage,
+                                               parametres: parametres) else { return [] }
+        flux.ajouter(audio.echantillons)
+        return flux.terminer()
     }
 
     /// Sifflets en événements détectés (instant = fin du coup de sifflet).
@@ -145,49 +87,177 @@ public enum DetecteurSifflets {
         return p
     }
 
-    /// Spectre de puissance |X(k)|² d'un signal réel (FFT radix-2 itérative).
-    /// La taille doit être une puissance de 2.
+    /// Spectre de puissance |X(k)|² d'un signal réel ; la taille doit être une
+    /// puissance de 2.
     static func spectrePuissance(_ signal: [Double]) -> [Double] {
-        let n = signal.count
-        var re = signal
-        var im = [Double](repeating: 0, count: n)
+        var fft = FFTReelle(taille: signal.count)
+        var sortie = [Double](repeating: 0, count: signal.count)
+        fft.puissance(signal, dans: &sortie)
+        return sortie
+    }
+}
 
-        // Permutation par inversion des bits.
-        var j = 0
-        for i in 1..<n {
-            var bit = n >> 1
-            while j & bit != 0 {
-                j ^= bit
-                bit >>= 1
-            }
-            j |= bit
-            if i < j {
-                re.swapAt(i, j)
-                im.swapAt(i, j)
-            }
+// MARK: - Analyse en flux
+
+/// Détecteur de sifflets à mémoire constante : on lui donne l'audio par
+/// morceaux de taille quelconque (lecture AVFoundation d'un match de 90 min)
+/// et il produit exactement le même résultat qu'une analyse d'un bloc.
+public struct AnalyseurSiffletsFlux: Sendable {
+    public let parametres: ParametresSifflet
+    public let frequenceEchantillonnage: Double
+
+    private let taille: Int
+    private let pas: Int
+    private let hann: [Double]
+    private let caseBasse: Int
+    private let caseHaute: Int
+    private var fft: FFTReelle
+
+    /// Échantillons pas encore consommés ; `tampon[lecture...]` est utile.
+    private var tampon: [Float] = []
+    private var lecture = 0
+    /// Index global (depuis le début du flux) de la prochaine trame.
+    private var indexTrame = 0
+
+    private var reel: [Double]
+    private var puissance: [Double]
+    private var courant: [(instant: Double, tonalite: Double, frequence: Double)] = []
+    private var sifflets: [SiffletDetecte] = []
+
+    /// nil si la fréquence d'échantillonnage ne couvre pas la bande utile.
+    public init?(frequenceEchantillonnage fs: Double, parametres: ParametresSifflet = .parDefaut) {
+        guard fs > 0, parametres.bandeHaute < fs / 2 else { return nil }
+        let taille = DetecteurSifflets.puissanceDeDeux(auMoins: Int(parametres.trame * fs))
+        let resolution = fs / Double(taille)
+        let caseBasse = max(1, Int((parametres.bandeBasse / resolution).rounded(.down)))
+        let caseHaute = min(taille / 2 - 2, Int((parametres.bandeHaute / resolution).rounded(.up)))
+        guard taille >= 8, caseBasse < caseHaute else { return nil }
+        self.parametres = parametres
+        self.frequenceEchantillonnage = fs
+        self.taille = taille
+        self.pas = taille / 2
+        self.hann = (0..<taille).map { 0.5 - 0.5 * cos(2 * Double.pi * Double($0) / Double(taille)) }
+        self.caseBasse = caseBasse
+        self.caseHaute = caseHaute
+        self.fft = FFTReelle(taille: taille)
+        self.reel = [Double](repeating: 0, count: taille)
+        self.puissance = [Double](repeating: 0, count: taille)
+    }
+
+    public mutating func ajouter<C: Collection>(_ echantillons: C) where C.Element == Float {
+        tampon.append(contentsOf: echantillons)
+        while tampon.count - lecture >= taille {
+            analyserTrame(debut: lecture)
+            lecture += pas
+            indexTrame += pas
         }
+        // Compactage : la partie consommée ne doit pas croître sans fin.
+        if lecture >= 4 * taille {
+            tampon.removeFirst(lecture)
+            lecture = 0
+        }
+    }
 
+    /// Clôt l'analyse et renvoie les sifflets (durée minimale appliquée).
+    public mutating func terminer() -> [SiffletDetecte] {
+        clore()
+        return sifflets.filter { $0.duree >= parametres.dureeMinimale }
+    }
+
+    private mutating func analyserTrame(debut: Int) {
+        var energie = 0.0
+        for i in 0..<taille {
+            let v = Double(tampon[debut + i])
+            energie += v * v
+            reel[i] = v * hann[i]
+        }
+        let rms = (energie / Double(taille)).squareRoot()
+        guard rms >= parametres.energieMinimale else { clore(); return }
+
+        fft.puissance(reel, dans: &puissance)
+        var total = 0.0
+        for k in 1..<(taille / 2) { total += puissance[k] }
+        var pic = caseBasse
+        for k in caseBasse...caseHaute where puissance[k] > puissance[pic] { pic = k }
+        let tonalite = total > 0 ? (puissance[pic - 1] + puissance[pic] + puissance[pic + 1]) / total : 0
+        guard tonalite >= parametres.seuilTonalite else { clore(); return }
+
+        courant.append((
+            instant: Double(indexTrame) / frequenceEchantillonnage,
+            tonalite: tonalite,
+            frequence: Double(pic) * frequenceEchantillonnage / Double(taille)))
+    }
+
+    /// Regroupe les trames positives consécutives ; fusionne avec le sifflet
+    /// précédent si l'écart est sous `fusionEcart`.
+    private mutating func clore() {
+        guard let premier = courant.first, let dernier = courant.last else { return }
+        let n = Double(courant.count)
+        let nouveau = SiffletDetecte(
+            debut: premier.instant,
+            fin: dernier.instant + Double(taille) / frequenceEchantillonnage,
+            frequence: courant.reduce(0) { $0 + $1.frequence } / n,
+            tonalite: courant.reduce(0) { $0 + $1.tonalite } / n)
+        if let precedent = sifflets.last, nouveau.debut - precedent.fin <= parametres.fusionEcart {
+            sifflets[sifflets.count - 1].fin = nouveau.fin
+        } else {
+            sifflets.append(nouveau)
+        }
+        courant = []
+    }
+}
+
+// MARK: - FFT réelle (tampons et facteurs précalculés)
+
+struct FFTReelle: Sendable {
+    let taille: Int
+    private let inversion: [Int]
+    private let cosinus: [Double]
+    private let sinus: [Double]
+    private var re: [Double]
+    private var im: [Double]
+
+    init(taille: Int) {
+        self.taille = taille
+        var bits = 0
+        while (1 << bits) < taille { bits += 1 }
+        inversion = (0..<taille).map { i in
+            var r = 0
+            for b in 0..<bits where i & (1 << b) != 0 { r |= 1 << (bits - 1 - b) }
+            return r
+        }
+        cosinus = (0..<max(1, taille / 2)).map { cos(-2 * Double.pi * Double($0) / Double(taille)) }
+        sinus = (0..<max(1, taille / 2)).map { sin(-2 * Double.pi * Double($0) / Double(taille)) }
+        re = [Double](repeating: 0, count: taille)
+        im = [Double](repeating: 0, count: taille)
+    }
+
+    /// |X(k)|² de `signal` (taille `taille`) écrit dans `sortie`.
+    mutating func puissance(_ signal: [Double], dans sortie: inout [Double]) {
+        for i in 0..<taille {
+            re[inversion[i]] = signal[i]
+            im[i] = 0
+        }
         var longueur = 2
-        while longueur <= n {
-            let angle = -2 * Double.pi / Double(longueur)
-            let (wr, wi) = (cos(angle), sin(angle))
+        while longueur <= taille {
+            let demi = longueur / 2
+            let saut = taille / longueur
             var debut = 0
-            while debut < n {
-                var (cr, ci) = (1.0, 0.0)
-                for k in 0..<(longueur / 2) {
-                    let a = debut + k, b = a + longueur / 2
-                    let tr = re[b] * cr - im[b] * ci
-                    let ti = re[b] * ci + im[b] * cr
+            while debut < taille {
+                for k in 0..<demi {
+                    let (wr, wi) = (cosinus[k * saut], sinus[k * saut])
+                    let a = debut + k, b = a + demi
+                    let tr = re[b] * wr - im[b] * wi
+                    let ti = re[b] * wi + im[b] * wr
                     re[b] = re[a] - tr
                     im[b] = im[a] - ti
                     re[a] += tr
                     im[a] += ti
-                    (cr, ci) = (cr * wr - ci * wi, cr * wi + ci * wr)
                 }
                 debut += longueur
             }
             longueur <<= 1
         }
-        return (0..<n).map { re[$0] * re[$0] + im[$0] * im[$0] }
+        for k in 0..<taille { sortie[k] = re[k] * re[k] + im[k] * im[k] }
     }
 }

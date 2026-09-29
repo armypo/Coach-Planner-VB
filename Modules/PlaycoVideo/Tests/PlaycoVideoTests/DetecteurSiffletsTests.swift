@@ -88,6 +88,36 @@ struct DetecteurSiffletsTests {
         #expect(DetecteurSifflets.puissanceDeDeux(auMoins: 256) == 256)
     }
 
+    @Test("flux : même résultat qu'un bloc, quel que soit le découpage", arguments: [UInt64(1), 2, 3])
+    func fluxEquivalent(graine: UInt64) throws {
+        let signal = audio(duree: 10, tons: [(2.0, 2.4, [3150], 0.5), (6.0, 6.8, [2900, 3300], 0.6)])
+        let bloc = DetecteurSifflets.detecter(signal)
+
+        var flux = try #require(AnalyseurSiffletsFlux(frequenceEchantillonnage: fs))
+        var rng = GenerateurDeterministe(graine: graine)
+        var position = 0
+        while position < signal.echantillons.count {
+            let longueur = min(Int.random(in: 1...5_000, using: &rng), signal.echantillons.count - position)
+            flux.ajouter(signal.echantillons[position..<position + longueur])
+            position += longueur
+        }
+        #expect(flux.terminer() == bloc)
+        #expect(bloc.count == 2)
+    }
+
+    @Test("flux : échantillon par échantillon")
+    func fluxUnParUn() throws {
+        let signal = audio(duree: 2, tons: [(0.5, 1.0, [3150], 0.5)])
+        var flux = try #require(AnalyseurSiffletsFlux(frequenceEchantillonnage: fs))
+        for x in signal.echantillons { flux.ajouter(CollectionOfOne(x)) }
+        #expect(flux.terminer() == DetecteurSifflets.detecter(signal))
+    }
+
+    @Test("flux : fréquence trop basse pour la bande → nil")
+    func fluxFrequenceTropBasse() {
+        #expect(AnalyseurSiffletsFlux(frequenceEchantillonnage: 8_000) == nil)
+    }
+
     @Test("fréquence d'échantillonnage trop basse pour la bande : aucun calcul")
     func frequenceTropBasse() {
         let signal = SignalAudio(echantillons: Array(repeating: 0.5, count: 10_000), frequenceEchantillonnage: 8000)

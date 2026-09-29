@@ -175,3 +175,43 @@ struct ChaineIATests {
         #expect(EstimationFenetre.estimer(taps: [22], echanges: echanges, minimumAppariements: 1)?.avant == 13)
     }
 }
+
+@Suite("FusionBornes — fin d'échange recalée sur le sifflet")
+struct FusionBornesTests {
+
+    private func echange(_ debut: Double, _ fin: Double) -> EchangeDetecte {
+        EchangeDetecte(debut: debut, fin: fin, intensite: 1)
+    }
+
+    private func sifflet(_ debut: Double) -> SiffletDetecte {
+        SiffletDetecte(debut: debut, fin: debut + 0.4, frequence: 3150, tonalite: 0.9)
+    }
+
+    @Test("la fin se cale sur le sifflet proche ; sans sifflet, inchangée")
+    func affinage() {
+        let r = FusionBornes.affiner([echange(10, 20.4), echange(40, 50)], sifflets: [sifflet(20.0), sifflet(70)])
+        #expect(r.map(\.fin) == [20.0, 50])
+    }
+
+    @Test("un sifflet ne sert qu'une fois, au plus proche")
+    func uneFois() {
+        let r = FusionBornes.affiner([echange(10, 20.0), echange(20.5, 21.0)], sifflets: [sifflet(20.2)])
+        #expect(r.map(\.fin) == [20.2, 21.0])
+    }
+
+    @Test("un sifflet antérieur au début de l'échange est ignoré")
+    func siffletAvantDebut() {
+        let r = FusionBornes.affiner([echange(10, 11)], sifflets: [sifflet(9.8)])
+        #expect(r[0].fin == 11)
+    }
+
+    @Test("match simulé : les fins recalées sur les sifflets sont exactes")
+    func matchSimule() {
+        let match = MatchSimule(graine: 5)
+        let echanges = DetecteurEchanges.detecter(match.signal)
+        let sifflets = match.echanges.map { sifflet($0.fin) }
+        let affines = FusionBornes.affiner(echanges, sifflets: sifflets)
+        // Chaque vraie fin d'échange est retrouvée exactement.
+        #expect(Set(affines.map(\.fin)).isSuperset(of: match.echanges.map(\.fin)))
+    }
+}

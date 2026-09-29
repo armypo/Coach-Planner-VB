@@ -180,6 +180,27 @@ struct AppleMediaTests {
         #expect(abs(sifflets[1].fin - 4.6) <= 0.06)
     }
 
+    @Test("AnalyseurEchanges sur vraie vidéo, mesuré au banc d'essai")
+    func analyseurConcret() async throws {
+        let actives: [ClosedRange<Double>] = [3...7, 11...15]
+        let url = try await FabriqueMedia.video(duree: 18, actives: actives)
+        let rapport = try await BancEssai.evaluer(
+            AnalyseurEchanges(pasPixels: 2), video: url,
+            verite: actives.map { VeriteTerrain(instant: $0.upperBound, etiquette: "fin") },
+            tolerance: .symetrique(0.5))
+        #expect(rapport.global.rappel == 1)
+        #expect(rapport.global.precision == 1)
+    }
+
+    @Test("sifflets en flux depuis un fichier audio (mémoire constante)")
+    func siffletsFlux() async throws {
+        let url = try FabriqueMedia.audio(duree: 6, sifflets: [1.0...1.4, 4.0...4.6])
+        let enFlux = try await ExtracteurSignaux.sifflets(video: url)
+        let enBloc = DetecteurSifflets.detecter(try await ExtracteurSignaux.audio(video: url))
+        #expect(enFlux == enBloc)
+        #expect(enFlux.count == 2)
+    }
+
     @Test("vidéo sans piste audio : erreur explicite")
     func sansAudio() async throws {
         let url = try await FabriqueMedia.video(duree: 1, actives: [])
