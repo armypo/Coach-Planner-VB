@@ -32,6 +32,22 @@ struct DetecteurEchangesTests {
         #expect(debuts.global.rappel >= 0.95)
     }
 
+    @Test("changement de plan à mi-match (activité ÷3) : les seuils locaux suivent, les globaux ratent")
+    func seuilsLocaux() {
+        let match = MatchSimule(graine: 21, amplitudeSecondeMoitie: 0.35)
+        let verite = match.echanges.map { VeriteTerrain(instant: $0.fin, etiquette: "fin") }
+        func score(_ p: ParametresDetecteur) -> ScoreDetection {
+            BancEssai.evaluer(predictions: DetecteurEchanges.detecter(match.signal, parametres: p)
+                                .map { EvenementDetecte(instant: $0.fin) },
+                              verite: verite, tolerance: .symetrique(1)).global
+        }
+        let globaux = score(ParametresDetecteur(fenetreLocale: nil))
+        let locaux = score(.parDefaut)
+        #expect(globaux.rappel < 0.7)
+        #expect(locaux.rappel >= 0.9)
+        #expect(locaux.precision >= 0.9)
+    }
+
     @Test("un mouvement parasite court n'est pas un échange")
     func parasite() {
         var valeurs = Array(repeating: 0.1, count: 600)

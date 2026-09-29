@@ -38,7 +38,8 @@ struct MatchSimule {
     let signal: SignalActivite
 
     init(graine: UInt64, nombreEchanges: Int = 40, frequence: Double = 10,
-         delaiSaisie: ClosedRange<Double> = 1...4, dureeParasite: Double = 0.5) {
+         delaiSaisie: ClosedRange<Double> = 1...4, dureeParasite: Double = 0.5,
+         amplitudeSecondeMoitie: Double = 1) {
         var rng = GenerateurDeterministe(graine: graine)
         var echanges: [Echange] = []
         var t = 5.0
@@ -63,6 +64,13 @@ struct MatchSimule {
         for (k, e) in echanges.enumerated() where k % 3 == 0 {
             let a = Int((e.debut - 5) * frequence)
             for i in max(0, a)..<max(0, a + Int(dureeParasite * frequence)) { valeurs[i] = 0.9 }
+        }
+        // Changement de plan à mi-match (zoom arrière, autre caméra) : toute
+        // l'activité au-dessus du bruit de fond est atténuée.
+        if amplitudeSecondeMoitie != 1, let milieu = echanges.dropFirst(nombreEchanges / 2).first {
+            for i in Int((milieu.debut - 6) * frequence)..<n where valeurs[i] > 0.2 {
+                valeurs[i] = 0.15 + (valeurs[i] - 0.15) * amplitudeSecondeMoitie
+            }
         }
 
         self.echanges = echanges

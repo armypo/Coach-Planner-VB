@@ -52,7 +52,7 @@ Package Swift autonome, **non lié à la cible Playco**, testé à chaque push p
 | `IndexVideo` · `FiltreChapitres` · `PlanLecture` | Chapitres par point, « cutups » filtrés, segments de lecture continue ; match en **plusieurs fichiers** (un par set) | Linux |
 | `StockageVideoMatch` · `ManifesteVideoMatch` v2 | Stockage local hors iCloud, manifeste versionné (relit le v1), import multi-fichiers, ajout d'un fichier | Linux |
 | `BancEssai` · `AnalyseurVideo` | Précision/rappel/F1 d'un analyseur contre la vérité du coaching ; tout modèle se branche par le protocole | Linux |
-| `DetecteurEchanges` | IA N1 — échanges sur signal d'activité (hystérésis entre repos et actif) | Linux + vraie vidéo (macOS) |
+| `DetecteurEchanges` | IA N1 — échanges sur signal d'activité (hystérésis entre repos et actif, seuils LOCAUX sur fenêtre glissante de 60 s avec plancher — suit les changements de plan/zoom) | Linux + vraie vidéo (macOS) |
 | `DetecteurSifflets` · `AnalyseurSiffletsFlux` | IA N1 audio — sifflet d'arbitre (FFT, pic tonal 2-4,5 kHz), en flux à mémoire constante | Linux + vrai WAV (macOS) |
 | `FusionBornes` | Fin d'échange recalée sur le sifflet | Linux |
 | `CalageAutomatique` (± `estimerLarge`) · `EstimationFenetre` | Calage vidéo ↔ stats **sans ancre** (jusqu'à ±4 h) + fenêtre de clip apprise | Linux |
@@ -95,7 +95,7 @@ horodatage;etiquette;resultat;periode
 | Vraie vidéo H.264 générée → échanges | bornes ±0,5 s | MESURÉ (synthétique) |
 | Vrai WAV 44,1 kHz → sifflets | bornes ±60 ms | MESURÉ (synthétique) |
 
-**Trouvailles de la boucle de test** : (1) le concurrent naturel du calage automatique est le décalage d'UN échange (~75 % des taps expliqués) → la fiabilité se juge à la marge, pas à un ratio ; (2) sans clé caméra, la date d'un fichier est celle de son écriture → calage large obligatoire.
+**Trouvailles de la boucle de test** : (1) le concurrent naturel du calage automatique est le décalage d'UN échange (~75 % des taps expliqués) → la fiabilité se juge à la marge, pas à un ratio ; (2) sans clé caméra, la date d'un fichier est celle de son écriture → calage large obligatoire ; (3) après un changement de plan (vidéo du web), l'activité d'un échange peut chuter de ~2,5× → des seuils globaux le ratent → seuils locaux.
 
 ### Reste à faire
 

@@ -270,7 +270,9 @@ struct AppleMediaTests {
         let mortBrut = brut.valeurs[10..<40].reduce(0, +) / 30
         #expect(mortBrut > 3 * mortCompense)
 
-        let echanges = DetecteurEchanges.detecter(compense)
+        // Après la coupure, le plan est plus clair : le joueur y produit ~2,5×
+        // moins d'activité → seuils locaux (fenêtre à l'échelle de ces 20 s).
+        let echanges = DetecteurEchanges.detecter(compense, parametres: ParametresDetecteur(fenetreLocale: 6))
         try #require(echanges.count == 2)
         for (echange, attendu) in zip(echanges, actives) {
             #expect(abs(echange.debut - attendu.lowerBound) <= 0.7)
