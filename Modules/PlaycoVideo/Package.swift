@@ -12,10 +12,13 @@ let package = Package(
     name: "PlaycoVideo",
     platforms: [.iOS(.v18), .macOS(.v15)],
     products: [
-        .library(name: "PlaycoVideo", targets: ["PlaycoVideo"])
+        .library(name: "PlaycoVideo", targets: ["PlaycoVideo"]),
+        // Outil en ligne de commande : tester sur une vraie vidéo, sans l'app.
+        .executable(name: "playco-video", targets: ["PlaycoVideoCLI"])
     ],
     targets: [
         .target(name: "PlaycoVideo"),
+        .executableTarget(name: "PlaycoVideoCLI", dependencies: ["PlaycoVideo"]),
         .testTarget(name: "PlaycoVideoTests", dependencies: ["PlaycoVideo"])
     ]
 )

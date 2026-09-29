@@ -61,6 +61,18 @@ Package Swift autonome, **non lié à la cible Playco**, testé à chaque push p
 | `JeuDonnees` | Export JSON Lines des clips étiquetés — refusé sans consentement, minimisé | Linux |
 | `LecteurMetadonneesVideo` | Date de création **avec son origine** (clé caméra = tournage ; en-tête = écriture, faux après ré-encodage) | macOS |
 | `ExtracteurSignaux` · `ExporteurClip` · `AnalyseurEchanges` | Signal d'activité, audio 11 kHz en flux, export clip/montage multi-fichiers, analyseur concret | macOS |
+| `playco-video` (CLI) · `CommandesVideo` | Outil en ligne de commande : infos, échanges, sifflets, match condensé | macOS |
+
+### Tester sur une VRAIE vidéo, sans l'app (Mac)
+
+```bash
+cd Modules/PlaycoVideo
+swift run playco-video infos ~/Movies/match.mov
+swift run playco-video echanges ~/Movies/match.mov
+swift run playco-video condenser ~/Movies/match.mov -o ~/Movies/match-condense.mp4
+```
+
+`condenser` = le match sans les temps morts (échanges + 2 s avant / 1,5 s après, réglables avec `--avant` / `--apres`).
 
 ### Résultats sur données SIMULÉES (pas encore de vraie vidéo de match)
 

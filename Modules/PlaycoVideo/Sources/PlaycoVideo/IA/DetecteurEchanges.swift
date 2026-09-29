@@ -24,7 +24,7 @@ public struct SignalActivite: Hashable, Sendable {
     public var duree: Double { frequence > 0 ? Double(valeurs.count) / frequence : 0 }
 }
 
-public struct EchangeDetecte: Hashable, Sendable {
+public struct EchangeDetecte: Codable, Hashable, Sendable {
     public var debut: Double
     public var fin: Double
     /// Activité moyenne lissée pendant l'échange.

@@ -24,7 +24,7 @@ public struct SignalAudio: Hashable, Sendable {
     }
 }
 
-public struct SiffletDetecte: Hashable, Sendable {
+public struct SiffletDetecte: Codable, Hashable, Sendable {
     public var debut: Double
     public var fin: Double
     /// Fréquence dominante (Hz).
