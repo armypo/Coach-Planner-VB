@@ -20,9 +20,13 @@ public enum CommandesVideo {
       playco-video echanges <video> [--json]
       playco-video sifflets <video>
       playco-video condenser <video> -o <sortie.mp4> [--avant 2] [--apres 1.5]
+      playco-video caler <video> --points <points.csv> [--debut <ISO 8601>] [--large]
+                         [--montage <sortie.mp4>] [--etiquette <Kill>]
 
     condenser : garde seulement les échanges (plus une marge avant/après,
     en secondes) et les met bout à bout — le match sans les temps morts.
+    caler : cale les points saisis (CSV horodatage;etiquette;resultat;periode)
+    sur la vidéo SANS ancre, puis exporte le montage des points choisis.
     """
 
     /// Exécute une commande ; renvoie le code de sortie et le texte à afficher.
@@ -35,6 +39,7 @@ public enum CommandesVideo {
             case "echanges": return try await echanges(options)
             case "sifflets": return try await sifflets(options)
             case "condenser": return try await condenser(options)
+            case "caler": return try await caler(options)
             case "aide", "--help", "-h": return (0, aide)
             default: return (64, "Commande inconnue : \(commande)\n\n\(aide)")
             }
@@ -111,6 +116,69 @@ public enum CommandesVideo {
         """)
     }
 
+    /// Résultat du calage d'une vidéo sur des points (testable sans la CLI).
+    public struct CalageVideo: Sendable {
+        public var calage: ResultatCalage
+        public var alignement: AlignementVideo
+        public var fenetre: FenetreClip
+        public var chapitres: [ChapitreVideo]
+    }
+
+    /// Détecte les échanges, cale les points dessus (recherche large si la
+    /// date du fichier n'est pas fiable), estime la fenêtre, situe les points.
+    public static func calerVideo(_ url: URL, evenements: [EvenementMatch],
+                                  debut: Date? = nil, large: Bool = false) async throws -> CalageVideo {
+        let meta = try await LecteurMetadonneesVideo.lire(url)
+        guard let depart = debut ?? meta.dateCreation else {
+            throw ErreurCommande(message: "Date de début inconnue : ajouter --debut <ISO 8601>.")
+        }
+        let initial = AlignementVideo(dateDebutVideo: depart, dureeVideo: meta.duree)
+        let echanges = try await AnalyseurEchanges().echanges(video: url)
+        let taps = evenements.map { initial.instantDansVideo($0.horodatage) }
+        let fins = echanges.map(\.fin)
+        let recherche = large || (debut == nil && !meta.dateFiable)
+        guard let calage = recherche
+                ? CalageAutomatique.estimerLarge(taps: taps, finsEchanges: fins)
+                : CalageAutomatique.estimer(taps: taps, finsEchanges: fins) else {
+            throw ErreurCommande(message: "Aucun point ou aucun échange : calage impossible.")
+        }
+        let alignement = CalageAutomatique.appliquer(calage, a: initial)
+        let tapsCales = evenements.map { alignement.instantDansVideo($0.horodatage) }
+        let fenetre = EstimationFenetre.estimer(taps: tapsCales, echanges: echanges) ?? .parDefaut
+        return CalageVideo(calage: calage, alignement: alignement, fenetre: fenetre,
+                           chapitres: IndexVideo.chapitres(evenements, alignement: alignement, fenetre: fenetre))
+    }
+
+    static func caler(_ options: [String]) async throws -> (code: Int32, sortie: String) {
+        let url = try video(options)
+        guard let chemin = valeur("--points", options) else { throw ErreurCommande(message: "Points manquants : --points <points.csv>") }
+        guard let texte = try? String(contentsOfFile: chemin, encoding: .utf8) else {
+            throw ErreurCommande(message: "Fichier de points illisible : \(chemin)")
+        }
+        let points = ImportPoints.depuisCSV(texte)
+        guard !points.evenements.isEmpty else { throw ErreurCommande(message: "Aucun point lisible dans \(chemin).") }
+        let debut = valeur("--debut", options).flatMap(ImportPoints.analyserDate)
+
+        let r = try await calerVideo(url, evenements: points.evenements, debut: debut, large: options.contains("--large"))
+        var lignes = [
+            "Points    : \(points.evenements.count) (\(points.lignesIgnorees) ligne(s) ignorée(s))",
+            "Calage    : \(String(format: "%+.1f", r.calage.decalage)) s — \(r.calage.estFiable ? "fiable" : "NON fiable (poser une ancre)")"
+                + " — \(Int((r.calage.couverture * 100).rounded())) % des points expliqués",
+            "Fenêtre   : \(String(format: "%.1f", r.fenetre.avant)) s avant / \(String(format: "%.1f", r.fenetre.apres)) s après le tap",
+            "Chapitres : \(r.chapitres.count) point(s) situé(s) dans la vidéo"
+        ]
+        if let montage = valeur("--montage", options) {
+            let etiquettes = valeur("--etiquette", options).map { Set([$0]) } ?? []
+            let clips = IndexVideo.playlist(r.chapitres, filtre: FiltreChapitres(etiquettes: etiquettes))
+            let segments = PlanLecture.segments(clips)
+            guard !segments.isEmpty else { return (1, (lignes + ["Aucun point à monter."]).joined(separator: "\n")) }
+            let sortie = URL(fileURLWithPath: montage)
+            try await ExporteurClip.exporter(videos: [url], segments: segments, vers: sortie)
+            lignes.append("Montage   : \(clips.count) clip(s), \(duree(PlanLecture.dureeTotale(segments))) → \(sortie.path)")
+        }
+        return (0, lignes.joined(separator: "\n"))
+    }
+
     // MARK: - Outils
 
     struct ErreurCommande: Error {
@@ -119,7 +187,7 @@ public enum CommandesVideo {
 
     /// Premier argument qui n'est ni une option ni la valeur d'une option.
     static func video(_ options: [String]) throws -> URL {
-        let avecValeur: Set<String> = ["-o", "--avant", "--apres"]
+        let avecValeur: Set<String> = ["-o", "--avant", "--apres", "--points", "--debut", "--montage", "--etiquette"]
         var i = 0
         while i < options.count {
             let o = options[i]

@@ -70,9 +70,16 @@ cd Modules/PlaycoVideo
 swift run playco-video infos ~/Movies/match.mov
 swift run playco-video echanges ~/Movies/match.mov
 swift run playco-video condenser ~/Movies/match.mov -o ~/Movies/match-condense.mp4
+swift run playco-video caler ~/Movies/match.mov --points points.csv --montage ~/Movies/kills.mp4 --etiquette Kill
 ```
 
 `condenser` = le match sans les temps morts (échanges + 2 s avant / 1,5 s après, réglables avec `--avant` / `--apres`).
+`caler` = cale les points saisis sur la vidéo SANS ancre (recherche large si la date du fichier n'est pas fiable), puis monte les clips choisis. Format du CSV (séparateur « ; ») :
+
+```
+horodatage;etiquette;resultat;periode
+2026-09-29T19:04:12.350-04:00;Kill;pourNous;1
+```
 
 ### Résultats sur données SIMULÉES (pas encore de vraie vidéo de match)
 

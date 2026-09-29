@@ -78,6 +78,42 @@ struct CommandesVideoMediaTests {
         #expect(abs(duree - 11.4) < 1.2)
     }
 
+    /// Vidéo de 40 s à 4 échanges + CSV des points saisis 2 s après chaque
+    /// fin, avec une horloge de caméra fausse de 30 s.
+    private func matchAvecPoints() async throws -> (video: URL, points: URL, evenements: [EvenementMatch]) {
+        let actives: [ClosedRange<Double>] = [3...7, 12...16, 21...26, 31...35]
+        let url = try await FabriqueMedia.video(duree: 40, actives: actives, dateCreation: "2026-09-29T10:00:00-0400")
+        let debut = try #require(ImportPoints.analyserDate("2026-09-29T14:00:00Z"))
+        let lignes = actives.enumerated().map { i, a -> String in
+            let tap = debut.addingTimeInterval(a.upperBound + 2 + 30)
+            return "\(ISO8601DateFormatter().string(from: tap));\(i % 2 == 0 ? "Kill" : "Ace");pourNous;1"
+        }
+        let csv = FabriqueMedia.fichierTemporaire("csv")
+        try ("horodatage;etiquette;resultat;periode\n" + lignes.joined(separator: "\n")).write(to: csv, atomically: true, encoding: .utf8)
+        return (url, csv, ImportPoints.depuisCSV(try String(contentsOf: csv, encoding: .utf8)).evenements)
+    }
+
+    @Test("caler : retrouve l'horloge fausse de 30 s et situe les 4 points")
+    func calerVideo() async throws {
+        let m = try await matchAvecPoints()
+        let r = try await CommandesVideo.calerVideo(m.video, evenements: m.evenements)
+        #expect(abs(r.calage.decalage + 30) <= 4)
+        #expect(r.calage.estFiable)
+        #expect(r.chapitres.count == 4)
+    }
+
+    @Test("caler + montage des seuls « Kill »")
+    func calerMontage() async throws {
+        let m = try await matchAvecPoints()
+        let sortie = FabriqueMedia.fichierTemporaire("mp4")
+        let r = await CommandesVideo.executer(["caler", m.video.path, "--points", m.points.path,
+                                               "--montage", sortie.path, "--etiquette", "Kill"])
+        #expect(r.code == 0)
+        #expect(r.sortie.contains("2 clip(s)"))
+        let duree = try await LecteurMetadonneesVideo.lire(sortie).duree
+        #expect(duree > 15 && duree < 25)
+    }
+
     @Test("condenser sans -o : erreur d'usage")
     func condenserSansSortie() async throws {
         let url = try await FabriqueMedia.video(duree: 2, actives: [])
