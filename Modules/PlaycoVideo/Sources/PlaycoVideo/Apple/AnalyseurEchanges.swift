@@ -17,20 +17,25 @@ public struct AnalyseurEchanges: AnalyseurVideo {
     /// Cadence du signal d'activité (Hz) et sous-échantillonnage spatial.
     public var frequence: Double
     public var pasPixels: Int
+    /// Retire panoramiques/tremblements et ignore les coupures (vidéos du web).
+    public var compenserCamera: Bool
 
     public init(parametres: ParametresDetecteur = .parDefaut,
                 parametresSifflet: ParametresSifflet = .parDefaut,
                 frequence: Double = 10,
-                pasPixels: Int = 8) {
+                pasPixels: Int = 8,
+                compenserCamera: Bool = true) {
         self.parametres = parametres
         self.parametresSifflet = parametresSifflet
         self.frequence = frequence
         self.pasPixels = pasPixels
+        self.compenserCamera = compenserCamera
     }
 
     /// Échanges de la vidéo (utiles aussi à `EstimationFenetre`).
     public func echanges(video: URL) async throws -> [EchangeDetecte] {
-        let signal = try await ExtracteurSignaux.activite(video: video, frequence: frequence, pasPixels: pasPixels)
+        let signal = try await ExtracteurSignaux.activite(video: video, frequence: frequence, pasPixels: pasPixels,
+                                                          compenserCamera: compenserCamera)
         let echanges = DetecteurEchanges.detecter(signal, parametres: parametres)
         guard try await LecteurMetadonneesVideo.lire(video).aUnePisteAudio else { return echanges }
         let sifflets = try await ExtracteurSignaux.sifflets(video: video, parametres: parametresSifflet)

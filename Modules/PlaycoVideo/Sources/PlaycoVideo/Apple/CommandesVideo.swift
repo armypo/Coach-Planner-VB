@@ -25,6 +25,8 @@ public enum CommandesVideo {
 
     condenser : garde seulement les échanges (plus une marge avant/après,
     en secondes) et les met bout à bout — le match sans les temps morts.
+    --camera-fixe : désactive la compensation des mouvements de caméra
+    (activée par défaut : panoramiques, vidéos du web, coupures de montage).
     caler : cale les points saisis (CSV horodatage;etiquette;resultat;periode)
     sur la vidéo SANS ancre, puis exporte le montage des points choisis.
     """
@@ -72,7 +74,7 @@ public enum CommandesVideo {
 
     static func echanges(_ options: [String]) async throws -> (code: Int32, sortie: String) {
         let url = try video(options)
-        let trouves = try await AnalyseurEchanges().echanges(video: url)
+        let trouves = try await analyseur(options).echanges(video: url)
         if options.contains("--json") {
             let encodeur = JSONEncoder()
             encodeur.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -102,7 +104,7 @@ public enum CommandesVideo {
         let avant = Double(valeur("--avant", options) ?? "") ?? 2
         let apres = Double(valeur("--apres", options) ?? "") ?? 1.5
 
-        let trouves = try await AnalyseurEchanges().echanges(video: url)
+        let trouves = try await analyseur(options).echanges(video: url)
         guard !trouves.isEmpty else { return (1, "Aucun échange détecté : rien à condenser.") }
         let plages = plagesCondensees(trouves, avant: avant, apres: apres)
         let sortie = URL(fileURLWithPath: chemin)
@@ -180,6 +182,10 @@ public enum CommandesVideo {
     }
 
     // MARK: - Outils
+
+    static func analyseur(_ options: [String]) -> AnalyseurEchanges {
+        AnalyseurEchanges(compenserCamera: !options.contains("--camera-fixe"))
+    }
 
     struct ErreurCommande: Error {
         let message: String

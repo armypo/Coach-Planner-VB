@@ -62,6 +62,7 @@ Package Swift autonome, **non lié à la cible Playco**, testé à chaque push p
 | `LecteurMetadonneesVideo` | Date de création **avec son origine** (clé caméra = tournage ; en-tête = écriture, faux après ré-encodage) | macOS |
 | `ExtracteurSignaux` · `ExporteurClip` · `AnalyseurEchanges` | Signal d'activité, audio 11 kHz en flux, export clip/montage multi-fichiers, analyseur concret | macOS |
 | `playco-video` (CLI) · `CommandesVideo` | Outil en ligne de commande : infos, échanges, sifflets, match condensé | macOS |
+| `CompensationCamera` | Vidéos du web : déplacement global de la caméra retiré (grossier puis fin), coupures de montage ignorées | Linux + vraie vidéo qui panoramique (macOS) |
 
 ### Tester sur une VRAIE vidéo, sans l'app (Mac)
 
@@ -80,6 +81,8 @@ swift run playco-video caler ~/Movies/match.mov --points points.csv --montage ~/
 horodatage;etiquette;resultat;periode
 2026-09-29T19:04:12.350-04:00;Kill;pourNous;1
 ```
+
+**Vidéo YouTube** : l'outil lit un fichier local ; il ne télécharge rien. Tes propres vidéos : YouTube Studio → Télécharger. Télécharger la vidéo d'un autre enfreint les conditions de YouTube ; dans l'APP, importer depuis YouTube est interdit par l'App Store (règle 5.2.3) — l'app n'importera que depuis Photos/Fichiers. Sur une vidéo du web, la date du fichier n'est jamais fiable (ré-encodée) et la caméra bouge : la **compensation de caméra** (panoramiques retirés, coupures de montage ignorées) est active par défaut ; `--camera-fixe` la désactive pour comparer. Limite connue : les ralentis/reprises d'une diffusion télé peuvent être pris pour des échanges.
 
 ### Résultats sur données SIMULÉES (pas encore de vraie vidéo de match)
 

@@ -83,6 +83,62 @@ enum FabriqueMedia {
         return url
     }
 
+    /// Vidéo « du web » : la caméra panoramique en continu sur une texture
+    /// lisse (`pixelsParImage` px par image), un joueur bouge pendant les
+    /// plages actives, et une coupure de montage change de plan à `coupure`.
+    static func videoPanoramique(duree: Double, fps: Int32 = 10, actives: [ClosedRange<Double>],
+                                 pixelsParImage: Double = 4, coupure: Double? = nil) async throws -> URL {
+        let url = fichierTemporaire("mov")
+        let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
+        let entree = AVAssetWriterInput(mediaType: .video, outputSettings: [
+            AVVideoCodecKey: AVVideoCodecType.h264,
+            AVVideoWidthKey: largeur,
+            AVVideoHeightKey: hauteur
+        ])
+        entree.expectsMediaDataInRealTime = false
+        let adaptateur = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: entree, sourcePixelBufferAttributes: [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+            kCVPixelBufferWidthKey as String: largeur,
+            kCVPixelBufferHeightKey as String: hauteur
+        ])
+        writer.add(entree)
+        guard writer.startWriting() else { throw writer.error ?? ErreurVideo.exportImpossible("startWriting") }
+        writer.startSession(atSourceTime: .zero)
+
+        for i in 0..<Int(duree * Double(fps)) {
+            let t = Double(i) / Double(fps)
+            while !entree.isReadyForMoreMediaData { try await Task.sleep(for: .milliseconds(2)) }
+            guard let pool = adaptateur.pixelBufferPool else { throw ErreurVideo.exportImpossible("pool") }
+            var sortie: CVPixelBuffer?
+            CVPixelBufferPoolCreatePixelBuffer(nil, pool, &sortie)
+            guard let tampon = sortie else { throw ErreurVideo.exportImpossible("pixel buffer") }
+            CVPixelBufferLockBaseAddress(tampon, [])
+            guard let base = CVPixelBufferGetBaseAddress(tampon)?.assumingMemoryBound(to: UInt8.self) else {
+                CVPixelBufferUnlockBaseAddress(tampon, [])
+                throw ErreurVideo.exportImpossible("base address")
+            }
+            let ligne = CVPixelBufferGetBytesPerRow(tampon)
+            let actif = actives.contains { $0.contains(t) }
+            let clair = coupure.map { t >= $0 } ?? false
+            let decalage = Double(i) * pixelsParImage
+            let cx = (i * 7) % (largeur - 20), cy = (i * 5) % (hauteur - 20)
+            for y in 0..<hauteur {
+                for x in 0..<largeur {
+                    var v = TextureTest.valeur(Double(x) + decalage, Double(y), clair: clair)
+                    if actif, (cx..<cx + 20).contains(x), (cy..<cy + 20).contains(y) { v = 255 }
+                    let p = y * ligne + x * 4
+                    base[p] = v; base[p + 1] = v; base[p + 2] = v; base[p + 3] = 255
+                }
+            }
+            CVPixelBufferUnlockBaseAddress(tampon, [])
+            adaptateur.append(tampon, withPresentationTime: CMTime(value: CMTimeValue(i), timescale: fps))
+        }
+        entree.markAsFinished()
+        await writer.finishWriting()
+        guard writer.status == .completed else { throw writer.error ?? ErreurVideo.exportImpossible("finishWriting") }
+        return url
+    }
+
     /// Audio WAV mono : bruit de fond + sifflets à 3 150 Hz sur les plages données.
     static func audio(duree: Double, frequence: Double = 44_100, sifflets: [ClosedRange<Double>]) throws -> URL {
         let url = fichierTemporaire("wav")
@@ -199,6 +255,27 @@ struct AppleMediaTests {
         let enBloc = DetecteurSifflets.detecter(try await ExtracteurSignaux.audio(video: url))
         #expect(enFlux == enBloc)
         #expect(enFlux.count == 2)
+    }
+
+    @Test("vidéo du web (panoramique continu + coupure) : échanges retrouvés grâce à la compensation")
+    func videoDuWeb() async throws {
+        let actives: [ClosedRange<Double>] = [5...9, 13...16]
+        let url = try await FabriqueMedia.videoPanoramique(duree: 20, actives: actives, coupure: 10.5)
+
+        let compense = try await ExtracteurSignaux.activite(video: url, frequence: 10, pasPixels: 2)
+        let brut = try await ExtracteurSignaux.activite(video: url, frequence: 10, pasPixels: 2, compenserCamera: false)
+
+        // Temps mort (1-4 s) : le panoramique seul gonfle l'activité brute.
+        let mortCompense = compense.valeurs[10..<40].reduce(0, +) / 30
+        let mortBrut = brut.valeurs[10..<40].reduce(0, +) / 30
+        #expect(mortBrut > 3 * mortCompense)
+
+        let echanges = DetecteurEchanges.detecter(compense)
+        try #require(echanges.count == 2)
+        for (echange, attendu) in zip(echanges, actives) {
+            #expect(abs(echange.debut - attendu.lowerBound) <= 0.7)
+            #expect(abs(echange.fin - attendu.upperBound) <= 0.7)
+        }
     }
 
     @Test("vidéo sans piste audio : erreur explicite")

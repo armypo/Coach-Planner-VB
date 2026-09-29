@@ -4,7 +4,8 @@
 //  Plateformes Apple — extraction des signaux que consomment les détecteurs
 //  purs (DetecteurEchanges, DetecteurSifflets) :
 //  - activité visuelle = différence moyenne de luminance entre images
-//    échantillonnées (plan Y seulement, un pixel sur `pasPixels`) ;
+//    échantillonnées (plan Y seulement, un pixel sur `pasPixels`), une fois
+//    le mouvement de la caméra retiré et les coupures de montage ignorées ;
 //  - audio mono rééchantillonné (11 025 Hz par défaut).
 //  Tout se fait sur l'appareil, sans réseau.
 //
@@ -18,8 +19,12 @@ public enum ExtracteurSignaux {
     // MARK: - Activité visuelle
 
     /// Signal d'activité à `frequence` Hz sur toute la vidéo.
-    /// - Parameter pasPixels: sous-échantillonnage spatial (8 ⇒ 1080p lu en 240×135).
-    public static func activite(video url: URL, frequence: Double = 10, pasPixels: Int = 8) async throws -> SignalActivite {
+    /// - Parameters:
+    ///   - pasPixels: sous-échantillonnage spatial (8 ⇒ 1080p lu en 240×135).
+    ///   - compenserCamera: retire les panoramiques/tremblements et ignore les
+    ///     coupures de montage (vidéos du web, caméra tenue à la main).
+    public static func activite(video url: URL, frequence: Double = 10, pasPixels: Int = 8,
+                                compenserCamera: Bool = true) async throws -> SignalActivite {
         let asset = AVURLAsset(url: url)
         guard let piste = try await asset.loadTracks(withMediaType: .video).first else {
             throw ErreurVideo.aucunePisteVideo
@@ -38,7 +43,7 @@ public enum ExtracteurSignaux {
         let pas = max(1, pasPixels)
         let nombre = max(1, Int((duree * frequence).rounded(.up)))
         var valeurs = [Double](repeating: .nan, count: nombre)
-        var precedente: [UInt8]?
+        var precedente: GrilleLuminance?
         var prochainInstant = 0.0
 
         while let tampon = sortie.copyNextSampleBuffer() {
@@ -48,11 +53,14 @@ public enum ExtracteurSignaux {
             prochainInstant = (instant * frequence + 1).rounded(.down) / frequence
 
             let courante = luminance(image, pas: pas)
-            if let precedente, precedente.count == courante.count, !courante.isEmpty {
-                var somme = 0
-                for i in courante.indices { somme += abs(Int(courante[i]) - Int(precedente[i])) }
+            if let precedente, let mesure = CompensationCamera.mesurer(precedente, courante) {
                 let index = min(nombre - 1, max(0, Int((instant * frequence).rounded(.down))))
-                valeurs[index] = Double(somme) / Double(courante.count) / 255
+                if compenserCamera {
+                    // Coupure de montage : pas une mesure du jeu (comblée ensuite).
+                    if !mesure.estCoupure { valeurs[index] = mesure.ecartResiduel }
+                } else {
+                    valeurs[index] = mesure.ecartBrut
+                }
             }
             precedente = courante
         }
@@ -63,16 +71,20 @@ public enum ExtracteurSignaux {
     }
 
     /// Plan Y sous-échantillonné (copie — le tampon est rendu aussitôt).
-    static func luminance(_ image: CVImageBuffer, pas: Int) -> [UInt8] {
+    static func luminance(_ image: CVImageBuffer, pas: Int) -> GrilleLuminance {
         CVPixelBufferLockBaseAddress(image, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(image, .readOnly) }
-        guard let base = CVPixelBufferGetBaseAddressOfPlane(image, 0) else { return [] }
+        guard let base = CVPixelBufferGetBaseAddressOfPlane(image, 0) else {
+            return GrilleLuminance(largeur: 0, hauteur: 0, valeurs: [])
+        }
         let largeur = CVPixelBufferGetWidthOfPlane(image, 0)
         let hauteur = CVPixelBufferGetHeightOfPlane(image, 0)
         let ligne = CVPixelBufferGetBytesPerRowOfPlane(image, 0)
         let octets = base.assumingMemoryBound(to: UInt8.self)
+        let colonnes = (largeur + pas - 1) / pas
+        let rangees = (hauteur + pas - 1) / pas
         var resultat: [UInt8] = []
-        resultat.reserveCapacity((largeur / pas + 1) * (hauteur / pas + 1))
+        resultat.reserveCapacity(colonnes * rangees)
         var y = 0
         while y < hauteur {
             var x = 0
@@ -82,7 +94,7 @@ public enum ExtracteurSignaux {
             }
             y += pas
         }
-        return resultat
+        return GrilleLuminance(largeur: colonnes, hauteur: rangees, valeurs: resultat)
     }
 
     /// Cases sans image (cadence < fréquence demandée) : valeur précédente.
