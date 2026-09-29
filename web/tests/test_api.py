@@ -66,3 +66,39 @@ def test_analyse_complete_d_un_fichier(client, video_match):
 def test_analyse_introuvable(client):
     assert client.get("/api/analyses/000000000000").status_code == 404
     assert client.get("/api/analyses/../../etc").status_code == 404
+
+
+def test_options_acces_youtube(monkeypatch):
+    from playco_web.source import options_acces
+
+    monkeypatch.delenv("PLAYCO_YT_COOKIES", raising=False)
+    monkeypatch.delenv("PLAYCO_YT_NAVIGATEUR", raising=False)
+    assert options_acces() == {"js_runtimes": {"deno": {}, "node": {}, "bun": {}}}
+    monkeypatch.setenv("PLAYCO_YT_COOKIES", "/tmp/cookies.txt")
+    monkeypatch.setenv("PLAYCO_YT_NAVIGATEUR", "Chrome")
+    o = options_acces()
+    assert o["cookiefile"] == "/tmp/cookies.txt" and o["cookiesfrombrowser"] == ("chrome",)
+
+
+def test_blocage_anti_robot_explique(monkeypatch, tmp_path):
+    import yt_dlp
+
+    from playco_web.source import MESSAGE_ANTI_ROBOT, ErreurSource, telecharger_youtube
+
+    class Bloque:
+        def __init__(self, options):
+            assert "js_runtimes" in options
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+        def extract_info(self, *_, **__):
+            raise yt_dlp.utils.DownloadError("ERROR: [youtube] x: Sign in to confirm you’re not a bot.")
+
+    monkeypatch.setattr(yt_dlp, "YoutubeDL", Bloque)
+    with pytest.raises(ErreurSource) as erreur:
+        telecharger_youtube("https://youtu.be/dQw4w9WgXcQ", tmp_path)
+    assert str(erreur.value) == MESSAGE_ANTI_ROBOT

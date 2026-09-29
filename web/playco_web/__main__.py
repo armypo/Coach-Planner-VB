@@ -16,7 +16,7 @@ from pathlib import Path
 
 from .analyse_ia import analyseur_par_defaut
 from .pipeline import OptionsAnalyse, analyser_video
-from .source import VideoSource, id_youtube, telecharger_youtube
+from .source import ErreurSource, VideoSource, id_youtube, telecharger_youtube
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -40,7 +40,11 @@ def main(argv: list[str] | None = None) -> int:
     with tempfile.TemporaryDirectory() as temporaire:
         if id_youtube(args.source):
             print("Téléchargement YouTube…", file=sys.stderr, flush=True)
-            video = telecharger_youtube(args.source, Path(temporaire))
+            try:
+                video = telecharger_youtube(args.source, Path(temporaire))
+            except ErreurSource as erreur:
+                print(f"Erreur : {erreur}", file=sys.stderr)
+                return 1
         else:
             chemin = Path(args.source)
             if not chemin.is_file():

@@ -30,7 +30,7 @@ class ErreurMedia(Exception):
 
 
 def infos(chemin: Path) -> InfosVideo:
-    sortie = subprocess.run([FFMPEG, "-hide_banner", "-i", str(chemin)],
+    sortie = subprocess.run([FFMPEG, "-hide_banner", "-i", str(chemin)], stdin=subprocess.DEVNULL,
                             capture_output=True, text=True).stderr
     duree = re.search(r"Duration: (\d+):(\d+):(\d+(?:\.\d+)?)", sortie)
     video = re.search(r"Stream #.*?Video:.*?(\d{2,5})x(\d{2,5})", sortie)
@@ -59,7 +59,7 @@ def images_grises(chemin: Path, frequence: float = 10, largeur_cible: int = 192)
     commande = [FFMPEG, "-hide_banner", "-loglevel", "error", "-i", str(chemin), "-an",
                 "-vf", f"fps={frequence},scale={w}:{h},format=gray",
                 "-f", "rawvideo", "-pix_fmt", "gray", "-"]
-    processus = subprocess.Popen(commande, stdout=subprocess.PIPE)
+    processus = subprocess.Popen(commande, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE)
     taille = w * h
     try:
         while True:
@@ -76,7 +76,7 @@ def audio_mono(chemin: Path, frequence: int = 11_025) -> np.ndarray:
     """Piste audio mixée en mono, flottants 32 bits (~2,6 Mo par minute)."""
     commande = [FFMPEG, "-hide_banner", "-loglevel", "error", "-i", str(chemin), "-vn",
                 "-ac", "1", "-ar", str(frequence), "-f", "f32le", "-"]
-    resultat = subprocess.run(commande, capture_output=True)
+    resultat = subprocess.run(commande, stdin=subprocess.DEVNULL, capture_output=True)
     if resultat.returncode != 0:
         return np.zeros(0, dtype=np.float32)
     return np.frombuffer(resultat.stdout, dtype=np.float32)
@@ -87,7 +87,7 @@ def image_jpeg(chemin: Path, instant: float, largeur: int = 1280) -> bytes:
     commande = [FFMPEG, "-hide_banner", "-loglevel", "error", "-ss", f"{max(0.0, instant):.3f}",
                 "-i", str(chemin), "-frames:v", "1", "-vf", f"scale='min({largeur},iw)':-2",
                 "-q:v", "3", "-f", "image2pipe", "-vcodec", "mjpeg", "-"]
-    resultat = subprocess.run(commande, capture_output=True)
+    resultat = subprocess.run(commande, stdin=subprocess.DEVNULL, capture_output=True)
     if resultat.returncode != 0 or not resultat.stdout:
         raise ErreurMedia(f"Image introuvable à {instant:.1f} s.")
     return resultat.stdout

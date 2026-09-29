@@ -4,7 +4,10 @@
 # - youtube : essai RÉEL sur un lien YouTube (le conteneur de dev n'a pas
 #   accès à YouTube). Déclenché à la main (Run workflow, avec l'IA si le
 #   secret ANTHROPIC_API_KEY existe) ou quand web/essais/youtube.txt change
-#   (signal seul, aucun coût IA).
+#   (signal seul, aucun coût IA). YouTube bloque les IP de GitHub (« Sign in
+#   to confirm you're not a bot », constaté le 2026-09-29) : il faut le secret
+#   YOUTUBE_COOKIES (contenu d'un cookies.txt, voir web/README.md). Sans lui,
+#   l'essai déclenché par un push est sauté avec une note.
 name: PlaycoWeb
 
 on:
@@ -69,12 +72,18 @@ jobs:
         env:
           URL_MANUELLE: ${{ github.event.inputs.url }}
           AVANT: ${{ github.event.before }}
+          COOKIES_PRESENTS: ${{ secrets.YOUTUBE_COOKIES != '' }}
         run: |
           if [ -n "$URL_MANUELLE" ]; then
             printf '%s\n' "$URL_MANUELLE" > ../liens.txt
           elif [ -n "$AVANT" ] && git cat-file -e "$AVANT" 2>/dev/null \
                && git diff --name-only "$AVANT" "$GITHUB_SHA" | grep -qx 'web/essais/youtube.txt'; then
-            grep -vE '^\s*(#|$)' essais/youtube.txt > ../liens.txt || true
+            if [ "$COOKIES_PRESENTS" = "true" ]; then
+              grep -vE '^\s*(#|$)' essais/youtube.txt > ../liens.txt || true
+            else
+              echo "::notice::Essai YouTube sauté : YouTube bloque les IP de GitHub sans cookies. Ajoute le secret YOUTUBE_COOKIES (voir web/README.md)."
+              : > ../liens.txt
+            fi
           else
             : > ../liens.txt
           fi
@@ -92,10 +101,15 @@ jobs:
         if: steps.liens.outputs.nombre != '0'
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }}
           PLAYCO_IA: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.ia == 'claude') && 'auto' || 'aucune' }}
           PLAFOND: ${{ github.event.inputs.echanges_ia_max }}
         run: |
           mkdir -p ../rapports
+          if [ -n "$YOUTUBE_COOKIES" ]; then
+            printf '%s\n' "$YOUTUBE_COOKIES" > "$RUNNER_TEMP/cookies.txt"
+            export PLAYCO_YT_COOKIES="$RUNNER_TEMP/cookies.txt"
+          fi
           n=0
           while IFS= read -r lien; do
             n=$((n + 1))

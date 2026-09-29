@@ -27,6 +27,7 @@ la caméra. La vue « Par équipe » suppose un changement de camp à chaque set
 cd web
 python3.11 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
+brew install deno                          # moteur JavaScript exigé par yt-dlp pour YouTube (node ou bun marchent aussi)
 export ANTHROPIC_API_KEY=sk-ant-...        # sans clé : signal seul (pas d'analyse IA)
 uvicorn playco_web.app:app --port 8000
 # → http://localhost:8000
@@ -45,6 +46,19 @@ python -m playco_web.resume rapport.json     # résumé Markdown
 | `PLAYCO_IA` | `auto` · `factice` (démo sans clé, réponses fixes) · `aucune` | `auto` |
 | `PLAYCO_MODELE` | modèle Claude | `claude-opus-5-5` |
 | `PLAYCO_DONNEES` | dossier des analyses | `web/donnees/` |
+| `PLAYCO_YT_NAVIGATEUR` | cookies YouTube lus dans ton navigateur (`chrome`, `safari`, `firefox`…) | aucun |
+| `PLAYCO_YT_COOKIES` | cookies YouTube depuis un fichier `cookies.txt` (format Netscape) | aucun |
+
+### Accès YouTube
+
+| Où tourne le site | Résultat | À faire |
+|---|---|---|
+| Ton Mac (IP résidentielle) | ESTIMÉ : passe en général sans cookies (non testé ici) ; sinon message clair | au besoin `PLAYCO_YT_NAVIGATEUR=chrome` |
+| Serveur / CI (IP de centre de données) | MESURÉ le 2026-09-29 sur un runner GitHub : **bloqué** (« Sign in to confirm you're not a bot ») | cookies obligatoires : `PLAYCO_YT_COOKIES`, ou secret `YOUTUBE_COOKIES` en CI |
+
+Exporter un `cookies.txt` : guide yt-dlp
+<https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies>
+(fenêtre privée, compte secondaire conseillé).
 
 La vidéo YouTube est supprimée après l'analyse (le rapport la relit par le
 lecteur YouTube intégré) ; une vidéo importée est conservée pour la relecture.
