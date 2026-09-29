@@ -1,0 +1,35 @@
+# Tests du package PlaycoVideo (cœur vidéo + fondations IA), hors de l'app.
+# Linux + image Swift officielle : rapide, et prouve que la logique ne dépend
+# d'aucun framework Apple. Voir docs/Plan_Video_IA.md.
+name: PlaycoVideo
+
+on:
+  push:
+    paths:
+      - 'Modules/PlaycoVideo/**'
+      - '.github/workflows/playco-video.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: playco-video-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: swift test (Linux)
+    runs-on: ubuntu-latest
+    container: swift:6.2
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Version
+        run: swift --version
+      - name: Build de la bibliothèque (0 warning)
+        run: swift build --package-path Modules/PlaycoVideo --target PlaycoVideo -Xswiftc -warnings-as-errors
+      - name: Build des tests
+        run: swift build --package-path Modules/PlaycoVideo --build-tests
+      - name: Tests
+        run: swift test --package-path Modules/PlaycoVideo --skip-build
